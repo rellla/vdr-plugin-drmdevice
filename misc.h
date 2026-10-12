@@ -76,7 +76,7 @@ static inline void eglCheckError(const char *stmt, const char *fname, int line) 
 #define AV_NOPTS_VALUE INT64_C(0x8000000000000000)
 #endif
 
-#define VIDEO_SURFACES_MAX 3 ///< maximum video surfaces kept by the filter and render queues
+#define VIDEO_SURFACES_MAX 5 ///< maximum video surfaces kept by the filter and render queues
 
 /**
  * Check, if this is an interlaced frame

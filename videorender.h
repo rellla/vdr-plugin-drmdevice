@@ -245,6 +245,7 @@ public:
 	bool PresentationPending(void) { return m_framePresentationCounter != 0 || !m_drmBufferQueue.IsEmpty(); };
 
 	static constexpr int GetAudioBehindVideoThresholdMs(void) { return AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_MS; };
+	static constexpr int GetAudioBehindVideoStartThresholdMs(void) { return AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_START_MS; };
 
 protected:
 	virtual void Action(void);
@@ -257,8 +258,8 @@ private:
 	std::vector<Event> m_eventQueue;    ///< event queue for incoming events
 	std::atomic<double> m_refreshRateHz; ///< screen refresh rate in Hz
 
-	cQueue<cDrmBuffer> m_drmBufferQueue{VIDEO_SURFACES_MAX};     ///< queue for DRM buffers to be displayed (VIDEO_SURFACES_MAX is defined in thread.h)
-	cQueue<cDrmBuffer> m_pipDrmBufferQueue{VIDEO_SURFACES_MAX};  ///< queue for PIP DRM buffers to be displayed (VIDEO_SURFACES_MAX is defined in thread.h)
+	cQueue<cDrmBuffer> m_drmBufferQueue{VIDEO_SURFACES_MAX};     ///< queue for DRM buffers to be displayed (VIDEO_SURFACES_MAX is defined in misc.h)
+	cQueue<cDrmBuffer> m_pipDrmBufferQueue{VIDEO_SURFACES_MAX};  ///< queue for PIP DRM buffers to be displayed (VIDEO_SURFACES_MAX is defined in misc.h)
 	std::atomic<double> m_trickspeedFactor = 0;      ///< current trick speed
 	std::atomic<bool> m_trickspeed = false;          ///< true, if trickspeed is active
 	std::atomic<bool> m_forwardTrickspeed = true;    ///< true, if trickspeed plays forward
@@ -286,8 +287,15 @@ private:
 	 * Now, if the initial sync was done to -4ms and such an outlier arrives, we land at -7ms, the frame is dropped
 	 * and our new AV-diff is +14ms now. This can be avoided by the -20/+20ms window.
 	 */
-	constexpr static int AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_MS = 20; ///< threshold in ms, when to duplicate video frames to keep audio and video in sync
-	constexpr static int AV_SYNC_THRESHOLD_AUDIO_AHEAD_VIDEO_MS  = 20; ///< threshold in ms, when to drop video frames to keep audio and video in sync
+	constexpr static int AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_MS = 20;        ///< threshold in ms, when to duplicate video frames to keep audio and video in sync
+	constexpr static int AV_SYNC_THRESHOLD_AUDIO_AHEAD_VIDEO_MS  = 20;        ///< threshold in ms, when to drop video frames to keep audio and video in sync
+	constexpr static int AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_START_MS = -15; ///< Playback is started, as soon as (video - audio) is smaller than this threshold in ms.
+	                                                                          ///< -20ms                       0ms        +15ms        +20ms
+	                                                                          ///<   |                          |           |            |
+	                                                                          ///<   -AUDIO_BEHIND_VIDEO_MS     |           |            |
+	                                                                          ///<                                          |            AUDIO_AHEAD_VIDEO_MS
+	                                                                          ///<                                          |
+	                                                                          ///<                                          - AUDIO_BEHIND_VIDEO_START_MS
 	int m_startCounter = 0;             ///< counter for displayed frames, indicates a video start
 	int m_framesDuped = 0;              ///< number of frames duplicated
 	int m_framesDropped = 0;            ///< number of frames dropped

@@ -1015,17 +1015,19 @@ bool cOutputDevice::CheckPlaybackStartConditions()
 	// in CHANNEL_SWITCH_FAST_AUDIO mode audio was started already,
 	// do not start video until audio has caught up with the video pts
 	const int64_t audioBehindVideoMs = m_pRender->GetOutputPtsMs() - m_pAudio->GetOutputPtsMs() - GetVideoAudioDelayMs();
-	bool videoPlaybackMayStart = !FastChannelSwitchAudioInTransferMode() || audioBehindVideoMs <= m_pRender->GetAudioBehindVideoThresholdMs();
+	bool videoPlaybackMayStart = !FastChannelSwitchAudioInTransferMode() || audioBehindVideoMs <= m_pRender->GetAudioBehindVideoStartThresholdMs();
 
 	if (videoIsReady && audioIsReady && videoPlaybackMayStart) {
 		auto now = std::chrono::steady_clock::now();
 		auto durationSinceChannelSwitchMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchStartTime()).count();
-		LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms firing BufferingThresholdReached - PTS: %s (audio), %s (video) - buffer fill levels: %ldms (audio) %ldms (video)",
+		LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms firing BufferingThresholdReached - PTS: %s (a), %s (v) -> diff %dms - buffer fill levels: %ldms (a) %ldms (v) render queue %d",
 			durationSinceChannelSwitchMs,
 			Timestamp2StringMs(m_pAudio->GetOutputPtsMs()),
 			Timestamp2StringMs(m_pRender->GetOutputPtsMs()),
+			audioBehindVideoMs,
 			syncedAudioBufferFillLevelMs,
-			syncedVideoBufferFillLevelMs);
+			syncedVideoBufferFillLevelMs,
+			m_pRender->GetFramesFilled());
 
 		return true;
 	}
@@ -1033,13 +1035,14 @@ bool cOutputDevice::CheckPlaybackStartConditions()
 	if (allBuffersReachedThreshold && m_logPlaybackStart) {
 		auto now = std::chrono::steady_clock::now();
 		auto durationSinceChannelSwitchMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchStartTime()).count();
-		LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms BufferingThresholdReached, but video waits for audio (-%dms) - PTS: %s (audio), %s (video) - buffer fill levels: %ldms (audio) %ldms (video)",
+		LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms BufferingThresholdReached, video waits for audio - PTS: %s (a), %s (v) -> diff %dms - buffer fill levels: %ldms (a) %ldms (v) render queue %d",
 			durationSinceChannelSwitchMs,
-			audioBehindVideoMs,
 			Timestamp2StringMs(m_pAudio->GetOutputPtsMs()),
 			Timestamp2StringMs(m_pRender->GetOutputPtsMs()),
+			audioBehindVideoMs,
 			syncedAudioBufferFillLevelMs,
-			syncedVideoBufferFillLevelMs);
+			syncedVideoBufferFillLevelMs,
+			m_pRender->GetFramesFilled());
 		m_logPlaybackStart = false;
 	}
 
@@ -1092,17 +1095,21 @@ bool cOutputDevice::CheckAudioPlaybackStartConditions()
 	int64_t bufferSurplus = audioBufferFillLevelMs - GetBufferFillLevelThresholdMs();
 	m_pAudio->DropSamplesOlderThanPtsMs(m_pAudio->GetOutputPtsMs() + bufferSurplus);
 
-	// get new buffer filllevel for correct log message, because frames have been dropped
-	audioBufferFillLevelMs = m_pAudio->GetInputPtsMs() - m_pAudio->GetOutputPtsMs();
+	// get new buffer filllevel for correct log message, because frames have been dropped in the meantime
+	int64_t newAudioBufferFillLevelMs = m_pAudio->GetInputPtsMs() - m_pAudio->GetOutputPtsMs();
+
+	const int64_t audioBehindVideoMs = m_pRender->GetOutputPtsMs() - m_pAudio->GetOutputPtsMs() - GetVideoAudioDelayMs();
 
 	auto now = std::chrono::steady_clock::now();
 	auto durationSinceChannelSwitchMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchStartTime()).count();
-	LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms firing AudioBufferingThresholdReached, threshold %dms - PTS: %s (audio), %s (video) - buffer fill levels: %ldms (audio)",
+	LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms firing AudioBufferingThresholdReached, threshold %dms - PTS: %s (a), %s (v) -> diff %dms - audio buffer: %ldms -> %ldms",
 		durationSinceChannelSwitchMs,
 		GetBufferFillLevelThresholdMs(),
 		Timestamp2StringMs(m_pAudio->GetOutputPtsMs()),
 		Timestamp2StringMs(m_pRender->GetOutputPtsMs()),
-		audioBufferFillLevelMs);
+		audioBehindVideoMs,
+		audioBufferFillLevelMs,
+		newAudioBufferFillLevelMs);
 
 	return true;
 }
