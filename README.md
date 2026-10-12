@@ -294,7 +294,8 @@ Setup: /etc/vdr/setup.conf
 
 	drmdevice.AdditionalBufferLengthMs = 0
 		0 = default (min 450ms fixed)
-		1 - 1000 = length of additional buffering duration in ms
+		-300 - 1000 = length of additional buffering duration in ms
+		              (negative values reduce the buffer)
 
 	drmdevice.DisableDeint = 0
 		0 = deinterlacer active if available
