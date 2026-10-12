@@ -55,7 +55,7 @@ private:
 	AVFilterContext *m_pBuffersrcCtx;               ///< buffer src context
 	AVFilterContext *m_pBuffersinkCtx;              ///< buffer sink context
 
-	cQueue<AVFrame> m_frames{VIDEO_SURFACES_MAX};   ///< queue for frames to be filtered
+	cQueue<AVFrame> m_frames{VIDEO_SURFACES_MAX};   ///< queue for frames to be filtered (VIDEO_SURFACES_MAX is defined in misc.h)
 	std::function<void(AVFrame *)> m_frameOutput;   ///< function to output the frame
 	cQueue<cDrmBuffer> *m_pDrmBufferQueue;          ///< pointer to renderer's DRM buffer queue
 	int m_numFramesToFilter = 0;                    ///< number of frames to be filtered
