@@ -51,6 +51,8 @@ extern "C" {
 static enum AVPixelFormat GetFormat(AVCodecContext * videoCtx,
                                     const enum AVPixelFormat *fmt)
 {
+	const enum AVPixelFormat *formats = fmt;
+
 	while (*fmt != AV_PIX_FMT_NONE) {
 		LOGDEBUG2(L_CODEC, "videocodec: %s: PixelFormat: %s videoCtx->pix_fmt: %s sw_pix_fmt: %s Codecname: %s",
 			__FUNCTION__,
@@ -67,7 +69,7 @@ static enum AVPixelFormat GetFormat(AVCodecContext * videoCtx,
 	}
 	LOGWARNING("videocodec: %s: No pixel format found! Set default format.", __FUNCTION__);
 
-	return avcodec_default_get_format(videoCtx, fmt);
+	return avcodec_default_get_format(videoCtx, formats);
 }
 
 /**
@@ -206,7 +208,7 @@ int cVideoDecoder::Open(enum AVCodecID codecId, AVCodecParameters * par,
 	}
 
 	const AVCodecHWConfig *config = m_isHardwareDecoder ? FindHWConfig(codec) : NULL;
-	static AVBufferRef *hwDeviceCtx = NULL;
+	AVBufferRef *hwDeviceCtx = nullptr;   // the codec context takes the ownership
 
 	if (config && (config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX)) {
 		const char *type_name = av_hwdevice_get_type_name(config->device_type);
@@ -382,9 +384,19 @@ int cVideoDecoder::GetExtraData(const AVPacket * avpkt)
 
 	extradata = av_packet_get_side_data(pktRef, AV_PKT_DATA_NEW_EXTRADATA, &extradataSize);
 
-	m_pVideoCtx->extradata = (uint8_t *)av_mallocz(extradataSize + AV_INPUT_BUFFER_PADDING_SIZE);
-	memcpy(m_pVideoCtx->extradata, extradata, extradataSize);
-	m_pVideoCtx->extradata_size = extradataSize;
+	if (extradata && extradataSize) {
+		av_freep(&m_pVideoCtx->extradata);
+		m_pVideoCtx->extradata = (uint8_t *)av_mallocz(extradataSize + AV_INPUT_BUFFER_PADDING_SIZE);
+		if (m_pVideoCtx->extradata) {
+			memcpy(m_pVideoCtx->extradata, extradata, extradataSize);
+			m_pVideoCtx->extradata_size = extradataSize;
+		} else {
+			m_pVideoCtx->extradata_size = 0;
+			ret = AVERROR(ENOMEM);
+		}
+	} else {
+		ret = -1;	// packet has no extradata (yet)
+	}
 
 	av_packet_unref(pktRef);
 	av_packet_free(&dstPkt);
@@ -484,7 +496,7 @@ int cVideoDecoder::ReceiveFrame(AVFrame **frame)
 		return ret;
 	}
 
-	if (pFrame->flags == AV_FRAME_FLAG_CORRUPT)
+	if (pFrame->flags & AV_FRAME_FLAG_CORRUPT)
 		LOGDEBUG2(L_CODEC, "videocodec: %s: %s: AV_FRAME_FLAG_CORRUPT", m_identifier, __FUNCTION__);
 
 	*frame = pFrame;
