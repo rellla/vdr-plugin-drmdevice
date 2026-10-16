@@ -124,7 +124,7 @@ void cVideoStream::Exit(void)
  */
 void cVideoStream::ClearVdrCoreToDecoderQueue(void)
 {
-	LOGDEBUG("videostream %s: %s: packets %d", m_identifier, __FUNCTION__, m_packets.Size());
+	LOGDEBUG("videostream %s: %s: packets %zu", m_identifier, __FUNCTION__, m_packets.Size());
 
 	while (!m_packets.IsEmpty()) {
 		AVPacket *avpkt = m_packets.Pop();
@@ -329,7 +329,7 @@ bool cVideoStream::PacketDropNeeded(AVPacket *avpkt)
 	if (m_logPackets) {
 		LOGDEBUG("videostream %s: %s: parsed H.264 stream:", m_identifier, __FUNCTION__);
 		for (std::size_t i = 0; i < m_naluTypesAtStart.size(); i++)
-			LOGDEBUG("[H264] (%02d) %s", i, m_naluTypesAtStart[i].c_str());
+			LOGDEBUG("[H264] (%02zu) %s", i, m_naluTypesAtStart[i].c_str());
 
 		m_logPackets = 0;
 	}

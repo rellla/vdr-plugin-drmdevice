@@ -87,12 +87,12 @@ class cLogger {
 public:
 	static std::shared_ptr<cLogger> GetLogger();
 	static void LogFFmpegCallback(void *, int, const char *, va_list);
-	void LogFatal(const char *format, ...);
-	void LogError(const char *format, ...);
-	void LogWarning(const char *format, ...);
-	void LogInfo(const char *format, ...);
-	void LogDebug(const char *format, ...);
-	void LogDebug2(const int cat, const char *format, ...);
+	void LogFatal(const char *format, ...) __attribute__((format(printf, 2, 3)));
+	void LogError(const char *format, ...) __attribute__((format(printf, 2, 3)));
+	void LogWarning(const char *format, ...) __attribute__((format(printf, 2, 3)));
+	void LogInfo(const char *format, ...) __attribute__((format(printf, 2, 3)));
+	void LogDebug(const char *format, ...) __attribute__((format(printf, 2, 3)));
+	void LogDebug2(const int cat, const char *format, ...) __attribute__((format(printf, 3, 4)));
 	void LogFFmpeg(const char *, va_list);
 
 	void SetLogLevel(int level) { m_logLevel = level; };

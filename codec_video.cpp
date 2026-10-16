@@ -178,7 +178,7 @@ int cVideoDecoder::Open(enum AVCodecID codecId, AVCodecParameters * par,
 	auto now = std::chrono::steady_clock::now();
 	auto durationSinceChannelSwitchMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchStartTime()).count();
 	auto durationSinceFirstPacketMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchDataReceivedTime()).count();
-	LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms decoder open (+%5dms after first data was received)", durationSinceChannelSwitchMs, durationSinceFirstPacketMs);
+	LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms decoder open (+%5dms after first data was received)", (int)durationSinceChannelSwitchMs, (int)durationSinceFirstPacketMs);
 
 	LOGDEBUG2(L_CODEC, "videocodec: %s: %s: Try to open decoder for codec \"%s\"%s", m_identifier, __FUNCTION__,
 		avcodec_get_name(codecId), forceSoftwareDecoder ? " (sw decoding forced)" : "");
@@ -288,7 +288,7 @@ int cVideoDecoder::Open(enum AVCodecID codecId, AVCodecParameters * par,
 	now = std::chrono::steady_clock::now();
 	durationSinceChannelSwitchMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchStartTime()).count();
 	durationSinceFirstPacketMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchDataReceivedTime()).count();
-	LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms decoder opened (+%5dms after first data was received)", durationSinceChannelSwitchMs, durationSinceFirstPacketMs);
+	LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms decoder opened (+%5dms after first data was received)", (int)durationSinceChannelSwitchMs, (int)durationSinceFirstPacketMs);
 
 	return 0;
 }
@@ -438,7 +438,7 @@ int cVideoDecoder::SendPacket(const AVPacket *avpkt)
 		auto now = std::chrono::steady_clock::now();
 		auto durationSinceChannelSwitchMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchStartTime()).count();
 		auto durationSinceFirstPacketMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchDataReceivedTime()).count();
-		LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms decoder first packet sent (+%5dms after first data was received)", durationSinceChannelSwitchMs, durationSinceFirstPacketMs);
+		LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms decoder first packet sent (+%5dms after first data was received)", (int)durationSinceChannelSwitchMs, (int)durationSinceFirstPacketMs);
 	}
 
 	m_cntPacketsSent++;
@@ -493,7 +493,7 @@ int cVideoDecoder::ReceiveFrame(AVFrame **frame)
 		auto now = std::chrono::steady_clock::now();
 		auto durationSinceChannelSwitchMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchStartTime()).count();
 		auto durationSinceFirstPacketMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchDataReceivedTime()).count();
-		LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms decoder first frame received (+%5dms after first data was received)", durationSinceChannelSwitchMs, durationSinceFirstPacketMs);
+		LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms decoder first frame received (+%5dms after first data was received)", (int)durationSinceChannelSwitchMs, (int)durationSinceFirstPacketMs);
 	}
 
 	m_cntFramesReceived++;
