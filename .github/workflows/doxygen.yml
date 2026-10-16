@@ -2,7 +2,11 @@ name: Generate and deploy doxygen documentation
 
 on:
   push:
-    branches: main
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       folder:
@@ -17,20 +21,22 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 env:
-  DOXYGEN_OUTPUT: srcdoc/html
-  DOXYGEN_CONFIG: doxygen/Doxyfile
+  DOXYGEN_OUTPUT: ${{ inputs.folder || 'srcdoc/html' }}
+  DOXYGEN_CONFIG: ${{ inputs.config_file || 'doxygen/Doxyfile' }}
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # don't let two runs of the same pull request generate the documentation at the same time
+    concurrency:
+      group: doxygen-build-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout plugin repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -46,51 +52,56 @@ jobs:
             HASH=$(git describe --tags --always --dirty --exclude "*" 2>/dev/null || echo "unknown")
             GIT_DESCRIBE_VERSION="-$HASH"
           fi
-          echo "GIT_DESCRIBE_VERSION=$GIT_DESCRIBE_VERSION" >> $GITHUB_ENV
-
-      - name: Setup pages
-        uses: actions/configure-pages@v5
+          echo "GIT_DESCRIBE_VERSION=$GIT_DESCRIBE_VERSION" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y graphviz doxygen
-
-      - name: Resolve inputs
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "DOXYGEN_OUTPUT=${{ inputs.folder }}" >> $GITHUB_ENV
-            echo "DOXYGEN_CONFIG=${{ inputs.config_file }}" >> $GITHUB_ENV
-          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends graphviz doxygen
 
       - name: Configure doxygen
         run: |
           cp "$DOXYGEN_CONFIG" "$DOXYGEN_CONFIG.tmp"
-          BASE_VERSION=$(grep -R 'static const char \*const VERSION *=' plugindrmdevice.cpp \
+          BASE_VERSION=$(grep 'static const char \*const VERSION *=' plugindrmdevice.cpp \
             | awk '{ print $7 }' | sed 's/[";]//g' | head -n1)
           PROJECT_VERSION="${BASE_VERSION}${GIT_DESCRIBE_VERSION}"
           echo "PROJECT_NUMBER=$PROJECT_VERSION" >> "$DOXYGEN_CONFIG.tmp"
-          echo "Set documentation version nummer to $PROJECT_VERSION"
+          echo "Set documentation version number to $PROJECT_VERSION"
 
       - name: Run doxygen
-        run: doxygen $DOXYGEN_CONFIG.tmp
+        run: |
+          doxygen --version
+          doxygen "$DOXYGEN_CONFIG.tmp"
 
       - name: Create .nojekyll (ensures pages with underscores work on gh pages)
-        run: touch $DOXYGEN_OUTPUT/.nojekyll
+        run: touch "$DOXYGEN_OUTPUT/.nojekyll"
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ${{ env.DOXYGEN_OUTPUT }}
 
   deploy:
+    # pull requests only check, that the documentation can be generated
+    if: github.event_name != 'pull_request'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    # only one deployment at a time, but don't cancel a running deployment
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
+      - name: Setup pages
+        uses: actions/configure-pages@v6
+
       - name: Deploy to github pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
