@@ -84,7 +84,8 @@ private:
 	snd_mixer_elem_t *m_pMixerElem = nullptr; ///< alsa mixer element
 
 	snd_pcm_uframes_t m_bufferSizeFrames = 0; ///< alsa buffer size in frames
-	int m_ratio;                              ///< internal -> mixer ratio * 1000
+	long m_mixerMin = 0;                      ///< minimum volume of the mixer element
+	long m_mixerMax = 0;                      ///< maximum volume of the mixer element
 	bool m_appendAES;                         ///< flag to automatic append AES
 	int m_passthroughMask;                    ///< passthrough mask
 	std::atomic<bool> m_passthroughActive = false; ///< set, if passthrough is active
