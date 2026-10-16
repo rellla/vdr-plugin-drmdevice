@@ -456,10 +456,9 @@ void cAudioStream::EnqueueFrame(AVFrame *frame)
 	if (!frame)
 		return;
 
-	uint16_t *buffer;
-
+	// the filter delivers interleaved signed 16 bit samples (AV_SAMPLE_FMT_S16)
 	int byteCount = frame->nb_samples * frame->ch_layout.nb_channels * BYTES_PER_SAMPLE;
-	buffer = (uint16_t *)frame->data[0];
+	int16_t *buffer = reinterpret_cast<int16_t *>(frame->data[0]);
 
 	if (m_useCompressor)       // in place operation
 		m_audioProcessor.Compress(buffer, byteCount);
@@ -467,7 +466,7 @@ void cAudioStream::EnqueueFrame(AVFrame *frame)
 	if (m_useNormalizer)       // in place operation
 		m_audioProcessor.Normalize(buffer, byteCount);
 
-	Enqueue((uint16_t *)buffer, byteCount, frame->pts);
+	Enqueue(reinterpret_cast<const uint16_t *>(buffer), byteCount, frame->pts);
 
 	av_frame_free(&frame);
 }

@@ -24,9 +24,9 @@
  *****************************************************************************/
 
 /**
- * Create a new audio processoror
+ * Create a new audio processor
  *
- * @param bytesPerSample   bytes per sampler (hardcoded to 2)
+ * @param bytesPerSample   bytes per sample (hardcoded to 2, signed 16 bit samples)
  */
 cAudioProcessor::cAudioProcessor(const int bytesPerSample)
 	: m_bytesPerSample(bytesPerSample)
@@ -39,14 +39,14 @@ cAudioProcessor::cAudioProcessor(const int bytesPerSample)
  * @param samples   sample buffer
  * @param count     number of bytes in sample buffer
  */
-void cAudioProcessor::Normalize(uint16_t *samples, int count)
+void cAudioProcessor::Normalize(int16_t *samples, int count)
 {
 	int i;
 	int l;
 	int n;
 	uint32_t avg;
 	int factor;
-	uint16_t *data;
+	int16_t *data;
 
 	// average samples
 	l = count / m_bytesPerSample;
@@ -88,7 +88,7 @@ void cAudioProcessor::Normalize(uint16_t *samples, int count)
 			} else {
 				factor = 1000;
 			}
-			LOGDEBUG2(L_SOUND, "audio: %s: avg %8d, fac=%6.3f, norm=%6.3f", __FUNCTION__,
+			LOGDEBUG2(L_SOUND, "audio: %s: avg %8u, fac=%6.3f, norm=%6.3f", __FUNCTION__,
 				avg, factor / 1000.0, m_normalizeFactor / 1000.0);
 			}
 
@@ -127,6 +127,7 @@ void cAudioProcessor::SetNormalizer(int maxfac)
 void cAudioProcessor::ResetNormalizer(void)
 {
 	m_normalizeCounter = 0;
+	m_normalizeIndex = 0;
 	m_normalizeReady = 0;
 
 	for (int i = 0; i < NORMALIZE_MAX_INDEX; ++i)
@@ -141,7 +142,7 @@ void cAudioProcessor::ResetNormalizer(void)
  * @param samples   sample buffer
  * @param count     number of bytes in sample buffer
  */
-void cAudioProcessor::Compress(uint16_t *samples, int count)
+void cAudioProcessor::Compress(int16_t *samples, int count)
 {
 	int maxSample;
 	int i;
