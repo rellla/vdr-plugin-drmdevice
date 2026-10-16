@@ -17,6 +17,8 @@
 # </pre>
 #
 # additionally a couple of newlines are added right before and after of <pre> tags.
+# A '#' inside the mermaid block (e.g. a color "#e57373") is escaped, otherwise
+# doxygen treats it as a link request.
 
 fence_start="(^\`\`\`mermaid)(.*)"
 fence_end="(\`\`\`)"
@@ -31,7 +33,7 @@ do
       printf '</pre>\n\n'
       in_fence=0
     else
-       printf '%s\n' "${line}"
+       printf '%s\n' "${line//#/\\#}"
     fi
   else
         printf '%s\n' "${line}"
