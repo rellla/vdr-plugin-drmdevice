@@ -52,9 +52,9 @@ private:
 	cVideoRender *m_pRender;                          ///< pointer to renderer
 	constexpr static int VIDEO_FILTER_QUEUE_MAX = 3;  ///< maximum number of decoded frames waiting for the filter
 
-	AVFilterGraph *m_pFilterGraph;                    ///< filter graph
-	AVFilterContext *m_pBuffersrcCtx;                 ///< buffer src context
-	AVFilterContext *m_pBuffersinkCtx;                ///< buffer sink context
+	AVFilterGraph *m_pFilterGraph = nullptr;          ///< filter graph
+	AVFilterContext *m_pBuffersrcCtx = nullptr;       ///< buffer src context
+	AVFilterContext *m_pBuffersinkCtx = nullptr;      ///< buffer sink context
 
 	cQueue<AVFrame> m_frames{VIDEO_FILTER_QUEUE_MAX}; ///< queue for frames to be filtered
 	std::function<void(AVFrame *)> m_frameOutput;     ///< function to output the frame
