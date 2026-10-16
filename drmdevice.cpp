@@ -76,7 +76,17 @@ cDrmDevice::~cDrmDevice(void)
 	LOGDEBUG2(L_DRM, "drmdevice: %s", __FUNCTION__);
 }
 
-/** @ingroup drm */
+/**
+ * Get the drm resources of a device
+ *
+ * @param fd               drm file descriptor
+ * @param[out] resources   drm resources
+ *
+ * @retval 0               on success
+ * @retval -1              on error
+ *
+ * @ingroup drm
+ */
 static int get_resources(int fd, drmModeRes **resources)
 {
 	*resources = drmModeGetResources(fd);
@@ -902,10 +912,14 @@ void cDrmDevice::ExitGbm(void)
 	}
 }
 
-PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display = NULL;
-PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC get_platform_surface = NULL;
+PFNEGLGETPLATFORMDISPLAYEXTPROC get_platform_display = NULL;           ///< eglGetPlatformDisplayEXT() (from the EGL extension)
+PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC get_platform_surface = NULL;  ///< eglCreatePlatformWindowSurfaceEXT() (from the EGL extension)
 
-/** @ingroup drm */
+/**
+ * EGL context attributes: OpenGL/ES 2
+ *
+ * @ingroup drm
+ */
 static const EGLint context_attribute_list[] =
 {
 	EGL_CONTEXT_CLIENT_VERSION, 2,
@@ -1041,6 +1055,9 @@ static void drm_fb_destroy_callback(struct gbm_bo *bo, void *data)
 	delete(buf);
 }
 
+/// @cond
+// The multi plane functions of gbm are declared weak, so that the plugin also
+// loads with an older libgbm. GetBufFromBo() checks, if they are available.
 __attribute__ ((weak)) union gbm_bo_handle
 gbm_bo_get_handle_for_plane(struct gbm_bo *bo, int plane);
 
@@ -1058,6 +1075,7 @@ gbm_bo_get_stride_for_plane(struct gbm_bo *bo, int plane);
 
 __attribute__ ((weak)) uint32_t
 gbm_bo_get_offset(struct gbm_bo *bo, int plane);
+/// @endcond
 
 /**
  * Get a drm buffer from a gbm buffer object
@@ -1403,57 +1421,72 @@ void cDrmDevice::InitEvent(void)
 
 /*
  * drmModeAtomic* wrapper functions
+ *
+ * The Set* functions add a property to an atomic modeset request,
+ * they return a negative value on errors (see SetPropertyRequest()).
  */
+
+/** Add the connector property "CRTC_ID" (the current crtc) to the request */
 int cDrmDevice::SetConnectorCrtcId(drmModeAtomicReqPtr modeReq)
 {
 	return SetPropertyRequest(modeReq, m_connectorId, DRM_MODE_OBJECT_CONNECTOR, "CRTC_ID", m_crtcId);
 }
 
+/** Add the connector property "HDR_OUTPUT_METADATA" (blob id, 0 disables HDR) to the request */
 int cDrmDevice::SetConnectorHdrOutputMetadata(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_connectorId, DRM_MODE_OBJECT_CONNECTOR, "HDR_OUTPUT_METADATA", id);
 }
 
+/** Add the connector property "Colorspace" (see ::drmColorSpace) to the request */
 int cDrmDevice::SetConnectorColorspace(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_connectorId, DRM_MODE_OBJECT_CONNECTOR, "Colorspace", id);
 }
 
+/** Add the video plane property "COLOR_ENCODING" (see ::drmColorEncoding) to the request */
 int cDrmDevice::SetVideoPlaneColorEncoding(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_videoPlane.GetId(), DRM_MODE_OBJECT_PLANE, "COLOR_ENCODING", id);
 }
 
+/** Add the video plane property "COLOR_RANGE" (see ::drmColorRange) to the request */
 int cDrmDevice::SetVideoPlaneColorRange(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_videoPlane.GetId(), DRM_MODE_OBJECT_PLANE, "COLOR_RANGE", id);
 }
 
+/** Get the current value of the video plane property "COLOR_RANGE", returns 0 on success */
 int cDrmDevice::GetVideoPlaneColorRange(uint64_t *value)
 {
 	return GetPropertyValue(m_videoPlane.GetId(), DRM_MODE_OBJECT_PLANE, "COLOR_RANGE", value);
 }
 
+/** Add the crtc property "MODE_ID" (blob id of the mode) to the request */
 int cDrmDevice::SetCrtcModeId(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_crtcId, DRM_MODE_OBJECT_CRTC, "MODE_ID", id);
 }
 
+/** Add the crtc property "ACTIVE" to the request */
 int cDrmDevice::SetCrtcActive(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_crtcId, DRM_MODE_OBJECT_CRTC, "ACTIVE", id);
 }
 
+/** Create a property blob of the current mode, returns 0 on success */
 int cDrmDevice::CreateModeBlob(uint32_t *modeID)
 {
 	return drmModeCreatePropertyBlob(m_fdDrm, &m_drmModeInfo, sizeof(m_drmModeInfo), modeID);
 }
 
+/** Destroy a mode property blob, returns 0 on success */
 int cDrmDevice::DestroyModeBlob(uint32_t modeID)
 {
 	return drmModeDestroyPropertyBlob(m_fdDrm, modeID);
 }
 
+/** Create a property blob of the HDR metadata, returns 0 on success */
 int cDrmDevice::CreateHdrBlob(struct hdr_output_metadata *data, size_t size, uint32_t *blobID)
 {
 	int ret = drmModeCreatePropertyBlob(m_fdDrm, data, size, blobID);
@@ -1463,6 +1496,7 @@ int cDrmDevice::CreateHdrBlob(struct hdr_output_metadata *data, size_t size, uin
 	return ret;
 }
 
+/** Set the connector property "HDR_OUTPUT_METADATA" directly (without atomic request), returns 0 on success */
 int cDrmDevice::SetConnectorHdrBlobProperty(uint32_t blobID)
 {
 	int ret = drmModeConnectorSetProperty(m_fdDrm, m_connectorId, m_hdrMetadata, blobID);
@@ -1473,6 +1507,7 @@ int cDrmDevice::SetConnectorHdrBlobProperty(uint32_t blobID)
 	return ret;
 }
 
+/** Destroy a HDR metadata property blob, returns 0 on success */
 int cDrmDevice::DestroyHdrBlob(uint32_t blobID)
 {
 	return drmModeDestroyPropertyBlob(m_fdDrm, blobID);

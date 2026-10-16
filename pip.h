@@ -50,10 +50,14 @@ private:
 /**
  * PiP Stream Handler
  *
+ * Switches a free device to the pip channel and attaches a cPipReceiver,
+ * which sends the video to the pip stream of the output device.
+ *
  * @ingroup pip
  */
 class cPipHandler {
 public:
+	/** Create the pip handler for the given device */
 	cPipHandler(cOutputDevice *);
 	virtual ~cPipHandler(void);
 
@@ -65,7 +69,7 @@ public:
 	void SetSize(void);
 	void SwapPosition(void);
 
-	bool IsEnabled(void) { return m_active; };
+	bool IsEnabled(void) { return m_active; }           ///< true, if pip is active
 
 private:
 	cOutputDevice *m_pDevice;               ///< pointer to device

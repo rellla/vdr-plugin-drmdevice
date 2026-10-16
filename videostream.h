@@ -43,6 +43,11 @@ class cVideoRender;
 /**
  * Video Input Stream
  *
+ * Base class of the main and the PiP video stream. It holds the queue of the
+ * AVPackets received from VDR and runs the decoding thread, which sends the
+ * packets to the decoder (cVideoDecoder) and passes the decoded frames either
+ * to the filter thread (cVideoFilter) or directly to the renderer.
+ *
  * @ingroup video
  */
 class cVideoStream : public cThread {
@@ -50,7 +55,7 @@ public:
 	virtual ~cVideoStream(void);
 
 	void DecodeInput(void);
-	bool IsInterlaced(void) { return false; };
+	bool IsInterlaced(void) { return false; }           ///< always false (not implemented)
 
 	void Open(AVCodecID, AVCodecParameters * = nullptr, AVRational = { .num = 1, .den = PTSTICKS });
 	void Exit(void);
@@ -62,31 +67,34 @@ public:
 
 	// decoding thread
 	void Stop(void);
-	void Halt(void) { m_mutex.lock(); };
-	void Resume(void) { m_mutex.unlock(); };
+	void Halt(void) { m_mutex.lock(); }                 ///< halt the decoding thread
+	void Resume(void) { m_mutex.unlock(); }             ///< resume the halted decoding thread
 
 	// getters and setters
-	cVideoDecoder *Decoder(void) { return m_pDecoder; };
+	cVideoDecoder *Decoder(void) { return m_pDecoder; }  ///< get the decoder
 	void StartDecoder();
-	size_t GetAvPacketsFilled(void) { return m_packets.Size(); };
-	bool IsInputBufferFull(void) { return m_packets.Size() >= VIDEO_PACKET_MAX; };
+	size_t GetAvPacketsFilled(void) { return m_packets.Size(); }                  ///< get the number of queued packets
+	bool IsInputBufferFull(void) { return m_packets.Size() >= VIDEO_PACKET_MAX; } ///< true, if the packet queue is full
 	bool BuffersEmpty(void);
-	enum AVCodecID GetCodecId(void) { return m_codecId; };
-	void ResetTrickSpeedFramesSentCounter(void) { m_sentTrickPkts = 0; };
-	bool HasInputPts(void) { return m_inputPts != AV_NOPTS_VALUE; }
-	int64_t GetInputPtsMs(void) { return m_inputPts * 1000 * av_q2d(m_timebase); };
-	void ResetInputPts(void) { m_inputPts = AV_NOPTS_VALUE; };
+	enum AVCodecID GetCodecId(void) { return m_codecId; }                          ///< get the current codec id
+	void ResetTrickSpeedFramesSentCounter(void) { m_sentTrickPkts = 0; }           ///< reset the counter of packets sent in trick speed
+	bool HasInputPts(void) { return m_inputPts != AV_NOPTS_VALUE; }                ///< true, if a packet with pts was queued
+	int64_t GetInputPtsMs(void) { return m_inputPts * 1000 * av_q2d(m_timebase); } ///< get the pts of the last queued packet in ms
+	void ResetInputPts(void) { m_inputPts = AV_NOPTS_VALUE; }                      ///< forget the input pts
 	void GetVideoSize(int *, int *, double *);
-	int GetVideoPacketMax(void) { return VIDEO_PACKET_MAX; };
+	int GetVideoPacketMax(void) { return VIDEO_PACKET_MAX; }  ///< get the size of the packet queue
 
 	// Filter
 	void CancelFilterThread(void);
-	void ResetFilterThreadNeededCheck() { m_checkFilterThreadNeeded = true; m_useDeinterlacer = false; };
+	/** check again, if the filter thread is needed */
+	void ResetFilterThreadNeededCheck() { m_checkFilterThreadNeeded = true; m_useDeinterlacer = false; }
 
-	virtual void SetDeinterlacerDeactivated(bool deactivate) { m_deinterlacerDeactivated = deactivate; };
-	bool IsDeinterlacerDeactivated(void) { return m_deinterlacerDeactivated; };
-	void DisableDeint(bool disable) { m_userDisabledDeinterlacer = disable; };
-	void SetDecoderFallbackToSwNumPkts(int numPackets) { m_decoderFallbackToSwNumPkts = numPackets; };
+	/** temporarily disable the deinterlacer */
+	virtual void SetDeinterlacerDeactivated(bool deactivate) { m_deinterlacerDeactivated = deactivate; }
+	bool IsDeinterlacerDeactivated(void) { return m_deinterlacerDeactivated; } ///< true, if the deinterlacer is temporarily disabled
+	void DisableDeint(bool disable) { m_userDisabledDeinterlacer = disable; }  ///< disable the deinterlacer by user configuration
+	/** set the number of packets, after which a failing hw decoder falls back to sw */
+	void SetDecoderFallbackToSwNumPkts(int numPackets) { m_decoderFallbackToSwNumPkts = numPackets; }
 
 protected:
 	cVideoStream(cVideoRender *, int, cQueue<cDrmBuffer> *, cDeviceConfig *, bool, std::function<void(AVFrame *)>);
@@ -123,9 +131,9 @@ private:
 	bool m_interlaced = false;                      ///< flag for interlaced stream
 	double m_framerate = 0.0;                       ///< current stream framerate
 
-	int64_t m_inputPts = AV_NOPTS_VALUE;            ///< PTS of the first packet in the input buffer
+	int64_t m_inputPts = AV_NOPTS_VALUE;                 ///< PTS of the last packet (with a pts) pushed to the input buffer
 	int64_t m_ptsForFramerateDetection = AV_NOPTS_VALUE; ///< helper PTS to calculate a framerate at stream start
-	int64_t m_lastDecodedPts = AV_NOPTS_VALUE;      ///< PTS of the latest packet, which was sent to the decoder in order to detect stream discontinuity
+	int64_t m_lastDecodedPts = AV_NOPTS_VALUE;           ///< PTS of the latest packet, which was sent to the decoder in order to detect stream discontinuity
 
 	// h264 parsing
 	std::vector<std::string> m_naluTypesAtStart;    ///< array of strings to log the H.264 frames at stream start
@@ -147,16 +155,19 @@ private:
 	void OpenDecoder(void);
 	bool ParseH264Packet(AVPacket *);
 	bool PacketDropNeeded(AVPacket *);
-	int64_t PtsToMs(int64_t pts) { return pts * av_q2d(m_timebase) * 1000; };
+	int64_t PtsToMs(int64_t pts) { return pts * av_q2d(m_timebase) * 1000; }  ///< convert a pts of the stream timebase to ms
 };
 
 /**
  * Main Video Stream
  *
+ * The video stream, which is displayed on the video plane.
+ *
  * @ingroup video
  */
 class cMainVideoStream : public cVideoStream {
 public:
+	/** Create the main video stream */
 	cMainVideoStream(cVideoRender *render, int hardwareQuirks, cQueue<cDrmBuffer> *buf, cDeviceConfig *config, std::function<void(AVFrame *)> fn)
 		: cVideoStream(render, hardwareQuirks, buf, config, false, fn) {};
 };
@@ -164,13 +175,16 @@ public:
 /**
  * PiP Video Stream
  *
+ * The video stream of the picture in picture window, which is never deinterlaced.
+ *
  * @ingroup video
  */
 class cPipVideoStream : public cVideoStream {
 public:
+	/** Create the pip video stream */
 	cPipVideoStream(cVideoRender *render, int hardwareQuirks, cQueue<cDrmBuffer> *buf, cDeviceConfig *config, std::function<void(AVFrame *)> fn)
 		: cVideoStream(render, hardwareQuirks, buf, config, true, fn) {};
-	void SetDeinterlacerDeactivated(bool) override {}; // deinterlacing is permanently disabled
+	void SetDeinterlacerDeactivated(bool) override {}     ///< deinterlacing is permanently disabled
 };
 
 #endif

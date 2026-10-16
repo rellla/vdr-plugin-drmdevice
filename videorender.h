@@ -62,19 +62,28 @@ class cOutputDevice;
  * @{
  */
 
+/**
+ * Values of the connector property "Colorspace" (see the linux kernel's drm_connector.c)
+ */
 enum drmColorSpace {
-	COLORSPACE_BT709_YCC = 2,
-	COLORSPACE_BT2020_RGB = 9
+	COLORSPACE_BT709_YCC = 2,      ///< BT.709 YCbCr (SDR)
+	COLORSPACE_BT2020_RGB = 9      ///< BT.2020 RGB (HDR)
 };
 
+/**
+ * Values of the plane property "COLOR_ENCODING" (enum drm_color_encoding of the linux kernel)
+ */
 enum drmColorEncoding {
-	COLORENCODING_BT709 = 1,
-	COLORENCODING_BT2020 = 2
+	COLORENCODING_BT709 = 1,       ///< ITU-R BT.709 YCbCr
+	COLORENCODING_BT2020 = 2       ///< ITU-R BT.2020 YCbCr
 };
 
+/**
+ * Values of the plane property "COLOR_RANGE" (enum drm_color_range of the linux kernel)
+ */
 enum drmColorRange {
-	COLORRANGE_LIMITED = 0,
-	COLORRANGE_FULL = 1
+	COLORRANGE_LIMITED = 0,        ///< limited range (16 - 235)
+	COLORRANGE_FULL = 1            ///< full range (0 - 255)
 };
 
 /** @} */
@@ -82,11 +91,14 @@ enum drmColorRange {
 /**
  * DRM Buffer Getting-Strategy
  *
+ * Decides, which buffer of the pool is used for a new frame.
+ *
  * @ingroup render
  */
 class cBufferStrategy {
 public:
 	virtual ~cBufferStrategy() = default;
+	/** Get a buffer from the pool for the given frame (primedata), nullptr if none is available */
 	virtual cDrmBuffer *GetBuffer(cDrmBufferPool *, AVDRMFrameDescriptor *) = 0;
 };
 
@@ -123,11 +135,15 @@ public:
 /**
  * Strategy to Prepare DRM Buffer for Decoding
  *
+ * Fills the drm buffer with the decoded frame and returns a DRM_PRIME frame,
+ * which references the buffer.
+ *
  * @ingroup render
  */
 class cDecodingStrategy {
 public:
 	virtual ~cDecodingStrategy() = default;
+	/** Prepare the buffer (drm fd) for the given frame, the input frame is consumed */
 	virtual AVFrame *PrepareDrmBuffer(cDrmBuffer *, int, AVFrame *) = 0;
 };
 
@@ -167,27 +183,32 @@ public:
 	void ReInitDisplayMode(void);
 	void Exit(void);
 	void Stop(void);
-	void Halt(void) { m_mutex.lock(); };
-	void Resume(void) { m_mutex.unlock(); };
+	void Halt(void) { m_mutex.lock(); }                 ///< halt the display thread
+	void Resume(void) { m_mutex.unlock(); }             ///< resume the halted display thread
 
 	void SetVideoOutputPosition(const cRect &);
 	void SetOsdSize(int, int);
 	void SetScreenSize(int, int, double, bool);
 	void SetDisplayMode(int);
 	bool CanHandleMode(sDrmMode *);
-	int64_t GetVideoClock(void) { return m_pts; };
+	int64_t GetVideoClock(void) { return m_pts; }       ///< get the pts of the currently displayed frame
 	void GetStats(int *, int *, int *);
 	void ResetFrameCounter(void);
 	void Reset();
-	void SetPlaybackPaused(bool pause) { m_videoPlaybackPaused = pause; };
-	void SetScheduleAudioResume(bool resume) { m_resumeAudioScheduled = resume; };
-	void ScheduleVideoPlaybackPauseAt(int64_t ptsMs) { m_videoPlaybackPauseScheduledAt = ptsMs; };
+	void SetPlaybackPaused(bool pause) { m_videoPlaybackPaused = pause; }         ///< pause/resume the video playback
+	void SetScheduleAudioResume(bool resume) { m_resumeAudioScheduled = resume; } ///< resume audio, as soon as it catches up with video
+	/** pause the video playback at the given pts */
+	void ScheduleVideoPlaybackPauseAt(int64_t ptsMs) { m_videoPlaybackPauseScheduledAt = ptsMs; }
 
 	void ProcessEvents(void);
-	void ResetBufferReuseStrategy() { delete m_bufferReuseStrategy; m_bufferReuseStrategy = nullptr; };
-	void ResetDecodingStrategy() { delete m_decodingStrategy; m_decodingStrategy = nullptr; };
-	void ResetPipBufferReuseStrategy() { delete m_pipBufferReuseStrategy; m_pipBufferReuseStrategy = nullptr; };
-	void ResetPipDecodingStrategy() { delete m_pipDecodingStrategy; m_pipDecodingStrategy = nullptr; };
+	/** select the buffer strategy again with the next frame */
+	void ResetBufferReuseStrategy() { delete m_bufferReuseStrategy; m_bufferReuseStrategy = nullptr; }
+	/** select the decoding strategy again with the next frame */
+	void ResetDecodingStrategy() { delete m_decodingStrategy; m_decodingStrategy = nullptr; }
+	/** select the pip buffer strategy again with the next frame */
+	void ResetPipBufferReuseStrategy() { delete m_pipBufferReuseStrategy; m_pipBufferReuseStrategy = nullptr; }
+	/** select the pip decoding strategy again with the next frame */
+	void ResetPipDecodingStrategy() { delete m_pipDecodingStrategy; m_pipDecodingStrategy = nullptr; }
 
 	// OSD
 	void OsdClear(void);
@@ -195,58 +216,62 @@ public:
 
 	// TrickSpeed/ Stillpicture
 	void SetTrickSpeed(double, bool, bool);
-	bool IsTrickSpeed(void) { return m_trickspeed; };
-	bool IsForwardTrickspeed(void) { return m_forwardTrickspeed; };
-	void SetStillpicture(bool active) { m_stillpicture = active; };
-	bool IsStillpicture(void) { return m_stillpicture; };
+	bool IsTrickSpeed(void) { return m_trickspeed; }               ///< true, if trick speed is active
+	bool IsForwardTrickspeed(void) { return m_forwardTrickspeed; } ///< true, if trick speed plays forward
+	void SetStillpicture(bool active) { m_stillpicture = active; } ///< enable/disable still picture mode
+	bool IsStillpicture(void) { return m_stillpicture; }           ///< true, if a still picture is displayed
 
 	// Grab
 	int TriggerGrab(void);
 	void ClearGrabBuffers(void);
-	cGrabBuffer *GetGrabbedVideoBuffer(void) { return &m_grabVideo; };
-	cGrabBuffer *GetGrabbedOsdBuffer(void) { return &m_grabOsd; };
-	cGrabBuffer *GetGrabbedPipBuffer(void) { return &m_grabPip; };
+	cGrabBuffer *GetGrabbedVideoBuffer(void) { return &m_grabVideo; } ///< get the grabbed video
+	cGrabBuffer *GetGrabbedOsdBuffer(void) { return &m_grabOsd; }     ///< get the grabbed osd
+	cGrabBuffer *GetGrabbedPipBuffer(void) { return &m_grabPip; }     ///< get the grabbed pip video
 
 	// DRM
 	int DrmHandleEvent(void);
 	bool CanHandleHdr(void);
-	void SetEnableHdr(bool enable) { m_enableHdr = enable; };
+	void SetEnableHdr(bool enable) { m_enableHdr = enable; }  ///< enable/disable HDR output
 
 	// Frame and buffer
 	bool DisplayFrame();
-	int GetFramesFilled(void) { return m_drmBufferQueue.Size(); };
+	int GetFramesFilled(void) { return m_drmBufferQueue.Size(); }  ///< get the number of frames waiting for display
 	void PushMainFrame(AVFrame *);
 	void PushPipFrame(AVFrame *);
 	int64_t GetOutputPtsMs(void);
 	void DisplayBlackFrame(void);
 	void ClearDecoderToDisplayQueue(void);
 	bool IsOutputBufferFull(void);
-	void SetDisplayOneFrameThenPause(bool pause) { m_displayOneFrameThenPause = pause; };
-	void SchedulePlaybackStartAtPtsMs(int64_t ptsMs) { m_schedulePlaybackStartAtPtsMs = ptsMs; };
-	void ScheduleResyncAtPtsMs(int64_t ptsMs) { m_scheduleResyncAtPtsMs = ptsMs; };
-	cQueue<cDrmBuffer> *GetMainOutputBuffer(void) { return &m_drmBufferQueue; };
-	cQueue<cDrmBuffer> *GetPipOutputBuffer(void) { return &m_pipDrmBufferQueue; };
+	void SetDisplayOneFrameThenPause(bool pause) { m_displayOneFrameThenPause = pause; } ///< display one more frame, then pause
+	/** start the playback at the given pts, older frames are dropped */
+	void SchedulePlaybackStartAtPtsMs(int64_t ptsMs) { m_schedulePlaybackStartAtPtsMs = ptsMs; }
+	void ScheduleResyncAtPtsMs(int64_t ptsMs) { m_scheduleResyncAtPtsMs = ptsMs; }       ///< force a resync at the given pts
+	cQueue<cDrmBuffer> *GetMainOutputBuffer(void) { return &m_drmBufferQueue; }          ///< get the queue of frames to be displayed
+	cQueue<cDrmBuffer> *GetPipOutputBuffer(void) { return &m_pipDrmBufferQueue; }        ///< get the queue of pip frames to be displayed
 
 #ifdef USE_GLES
 	// GLES
-	void DisableOglOsd(void) { m_disableOglOsd = true; };
-	void EnableOglOsd(void) { m_disableOglOsd = false; };
-	bool OglOsdDisabled(void) { return m_disableOglOsd; };
-	EGLSurface EglSurface(void) { return m_pDrmDevice->EglSurface(); };
-	EGLDisplay EglDisplay(void) { return m_pDrmDevice->EglDisplay(); };
-	EGLContext EglContext(void) { return m_pDrmDevice->EglContext(); };
-	int GlInitiated(void) { return m_pDrmDevice->GlInitiated(); };
+	void DisableOglOsd(void) { m_disableOglOsd = true; }               ///< use the software osd instead of OpenGL/ES
+	void EnableOglOsd(void) { m_disableOglOsd = false; }               ///< use the OpenGL/ES osd
+	bool OglOsdDisabled(void) { return m_disableOglOsd; }              ///< true, if the OpenGL/ES osd is disabled
+	EGLSurface EglSurface(void) { return m_pDrmDevice->EglSurface(); } ///< get the EGL surface
+	EGLDisplay EglDisplay(void) { return m_pDrmDevice->EglDisplay(); } ///< get the EGL display
+	EGLContext EglContext(void) { return m_pDrmDevice->EglContext(); } ///< get the EGL context
+	int GlInitiated(void) { return m_pDrmDevice->GlInitiated(); }      ///< true, if the OpenGL/ES context is initialized
 #endif
 
 	// PIP
-	void SetPipActive(bool on) { m_pipActive = on; };
+	void SetPipActive(bool on) { m_pipActive = on; }    ///< enable/disable the pip window
 	void ClearPipDecoderToDisplayQueue(void);
 	void SetPipSize(bool);
 
-	bool PresentationPending(void) { return m_framePresentationCounter != 0 || !m_drmBufferQueue.IsEmpty(); };
+	/** true, if frames are waiting for display or the current frame is repeated */
+	bool PresentationPending(void) { return m_framePresentationCounter != 0 || !m_drmBufferQueue.IsEmpty(); }
 
-	static constexpr int GetAudioBehindVideoThresholdMs(void) { return AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_MS; };
-	static constexpr int GetAudioBehindVideoStartThresholdMs(void) { return AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_START_MS; };
+	/** see AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_MS */
+	static constexpr int GetAudioBehindVideoThresholdMs(void) { return AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_MS; }
+	/** see AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_START_MS */
+	static constexpr int GetAudioBehindVideoStartThresholdMs(void) { return AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_START_MS; }
 
 protected:
 	virtual void Action(void);
@@ -354,7 +379,7 @@ private:
 
 	int GetFrameFlags(AVFrame *);
 	void SetFrameFlags(AVFrame *, int);
-	void SetVideoClock(int64_t pts) { m_pts = pts; };
+	void SetVideoClock(int64_t pts) { m_pts = pts; }    ///< set the pts of the currently displayed frame
 	bool PageFlip(cDrmBuffer *, cDrmBuffer *);
 	int SetVideoBuffer(cDrmBuffer *);
 	int SetOsdBuffer(drmModeAtomicReqPtr);

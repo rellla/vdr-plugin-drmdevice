@@ -23,6 +23,8 @@ class cOutputDevice;
 /**
  * Plugin Setup Menu
  *
+ * The setup page of the plugin with collapsible sections.
+ *
  * @ingroup menu
  */
 class cDeviceSetupMenu : public cMenuSetupPage {
@@ -31,7 +33,13 @@ public:
 	virtual eOSState ProcessKey(eKeys);
 
 protected:
-	// local copies of global setup variables:
+	/**
+	 * @name Local copies of the setup values
+	 *
+	 * The values are edited in the menu and stored by Store(). A m_c*Menu member
+	 * holds the state (expanded/collapsed) of its menu section.
+	 */
+	///@{
 
 	// General
 	int m_cGeneralMenu;
@@ -109,22 +117,24 @@ protected:
 	int m_cMaxSizeGPUImageCache;
 #endif
 	int m_cShowChannelSwitchDurationMessage;
+	///@}
 
 private:
 	cOutputDevice *m_pDevice;                          ///< pointer to the device
 	cDeviceConfig *m_pConfig;                          ///< pointer to the config
 
-	std::vector<std::string> m_displayMode;
-	std::vector<const char *> m_displayModePtrs;
-	std::vector<std::string> m_channelSwitchMode;
-	std::vector<const char *> m_channelSwitchModePtrs;
-	static constexpr int FFMPEG_LOG_LEVELS = 4;
+	std::vector<std::string> m_displayMode;            ///< texts of the display mode selection
+	std::vector<const char *> m_displayModePtrs;       ///< pointers to m_displayMode for cMenuEditStraItem
+	std::vector<std::string> m_channelSwitchMode;      ///< texts of the channel switch mode selection
+	std::vector<const char *> m_channelSwitchModePtrs; ///< pointers to m_channelSwitchMode for cMenuEditStraItem
+	static constexpr int FFMPEG_LOG_LEVELS = 4;        ///< number of the FFmpeg log levels
+	/** texts of the FFmpeg log level selection (see cDeviceConfig::ConfigLogFFmpegLevel) */
 	const char *m_ffmpegLogLevels[FFMPEG_LOG_LEVELS] = { "info", "verbose", "debug", "trace" };
 
 	inline cOsdItem * CollapsedItem(const char *, int &, const char * = NULL);
 	void Create(void);
-	void BuildDisplayModeList(void);
-	void BuildChannelSwitchModeList(void);
+	void BuildDisplayModeList(void);                    ///< fill the display mode selection
+	void BuildChannelSwitchModeList(void);              ///< fill the channel switch mode selection
 
 protected:
 	virtual void Store(void);

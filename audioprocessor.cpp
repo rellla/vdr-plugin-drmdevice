@@ -124,6 +124,7 @@ void cAudioProcessor::SetNormalizer(int maxfac)
 	m_normalizeMaxFactor = maxfac;
 }
 
+/** Reset the normalizer to the default factor */
 void cAudioProcessor::ResetNormalizer(void)
 {
 	m_normalizeCounter = 0;
@@ -207,6 +208,7 @@ void cAudioProcessor::SetCompressor(int maxfac)
 		m_compressionFactor = m_compressionMaxFactor;
 }
 
+/** Reset the compressor to the default factor */
 void cAudioProcessor::ResetCompressor(void)
 {
 	// reset audio processing values

@@ -16,17 +16,22 @@
 /**
  * PID Controller
  *
+ * Controls the audio pitch (resampling) to keep the buffer fill level at the
+ * target value, which compensates the clock drift between the audio hardware
+ * and the stream.
+ *
  * @ingroup audio
  */
 class cPidController {
 public:
 	cPidController(double, double, double, double);
+	/** get the target value */
 	double GetTargetValue() { return targetValue; }
-	double GetPTerm() { return pTerm; }
-	double GetITerm() { return iTerm; }
-	double GetDTerm() { return dTerm; }
+	double GetPTerm() { return pTerm; }                 ///< get the last proportional term
+	double GetITerm() { return iTerm; }                 ///< get the last integral term
+	double GetDTerm() { return dTerm; }                 ///< get the last derivative term
 	void Reset();
-	void SetTargetValue(double value) { targetValue = value; }
+	void SetTargetValue(double value) { targetValue = value; } ///< set the target value
 	double Update(double, double);
 
 private:

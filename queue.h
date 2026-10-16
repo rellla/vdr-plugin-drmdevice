@@ -28,6 +28,7 @@
 template <typename T>
 class cQueue {
 public:
+	/** Create an empty queue, which holds at most maxSize elements */
 	cQueue(size_t maxSize) : m_maxSize(maxSize) {};
 	~cQueue(void) {};
 

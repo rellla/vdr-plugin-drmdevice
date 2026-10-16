@@ -24,20 +24,32 @@ extern "C" {
 #include "logger.h"
 #include "videorender.h"
 
-/** @ingroup drm */
+/**
+ * Electro-optical transfer function of the HDR output metadata (CTA-861-G)
+ *
+ * @ingroup drm
+ */
 enum hdrMetadataEotf {
-	EOTF_TRADITIONAL_GAMMA_SDR,
-	EOTF_TRADITIONAL_GAMMA_HDR,
-	EOTF_ST2084,
-	EOTF_HLG,
+	EOTF_TRADITIONAL_GAMMA_SDR,    ///< traditional gamma, SDR luminance range
+	EOTF_TRADITIONAL_GAMMA_HDR,    ///< traditional gamma, HDR luminance range
+	EOTF_ST2084,                   ///< SMPTE ST 2084 (PQ, HDR10)
+	EOTF_HLG,                      ///< hybrid log-gamma
 };
 
-/** @ingroup drm */
+/**
+ * Static metadata descriptor id of the HDR output metadata
+ *
+ * @ingroup drm
+ */
 enum metadataId {
-	METADATA_TYPE1,
+	METADATA_TYPE1,                ///< static metadata type 1
 };
 
-/** @ingroup drm */
+/**
+ * Encode a chromaticity coordinate in units of 0.00002 (CTA-861-G)
+ *
+ * @ingroup drm
+ */
 static inline uint16_t EncodeXYY(float xyy)
 {
 	return static_cast<uint16_t>(xyy * 50000.0f + 0.5f);

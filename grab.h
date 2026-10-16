@@ -31,23 +31,24 @@ class cVideoRender;
  */
 class cGrabBuffer {
 public:
+	/** Create an empty grab buffer, the identifier is used for logging */
 	cGrabBuffer(const char *identifier) : m_identifier(identifier) {};
 
 	void FreeInput(void);
 	void Clear(void);
 	void Set(cDrmBuffer *);
-	bool IsSet(void) { return !m_outputRect.IsEmpty(); };
+	bool IsSet(void) { return !m_outputRect.IsEmpty(); }  ///< true, if a buffer was grabbed
 	uint8_t *ConvertToRgb(int *);
 
 	// setters and getters
-	void SetOutputData(uint8_t *result) { m_pOutputData = result; };
-	uint8_t *GetOutputData(void) { return m_pOutputData; };
-	void SetOutputSize(int size) { m_outputSize = size; };
-	int GetOutputSize(void) { return m_outputSize; };
-	int GetOutputX(void) { return m_outputRect.X(); };
-	int GetOutputY(void) { return m_outputRect.Y(); };
-	int GetOutputWidth(void) { return m_outputRect.Width(); };
-	int GetOutputHeight(void) { return m_outputRect.Height(); };
+	void SetOutputData(uint8_t *result) { m_pOutputData = result; } ///< set the converted image
+	uint8_t *GetOutputData(void) { return m_pOutputData; }          ///< get the converted image
+	void SetOutputSize(int size) { m_outputSize = size; }           ///< set the size of the converted image
+	int GetOutputSize(void) { return m_outputSize; }                ///< get the size of the converted image
+	int GetOutputX(void) { return m_outputRect.X(); }               ///< x position of the grabbed buffer on screen
+	int GetOutputY(void) { return m_outputRect.Y(); }               ///< y position of the grabbed buffer on screen
+	int GetOutputWidth(void) { return m_outputRect.Width(); }       ///< width of the grabbed buffer on screen
+	int GetOutputHeight(void) { return m_outputRect.Height(); }     ///< height of the grabbed buffer on screen
 
 private:
 	// output
@@ -56,17 +57,17 @@ private:
 	cRect m_outputRect;                  ///< rect of the grabbed data
 
 	// input (copied from original cDrmBuffer)
-	uint32_t m_width = 0;
-	uint32_t m_height = 0;
-	uint32_t m_pixFmt = 0;
-	uint64_t m_modifier = 0;
-	int m_numPlanes = 0;
-	uint8_t *m_pPlane[4] = {};
-	uint32_t m_offset[4] = {};
-	uint32_t m_pitch[4] = {};
-	uint32_t m_size[4] = {};
+	uint32_t m_width = 0;                               ///< buffer width
+	uint32_t m_height = 0;                              ///< buffer height
+	uint32_t m_pixFmt = 0;                              ///< drm pixel format
+	uint64_t m_modifier = 0;                            ///< format modifier
+	int m_numPlanes = 0;                                ///< number of planes
+	uint8_t *m_pPlane[4] = {};                          ///< copied data of the planes
+	uint32_t m_offset[4] = {};                          ///< offsets of the planes
+	uint32_t m_pitch[4] = {};                           ///< pitches of the planes
+	uint32_t m_size[4] = {};                            ///< sizes of the planes
 
-	const char *m_identifier;
+	const char *m_identifier;                           ///< identifier string for logging
 };
 
 /**
@@ -78,12 +79,13 @@ private:
  */
 class cGrabber {
 public:
+	/** Create a grabber for the given renderer */
 	cGrabber(cVideoRender *render) : m_pRender(render) {};
 
-	bool IsActive(void) { return m_active; };
+	bool IsActive(void) { return m_active; }            ///< true, if a grab is running
 	bool Start(bool, int, int, int, int, int);
-	uint8_t *Image(void) { return m_grabbedImage; };
-	int Size(void) { return m_grabbedSize; };
+	uint8_t *Image(void) { return m_grabbedImage; }     ///< get the grabbed image (jpeg or pnm)
+	int Size(void) { return m_grabbedSize; }            ///< get the size of the grabbed image
 	bool ProcessGrab(void);
 	void Finish(void);
 

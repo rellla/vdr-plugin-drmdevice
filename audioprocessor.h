@@ -19,6 +19,10 @@
 /**
  * Audio Manipulation
  *
+ * Software audio processing of interleaved signed 16 bit samples:
+ * normalizer, compressor, software volume and the options of the
+ * equalizer filter.
+ *
  * @ingroup audio
  */
 class cAudioProcessor {
@@ -37,10 +41,10 @@ public:
 	std::string GetEqualizerOptions(void) const;
 
 	void Amplify(int16_t *, int, int);
-	void SetAmplifier(int volume) { m_amplifier = volume; };
+	void SetAmplifier(int volume) { m_amplifier = volume; }  ///< set the software volume factor (0 .. 1000)
 
 private:
-	const int m_bytesPerSample;
+	const int m_bytesPerSample;                         ///< bytes per sample
 
 	// Normalizer
 	constexpr static int NORMALIZE_MAX_INDEX = 128;        ///< number of normalize average samples

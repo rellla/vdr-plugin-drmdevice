@@ -36,7 +36,7 @@ public:
 	virtual ~cDeviceOsdProvider();
 
 	virtual cOsd * CreateOsd(int, int, uint);
-	virtual bool ProvidesTrueColor(void) { return true; };
+	virtual bool ProvidesTrueColor(void) { return true; }  ///< the osd supports true color
 #ifdef USE_GLES
 	void RequestStopOpenGlThread(void);
 	void StopOpenGlThread(void);

@@ -71,9 +71,11 @@ extern "C" {
 /****************************************************************************************
  * Image data conversion helpers
  ***************************************************************************************/
-#define OPAQUE      0xff
-#define TRANSPARENT 0x00
+#define OPAQUE      0xff    ///< alpha value of an opaque pixel
+#define TRANSPARENT 0x00    ///< alpha value of a transparent pixel
+/** Convert a color component with premultiplied alpha back to straight alpha */
 #define UNMULTIPLY(color, alpha) ((0xff * color) / alpha)
+/** Blend a front color component with the given alpha over a back color component */
 #define BLEND(back, front, alpha) ((front * alpha) + (back * (255 - alpha))) / 255
 
 // --- Begin Raspberry Pi BSD-licensed code ---
@@ -705,18 +707,21 @@ void cGrabber::Finish(void)
 	m_active = false;
 }
 
+/** Get the grabbed video as RGB image, see GetGrabbedData() */
 uint8_t *cGrabber::GetGrabbedVideoData(int *size, int *width, int *height, int *x, int *y)
 {
 	cGrabBuffer *grab = m_pRender->GetGrabbedVideoBuffer();
 	return GetGrabbedData(size, width, height, x, y, grab);
 }
 
+/** Get the grabbed pip video as RGB image, see GetGrabbedData() */
 uint8_t *cGrabber::GetGrabbedPipData(int *size, int *width, int *height, int *x, int *y)
 {
 	cGrabBuffer *grab = m_pRender->GetGrabbedPipBuffer();
 	return GetGrabbedData(size, width, height, x, y, grab);
 }
 
+/** Get the grabbed osd as RGB image, see GetGrabbedData() */
 uint8_t *cGrabber::GetGrabbedOsdData(int *size, int *width, int *height, int *x, int *y)
 {
 	cGrabBuffer *grab = m_pRender->GetGrabbedOsdBuffer();

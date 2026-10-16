@@ -33,9 +33,9 @@ extern "C" {
  */
 struct CodecInfo
 {
-	int minSize;
-	std::function<bool(const uint8_t*)> MatchSyncWord;
-	std::function<int(const uint8_t*)> GetFrameSize;
+	int minSize;                                         ///< minimum valid frame size in bytes
+	std::function<bool(const uint8_t*)> MatchSyncWord;   ///< true, if the data starts with the sync word of the codec
+	std::function<int(const uint8_t*)> GetFrameSize;     ///< frame size from the header (throws std::invalid_argument on invalid headers)
 };
 
 /**

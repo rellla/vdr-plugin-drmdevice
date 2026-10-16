@@ -46,6 +46,12 @@ class cOutputDevice;
 /**
  * Audio Interface
  *
+ * Receives the decoded audio frames (or the spdif bursts for pass-through),
+ * filters them (channel mapping, equalizer, downmix, resampling), applies the
+ * software audio processing and queues the samples into a ringbuffer. The
+ * audio thread writes the ringbuffer to ALSA and compensates the clock drift
+ * between the audio hardware and the stream.
+ *
  * @ingroup audio
  */
 class cAudioStream : public cThread {
@@ -56,11 +62,12 @@ public:
 	void Exit(void);
 	int Setup(AVRational, int , int , bool);
 	void SetPaused(bool);
-	bool IsPaused(void) { return m_paused; };
+	bool IsPaused(void) { return m_paused; }            ///< true, if audio is paused
 	void Filter(AVFrame *, AVCodecContext *);
 	void EnqueueSpdif(const uint16_t *, int, int64_t pts);
-	bool IsBufferFull(void) { return m_pRingbuffer.FreeBytes() <= AUDIO_MIN_BUFFER_FREE; };
-	bool IsBufferEmpty(void) { return m_pRingbuffer.UsedBytes() == 0 && m_alsa.GetHwDelayFrames() == 0; };
+	bool IsBufferFull(void) { return m_pRingbuffer.FreeBytes() <= AUDIO_MIN_BUFFER_FREE; }  ///< true, if the ringbuffer has no space for more data
+	/** true, if the ringbuffer and the hardware buffer are empty */
+	bool IsBufferEmpty(void) { return m_pRingbuffer.UsedBytes() == 0 && m_alsa.GetHwDelayFrames() == 0; }
 
 	void FlushBuffers(void);
 	int GetUsedRingbufferBytes(void);
@@ -68,31 +75,31 @@ public:
 	int64_t GetHardwareOutputPtsMs(void);
 	int64_t GetHardwareOutputDelayMs(void);
 	int64_t GetHardwareOutputPtsTimebaseUnits(void);
-	bool HasInputPts(void) { return m_inputPts != AV_NOPTS_VALUE; };
-	int64_t GetInputPtsMs(void) { return m_alsa.PtsToMs(m_inputPts, av_q2d(m_timebase)); };
+	bool HasInputPts(void) { return m_inputPts != AV_NOPTS_VALUE; }                        ///< true, if data with a pts was queued
+	int64_t GetInputPtsMs(void) { return m_alsa.PtsToMs(m_inputPts, av_q2d(m_timebase)); } ///< get the pts of the end of the queued data in ms
 	int64_t GetOutputPtsMs(void);
-	int GetAvResyncBorderMs(void) { return AV_SYNC_BORDER_MS; };
+	int GetAvResyncBorderMs(void) { return AV_SYNC_BORDER_MS; }  ///< get the a/v difference, which triggers a resync
 
 	void SetTrickSpeed(double, bool, bool);
 	void AdvanceTrickSpeedPts(int64_t);
-	int64_t GetTrickSpeedPtsTimebaseUnits(void) { return m_trickSpeedPts; };
-	void ResetTrickSpeedPts(void) { m_trickSpeedPts = AV_NOPTS_VALUE; };
-	bool IsForwardTrickSpeed(void) { return m_forwardTrickspeed; };
-	bool IsSlowTrickSpeed(void) { return m_trickspeedFactor <= 1.0 ; };
+	int64_t GetTrickSpeedPtsTimebaseUnits(void) { return m_trickSpeedPts; } ///< get the pts of the audio-only trick speed
+	void ResetTrickSpeedPts(void) { m_trickSpeedPts = AV_NOPTS_VALUE; }     ///< forget the trick speed pts
+	bool IsForwardTrickSpeed(void) { return m_forwardTrickspeed; }          ///< true, if trick speed plays forward
+	bool IsSlowTrickSpeed(void) { return m_trickspeedFactor <= 1.0 ; }      ///< true, if trick speed is slow motion
 
 	void SetVolume(int);
-	void SetSoftvol(bool softVolume) { m_softVolume = softVolume; };
+	void SetSoftvol(bool softVolume) { m_softVolume = softVolume; }  ///< use the software volume instead of the hardware mixer
 
 	void SetNormalize(bool, int);
 	void SetCompression(bool, int);
 	void SetEqualizer(bool, int[18]);
 	void SetStereoDescent(int);
 
-	void SetPassthroughMask(int mask) { m_alsa.SetPassthroughMask(mask); };
-	void SetAutoAES(bool appendAes) { m_alsa.SetAutoAES(appendAes); };
-	void SetTimebase(AVRational timebase) { m_timebase = timebase; };
-	void SetDownmix(int downMix) { m_alsa.SetDownmix(downMix); };
-	int GetPassthroughMask(void) const { return m_alsa.GetPassthroughMask(); };
+	void SetPassthroughMask(int mask) { m_alsa.SetPassthroughMask(mask); }     ///< set the codecs, which are passed through (CODEC_* bit mask of codec_audio.h)
+	void SetAutoAES(bool appendAes) { m_alsa.SetAutoAES(appendAes); }          ///< automatically append AES to the pass-through device
+	void SetTimebase(AVRational timebase) { m_timebase = timebase; }           ///< set the timebase of the pts values
+	void SetDownmix(int downMix) { m_alsa.SetDownmix(downMix); }               ///< downmix to stereo
+	int GetPassthroughMask(void) const { return m_alsa.GetPassthroughMask(); } ///< get the codecs, which are passed through
 
 	void DropSamplesOlderThanPtsMs(int64_t);
 	void ClockDriftCompensation(void);
@@ -156,7 +163,7 @@ private:
 	void ProcessEvents(void);
 
 	// audio manipulation
-	cAudioProcessor m_audioProcessor;
+	cAudioProcessor m_audioProcessor;       ///< software audio processing (normalizer, compressor, volume)
 	bool m_useNormalizer;                   ///< flag to use volume normalize
 	bool m_useCompressor;                   ///< flag to use compress volume
 	bool m_useEqualizer;                    ///< flag to use equalizer

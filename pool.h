@@ -16,6 +16,10 @@
 /**
  * Pool Implementation Template Class
  *
+ * A fixed number of default constructed objects, which are owned by the pool.
+ *
+ * @tparam T    type of the pooled objects
+ *
  * @ingroup misc
  */
 template <typename T>
@@ -24,6 +28,7 @@ protected:
 	std::vector<std::unique_ptr<T>> buffer;    ///< the pooled objects
 
 public:
+	/** Create a pool with the given number of objects */
 	cPool(size_t size) {
 		buffer.reserve(size);
 

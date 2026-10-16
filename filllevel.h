@@ -16,6 +16,10 @@
 /**
  * Fill Level Low Pass Filter
  *
+ * Calculates the average fill level of the audio buffers (received, but not yet
+ * played frames). After a settling time, the average is fixed as target value
+ * for the clock drift compensation (cPidController).
+ *
  * @ingroup misc
  */
 class cBufferFillLevelLowPassFilter {
@@ -29,18 +33,19 @@ public:
 	double GetBufferFillLevelFramesAvg() { std::lock_guard<std::mutex> lock(m_mutex); return m_bufferFillLevelFramesAvg; } ///< get the average fill level in frames
 	void SetMinBufferSizeFrames(int size) { std::lock_guard<std::mutex> lock(m_mutex); m_minBufferSizeFrames = size; } ///< set the minimum target fill level
 	void UpdateAvgBufferFillLevel(int);
-	bool IsSettled() { std::lock_guard<std::mutex> lock(m_mutex); return m_state == SETTLED; }
+	bool IsSettled() { std::lock_guard<std::mutex> lock(m_mutex); return m_state == SETTLED; } ///< true, if the target value is fixed
 
 private:
+	/** State of the filter */
 	enum State {
-		UNINITIALIZED,
-		SETTLING,
-		SETTLED,
+		UNINITIALIZED,         ///< no value yet
+		SETTLING,              ///< fast filtering, until the fill level settled
+		SETTLED,               ///< slow filtering, the target value is fixed
 	};
 
-	constexpr static double FLOATING_AVERAGE_ALPHA_SETTLING = 0.02;
-	constexpr static double FLOATING_AVERAGE_ALPHA_NORMAL = 0.002;
-	constexpr static int SETTLING_DURATION_PACKETS = 30 / 0.16; // 30 seconds with one packet every 160ms
+	constexpr static double FLOATING_AVERAGE_ALPHA_SETTLING = 0.02;  ///< filter coefficient while settling
+	constexpr static double FLOATING_AVERAGE_ALPHA_NORMAL = 0.002;   ///< filter coefficient after settling
+	constexpr static int SETTLING_DURATION_PACKETS = 30 / 0.16;      ///< 30 seconds with one packet every 160ms
 
 	std::mutex m_mutex;                                            ///< protects the members (accessed by different threads)
 	State m_state = UNINITIALIZED;                                 ///< current state

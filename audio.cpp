@@ -887,6 +887,13 @@ void cAudioStream::AdvanceTrickSpeedPts(int64_t pts)
 	m_trickSpeedPts = pts;
 }
 
+/**
+ * Get the pts of the next sample, which is written from the ringbuffer to ALSA
+ *
+ * The caller has to lock m_mutex.
+ *
+ * @return     pts in ms, AV_NOPTS_VALUE if unknown
+ */
 int64_t cAudioStream::GetOutputPtsMsInternal(void)
 {
 	if (m_inputPts == AV_NOPTS_VALUE)
