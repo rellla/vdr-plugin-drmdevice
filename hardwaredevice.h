@@ -13,8 +13,9 @@
 #ifndef __DRMDEVICE_HARDWAREDEVICE_H
 #define __DRMDEVICE_HARDWAREDEVICE_H
 
-#include <cstdio>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <string>
 
 #include "logger.h"
@@ -29,31 +30,24 @@ enum HardwareQuirks {
 };
 
 /**
- * Helper function to read a line from a given file
+ * Helper function to read a (small) file completely
  *
- * @param[out] buf           pointer to the data
- * @param[out] size          size of the data at buf
- * @param[in] file           the filepointer to be read on
+ * The content may contain null bytes (e.g. device tree properties).
  *
- * @return the number of characters read
+ * @param file           the file to be read
+ *
+ * @return the content of the file, an empty string on errors
  *
  * @ingroup misc
  */
-static inline size_t ReadLineFromFile(char *buf, size_t size, const char * file) {
-	FILE *fd = NULL;
-	size_t character;
-
-	fd = fopen(file, "r");
-	if (fd == NULL) {
+static inline std::string ReadFile(const char *file) {
+	std::ifstream input(file, std::ios::binary);
+	if (!input) {
 		LOGERROR("%s: Can't open %s", __FUNCTION__, file);
-		return 0;
+		return {};
 	}
 
-	character = getline(&buf, &size, fd);
-
-	fclose(fd);
-
-	return character;
+	return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
 /**
@@ -64,71 +58,54 @@ static inline size_t ReadLineFromFile(char *buf, size_t size, const char * file)
 class cHardwareDevice
 {
 public:
-	/** Create a new hardware device */
-	cHardwareDevice(void) {
-		char *txt_buf;
-		char *read_ptr;
-		size_t bufsize = 128;
-		size_t read_size;
-
-		txt_buf = (char *) calloc(bufsize, sizeof(char));
-
-		read_size = ReadLineFromFile(txt_buf, bufsize, "/sys/firmware/devicetree/base/compatible");
-		if (!read_size) {
-			free((void *)txt_buf);
-			LOGERROR("could not from read /sys/firmware/devicetree/base/compatible, no quirks set");
+	/**
+	 * Create a new hardware device
+	 *
+	 * @param compatibleFile    device tree "compatible" property to detect the device from
+	 */
+	explicit cHardwareDevice(const char *compatibleFile = "/sys/firmware/devicetree/base/compatible") {
+		// the device tree property is a list of null terminated strings,
+		// e.g. "raspberrypi,4-model-b\0brcm,bcm2711\0"
+		std::string compatible = ReadFile(compatibleFile);
+		if (compatible.empty()) {
+			LOGERROR("could not read from %s, no quirks set", compatibleFile);
 			return;
 		}
 
-		read_ptr = txt_buf;
-		// be aware: device tree string can contain \x0 bytes, so every C-string function
-		// thinks, we already reached the string's terminating null bytes
-		// so copy the string into a temporary string without the "\0"
-		char *_txt_buf = (char *) calloc(bufsize, sizeof(char));
-		char *_read_ptr = _txt_buf;
-		for (size_t i = 0; i < bufsize; i++) {
-			if (memcmp(read_ptr, "\0", sizeof(char))) {
-				memcpy(_read_ptr, read_ptr, sizeof(char));
-				_read_ptr++;
-			}
-			read_ptr++;
-		}
+		static const struct {
+			const char *id;
+			const char *name;
+			int quirks;
+		} devices[] = {
+			{ "bcm2836", "bcm2836 (Raspberry Pi 2 Model B)", QUIRK_CODEC_FLUSH_WORKAROUND },
+			{ "bcm2837", "bcm2837 (Raspberry Pi 2 Model B v1.2/ 3 Model B, Raspberry Pi 3 Compute Module 3)", QUIRK_CODEC_FLUSH_WORKAROUND },
+			{ "bcm2711", "bcm2711 (Raspberry Pi 4 Model B, Compute Module 4, Pi 400)", QUIRK_CODEC_FLUSH_WORKAROUND },
+			{ "bcm2712", "bcm2712 (Raspberry Pi 5, Compute Module 5, Pi 500)", QUIRK_CODEC_FLUSH_WORKAROUND },
+		};
 
-		read_ptr = txt_buf;
-		while(read_size) {
-			if (strstr(read_ptr, "bcm2836")) {
-				m_deviceName = "bcm2836 (Raspberry Pi 2 Model B)";
-				m_quirks |= QUIRK_CODEC_FLUSH_WORKAROUND;
-				break;
-			}
-			if (strstr(read_ptr, "bcm2837")) {
-				m_deviceName = "bcm2837 (Raspberry Pi 2 Model B v1.2/ 3 Model B, Raspberry Pi 3 Compute Module 3)";
-				m_quirks |= QUIRK_CODEC_FLUSH_WORKAROUND;
-				break;
-			}
-			if (strstr(read_ptr, "bcm2711")) {
-				m_deviceName = "bcm2711 (Raspberry Pi 4 Model B, Compute Module 4, Pi 400)";
-				m_quirks |= QUIRK_CODEC_FLUSH_WORKAROUND;
-				break;
-			}
-			if (strstr(read_ptr, "bcm2712")) {
-				m_deviceName = "bcm2712 (Raspberry Pi 5, Compute Module 5, Pi 500)";
-				m_quirks |= QUIRK_CODEC_FLUSH_WORKAROUND;
-				break;
+		size_t pos = 0;
+		while (pos < compatible.size() && !m_deviceName) {
+			size_t end = compatible.find('\0', pos);
+			if (end == std::string::npos)
+				end = compatible.size();
+
+			std::string entry = compatible.substr(pos, end - pos);
+			for (const auto &device : devices) {
+				if (entry.find(device.id) != std::string::npos) {
+					m_deviceName = device.name;
+					m_quirks |= device.quirks;
+					break;
+				}
 			}
 
-			read_size -= strlen(read_ptr) + 1;
-			read_ptr = (char *)&read_ptr[(strlen(read_ptr) + 1)];
+			pos = end + 1;
 		}
 
 		if (m_deviceName)
 			LOGDEBUG("%s found%s", m_deviceName,
 			    m_quirks & QUIRK_CODEC_FLUSH_WORKAROUND ? ", flush workaround" : "");
 		else
-			LOGDEBUG("%s found, no quirks set", txt_buf);
-
-		free((void *)_txt_buf);
-		free((void *)txt_buf);
+			LOGDEBUG("%s found, no quirks set", compatible.c_str());
 	}
 
 	/** Get Hardware Quirks */
