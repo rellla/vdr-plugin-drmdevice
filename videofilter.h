@@ -35,6 +35,9 @@ class cDrmBuffer;
 /**
  * Video Filter
  *
+ * Filter thread, which deinterlaces (software or hardware) or converts
+ * (YUV420P to NV12) the decoded frames and outputs them to the renderer.
+ *
  * @ingroup filter
  */
 class cVideoFilter : public cThread {
@@ -43,9 +46,9 @@ public:
 	void InitAndStart(const AVCodecContext *, AVFrame *, bool);
 	void Stop(void);
 	void PushFrame(AVFrame *);
-	bool IsInputBufferFull(void) { return m_frames.IsFull(); };
-	bool IsInputBufferEmpty(void) { return m_frames.IsEmpty(); };
-	int GetNumFramesToFilter(void) { return m_numFramesToFilter; };
+	bool IsInputBufferFull(void) { return m_frames.IsFull(); }     ///< true, if no more frames can be pushed
+	bool IsInputBufferEmpty(void) { return m_frames.IsEmpty(); }   ///< true, if no frames are waiting to be filtered
+	int GetNumFramesToFilter(void) { return m_numFramesToFilter; } ///< number of frames expected from the filter, but not yet output (interlaced frames count twice)
 
 private:
 	constexpr static int VIDEO_FILTER_QUEUE_MAX = 3;  ///< maximum number of decoded frames waiting for the filter

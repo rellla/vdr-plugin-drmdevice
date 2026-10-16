@@ -97,14 +97,18 @@ public:
 	void LogFFmpeg(const char *, va_list);
 
 	void SetLogLevel(int);
-	int GetLogLevel(void) { return m_logLevel; };
+	int GetLogLevel(void) { return m_logLevel; }        ///< get the log level mask
 	void SetFFmpegLogLevel(int);
-	int GetFFmpegLogLevel(void) { return m_ffmpegLogLevel; };
+	int GetFFmpegLogLevel(void) { return m_ffmpegLogLevel; } ///< get the max. level of the logged FFmpeg messages
 
-	void SetChannelSwitchStartTime(std::chrono::steady_clock::time_point time) { m_channelSwitchStartTime = time; };
-	void SetChannelSwitchDataReceivedTime(std::chrono::steady_clock::time_point time) { m_dataReceivedTime = time; };
-	std::chrono::steady_clock::time_point GetChannelSwitchStartTime(void) { return m_channelSwitchStartTime; };
-	std::chrono::steady_clock::time_point GetChannelSwitchDataReceivedTime(void) { return m_dataReceivedTime; };
+	/** remember the start of a channel switch */
+	void SetChannelSwitchStartTime(std::chrono::steady_clock::time_point time) { m_channelSwitchStartTime = time; }
+	/** remember the arrival of the first data after a channel switch */
+	void SetChannelSwitchDataReceivedTime(std::chrono::steady_clock::time_point time) { m_dataReceivedTime = time; }
+	/** get the start of the last channel switch */
+	std::chrono::steady_clock::time_point GetChannelSwitchStartTime(void) { return m_channelSwitchStartTime; }
+	/** get the arrival of the first data after the last channel switch */
+	std::chrono::steady_clock::time_point GetChannelSwitchDataReceivedTime(void) { return m_dataReceivedTime; }
 
 private:
 	cLogger(void) = default;

@@ -73,7 +73,7 @@ static inline void eglCheckError(const char *stmt, const char *fname, int line) 
  * FFmpeg Helpers
  ***************************************************************************************/
 #ifndef AV_NOPTS_VALUE
-#define AV_NOPTS_VALUE INT64_C(0x8000000000000000)
+#define AV_NOPTS_VALUE INT64_C(0x8000000000000000)   ///< undefined timestamp value (from libavutil)
 #endif
 
 /**
@@ -109,6 +109,7 @@ static inline const char* av_err2string(int errnum)
 
 	return str[idx];
 }
+/** C++ replacement of FFmpeg's av_err2str(), which uses a C compound literal */
 #define av_err2str(err) av_err2string(err)
 #endif
 

@@ -131,6 +131,11 @@ int cDeviceConfig::FFmpegLogLevel(int configLevel)
 	}
 }
 
+/**
+ * Log the enabled log categories
+ *
+ * @param loglevel     log level mask (see ::LogFlags)
+ */
 void cDeviceConfig::PrintLogLevel(int loglevel)
 {
 	if (!loglevel)
@@ -169,12 +174,18 @@ void cDeviceConfig::PrintLogLevel(int loglevel)
 	LOGINFO("%s", prefix);
 }
 
+/**
+ * Set the maximum number of packets, the hardware decoder needed until it returned the first frame
+ *
+ * @param num          number of packets
+ */
 void cDeviceConfig::SetDecoderNeedsMaxPackets(int num)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	m_decoderNeedsMaxPackets = num;
 }
 
+/** Get the maximum number of packets, the hardware decoder needed until it returned the first frame */
 int cDeviceConfig::GetDecoderNeedsMaxPackets(void)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
@@ -183,6 +194,8 @@ int cDeviceConfig::GetDecoderNeedsMaxPackets(void)
 
 /**
  * Return true, if the given mode is equal to the current display mode
+ *
+ * @param newMode      mode to compare
  */
 bool cDeviceConfig::CompareCurrentMode(sDrmMode *newMode)
 {

@@ -52,11 +52,12 @@ class cVideoRender;
 
 #define BORDERCOLOR 0x00000000 ///< This is needed for the GLES2 GL_CLAMP_TO_BORDER workaround
 
+/** Image (texture) in the GPU image cache */
 struct sOglImage {
-	GLuint texture;
-	GLint width;
-	GLint height;
-	bool used;
+	GLuint texture;    ///< texture id
+	GLint width;       ///< width of the image
+	GLint height;      ///< height of the image
+	bool used;         ///< true, if the cache slot is used
 };
 
 enum eShaderType {
@@ -116,14 +117,16 @@ public:
 	void LoadTexture(void);
 	void BindTexture(void);
 protected:
+	/** Kerning of this glyph after a previous symbol */
 	struct tKerning {
 		public:
+			/** Create a kerning cache entry */
 			tKerning(FT_ULong prevSym, GLfloat kerning = 0.0f)  {
 				this->prevSym = prevSym;
 				this->kerning = kerning;
 			}
-			FT_ULong prevSym;
-			GLfloat kerning;
+			FT_ULong prevSym;    ///< previous symbol
+			GLfloat kerning;     ///< kerning in pixel
 	};
 	FT_ULong m_charCode;
 	int m_bearingLeft;

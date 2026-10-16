@@ -111,12 +111,16 @@ void cVideoRender::ClearPipDecoderToDisplayQueue(void)
 	m_pCurrentlyPipDisplayed = nullptr;
 }
 
-/** @ingroup render */
+/**
+ * Rectangle on the screen (in drm plane coordinates)
+ *
+ * @ingroup render
+ */
 struct sRect {
-	uint64_t x;
-	uint64_t y;
-	uint64_t w;
-	uint64_t h;
+	uint64_t x;    ///< x position
+	uint64_t y;    ///< y position
+	uint64_t w;    ///< width
+	uint64_t h;    ///< height
 };
 
 /**

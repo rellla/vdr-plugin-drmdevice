@@ -28,6 +28,13 @@ extern "C" {
 /**
  * DRM Buffer
  *
+ * A drm framebuffer, which can be displayed on a plane. The framebuffer is either
+ * - imported from the DMA-BUF objects of a hardware decoded frame (AVDRMFrameDescriptor),
+ * - a dumb buffer for software decoded frames (NV12) or the software osd (ARGB8888), or
+ * - created from a gbm buffer object (OpenGL/ES osd).
+ *
+ * A buffer is "dirty", as long as it is set up (holds a framebuffer).
+ *
  * @ingroup drm
  */
 class cDrmBuffer {
@@ -42,50 +49,52 @@ public:
 	void FillBlack(void);
 
 	// setter and getter methods
-	uint32_t Width(void) { return m_width; };
+	uint32_t Width(void) { return m_width; }            ///< buffer width
 	void SetWidth(uint32_t width) { m_width = width; };
-	uint32_t Height(void) { return m_height; };
+	uint32_t Height(void) { return m_height; }          ///< buffer height
 	void SetHeight(uint32_t height) { m_height = height; };
-	uint32_t PixFmt(void) { return m_pixFmt; };
+	uint32_t PixFmt(void) { return m_pixFmt; }          ///< drm pixel format (fourcc)
 	void SetPixFmt(uint32_t pixFmt) { m_pixFmt = pixFmt; };
 
-	bool IsDirty(void) { return m_dirty; };
+	bool IsDirty(void) { return m_dirty; }              ///< true, if the buffer is set up
 	void MarkClean(void) { m_dirty = false; };
 	void MarkDirty(void) { m_dirty = true; };
-	bool IsPresentationPending(void) { return m_presentationPending; };
+	bool IsPresentationPending(void) { return m_presentationPending; }  ///< true, if the buffer is queued for display or displayed
 	void SetPresentationPending(bool pending) { m_presentationPending = pending; };
 
-	int Id(void) { return m_fbId; };
+	int Id(void) { return m_fbId; }                     ///< drm framebuffer id
 	void SetId(int id) { m_fbId = id; };
 	void SetFdDrm(int fdDrm) { m_drmDeviceFd = fdDrm; };
-	int NumPlanes(void) { return m_numPlanes; };
+	int NumPlanes(void) { return m_numPlanes; }         ///< number of planes
 	void SetNumPlanes(int numPlanes) { m_numPlanes = numPlanes; };
-	int DmaBufHandle(void) { return m_dmaBufHandle[0]; };
-	int DmaBufHandle(int idx) { return m_dmaBufHandle[idx]; };
+	int DmaBufHandle(void) { return m_dmaBufHandle[0]; }      ///< DMA-BUF handle of the first object
+	int DmaBufHandle(int idx) { return m_dmaBufHandle[idx]; } ///< DMA-BUF handle of the given object
 	void SetDmaBufHandle(uint32_t fd) { m_dmaBufHandle[0] = fd; };
 	void SetNumObjects(int numObjects) { m_numObjects = numObjects; };
-	int NumObjects(void) { return m_numObjects; };
+	int NumObjects(void) { return m_numObjects; }       ///< number of prime objects
 	void SetObjectIndex(int idx, uint32_t objIdx) { m_objIdx[idx] = objIdx; };
-	int ObjectIndex(int idx) { return m_objIdx[idx]; };
-	uint8_t *Plane(int idx) { return m_pPlane[idx]; };
-	uint32_t PrimeHandle(int idx) { return m_planePrimeHandle[idx]; };
+	int ObjectIndex(int idx) { return m_objIdx[idx]; }  ///< object index of the given plane
+	uint8_t *Plane(int idx) { return m_pPlane[idx]; }   ///< mapped data of the given plane (software buffers only)
+	/** prime handle of the given plane */
+	uint32_t PrimeHandle(int idx) { return m_planePrimeHandle[idx]; }
 	uint32_t *PrimeHandle(void) { return m_planePrimeHandle; };
 	void SetHandle(int idx, uint32_t handle) { m_planePrimeHandle[idx] = handle; };
-	uint32_t Offset(int idx) { return m_offset[idx]; };
+	uint32_t Offset(int idx) { return m_offset[idx]; }  ///< offset of the given plane
 	uint32_t *Offset(void) { return m_offset; };
 	void SetOffset(int idx, uint32_t offset) { m_offset[idx] = offset; };
-	uint32_t Pitch(int idx) { return m_pitch[idx]; };
+	uint32_t Pitch(int idx) { return m_pitch[idx]; }    ///< pitch (bytes per line) of the given plane
 	uint32_t *Pitch(void) { return m_pitch; };
 	void SetPitch(int idx, uint32_t pitch) { m_pitch[idx] = pitch; };
-	uint32_t Size(int idx) { return m_size[idx]; };
+	uint32_t Size(int idx) { return m_size[idx]; }      ///< size of the given plane/object
 	uint32_t *Size(void) { return m_size; };
 	void SetSize(int idx, uint32_t size) { m_size[idx] = size; };
-	uint64_t Modifier(void) { return m_modifier; };
-	AVFrame *frame = nullptr;	///< associated AVFrame
-	void SetDestroyAfterUse(bool val) { m_destroyAfterUse = val; };
+	uint64_t Modifier(void) { return m_modifier; } ///< format modifier
+	AVFrame *frame = nullptr;                      ///< associated AVFrame
+	/** destroy the buffer, when its presentation has finished */
+	void SetDestroyAfterUse(bool val) { m_destroyAfterUse = val; }
 	void PresentationFinished(void);
-	void SetSizeOnScreen(int x, int y, int w, int h) { m_rectOnScreen.Set(x, y, w, h); };
-	cRect GetScreenRect(void) { return m_rectOnScreen; };
+	void SetSizeOnScreen(int x, int y, int w, int h) { m_rectOnScreen.Set(x, y, w, h); } ///< remember the position on screen (for grabbing)
+	cRect GetScreenRect(void) { return m_rectOnScreen; }                                 ///< get the position on screen
 
 private:
 	uint32_t m_width = 0;       ///< buffer width
@@ -125,10 +134,13 @@ private:
 /**
  * DRM Buffer Pool
  *
+ * Fixed number of drm buffers, which are reused for the decoded frames.
+ *
  * @ingroup drm
  */
 class cDrmBufferPool : public cPool<cDrmBuffer> {
 public:
+	/** Create a pool of RENDERBUFFERS empty buffers */
 	cDrmBufferPool() : cPool<cDrmBuffer>(RENDERBUFFERS) {}
 	cDrmBuffer *FindUninitilized(void);
 	cDrmBuffer *FindNoPresentationPending(void);

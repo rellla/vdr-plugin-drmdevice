@@ -30,15 +30,17 @@ class cVideoRender;
  * @{
  */
 
+/** Chromaticity coordinates (x, y) */
 struct vector {
-	float f[4];
+	float f[4];                    ///< x, y (the rest is unused)
 };
 
+/** Primaries and white point of a color space */
 struct colorspace {
-	struct vector r, g, b;
-	struct vector whitepoint;
-	const char *name;
-	const char *whitepoint_name;
+	struct vector r, g, b;         ///< red, green and blue primaries
+	struct vector whitepoint;      ///< white point
+	const char *name;              ///< name of the color space
+	const char *whitepoint_name;   ///< name of the white point
 };
 
 /**
@@ -78,11 +80,19 @@ static struct colorspace bt470bg = {
 	.whitepoint_name = "D65",
 };
 
+/** Known color spaces */
 static struct colorspace *const colorspaces[] = {
 	&bt709, &bt2020, &bt470bg,
 };
 
-#define ARRAY_LENGTH(a) (sizeof(a) / sizeof(a)[0])
+#define ARRAY_LENGTH(a) (sizeof(a) / sizeof(a)[0])  ///< number of elements of an array
+
+/**
+ * Find a color space by name
+ *
+ * @param name     name of the color space
+ * @return         the color space, nullptr if not found
+ */
 static inline struct colorspace *colorspace_lookup(const char *name)
 {
     unsigned i;
@@ -104,14 +114,18 @@ static inline struct colorspace *colorspace_lookup(const char *name)
 /**
  * HDR Metadata
  *
+ * Builds the HDR output metadata blob for the connector from the color
+ * properties and the side data of the decoded frames.
+ *
  * @ingroup drm
  */
 class cHdrMetadata {
 public:
+	/** Create the HDR metadata handler for the given renderer */
 	cHdrMetadata(cVideoRender *render) : m_pRender(render) { };
 	int Build(struct hdr_output_metadata *,int, int, AVFrameSideData *, AVFrameSideData *);
-	int GetColorPrimaries(void) { return m_colorPrimaries; };
-	int GetColorTrc(void) { return m_colorTrc; };
+	int GetColorPrimaries(void) { return m_colorPrimaries; } ///< get the saved color primaries
+	int GetColorTrc(void) { return m_colorTrc; }             ///< get the saved transfer characteristics
 
 private:
 	cVideoRender *m_pRender;                       ///< pointer to cVideoRender object

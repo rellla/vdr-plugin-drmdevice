@@ -68,7 +68,7 @@ public:
 	void Decode(const AVPacket *);
 	void FlushBuffers(void);
 	void SetPassthroughMask(int);
-	AVCodecID GetCodecId() const { return m_codecId; };
+	AVCodecID GetCodecId() const { return m_codecId; }  ///< get the current codec id
 
 private:
 	cAudioStream *m_pAudio;                     ///< audio module

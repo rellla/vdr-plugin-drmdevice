@@ -100,7 +100,7 @@ public:
 	int ConfigPipScalePercent = 25;             ///< scale factor of pip video
 	int ConfigPipLeftPercent = 100;             ///< 0 = aligned to left, 100 = aligned to right
 	int ConfigPipTopPercent = 0;                ///< 0 = aligned to top, 100 = aligned to bottom
-	int ConfigPipUseAlt = false;
+	int ConfigPipUseAlt = false;                ///< use the alternative pip position
 	// alternative position at left top, 25% scaled
 	int ConfigPipAltScalePercent = 25;          ///< alternative scale factor of pip video
 	int ConfigPipAltLeftPercent = 0;            ///< 0 = aligned to left, 100 = aligned to right
@@ -161,8 +161,8 @@ public:
 	bool CompareCurrentMode(sDrmMode *);
 
 private:
-	int m_decoderNeedsMaxPackets = 0;
-	std::mutex m_mutex;
+	int m_decoderNeedsMaxPackets = 0;                   ///< see GetDecoderNeedsMaxPackets()
+	std::mutex m_mutex;                                 ///< protects m_decoderNeedsMaxPackets
 };
 
 #endif

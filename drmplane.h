@@ -18,6 +18,10 @@
 /**
  * DRM Plane
  *
+ * Holds the id, type and properties of a drm plane and caches the modesetting
+ * parameters (crtc, framebuffer, source and destination rectangle), which are
+ * added to an atomic modeset request by SetPlane().
+ *
  * @ingroup drm
  */
 class cDrmPlane {
@@ -36,9 +40,9 @@ public:
 	int HasZpos(int);
 
 	// getters and setters
-	uint32_t GetId(void) { return m_planeId; };
+	uint32_t GetId(void) { return m_planeId; }          ///< plane id (0, if not set)
 	void SetId(uint32_t id) { m_planeId = id; };
-	uint64_t GetType(void) { return m_type; };
+	uint64_t GetType(void) { return m_type; }           ///< plane type (DRM_PLANE_TYPE_*)
 	void SetType(uint64_t type) { m_type = type; };
 	uint64_t GetCrtcId(void) { return m_crtcId; };
 	uint64_t GetFbId(void) { return m_fbId; };
@@ -50,12 +54,12 @@ public:
 	uint64_t GetSrcY(void) { return m_srcY; };
 	uint64_t GetSrcW(void) { return m_srcW; };
 	uint64_t GetSrcH(void) { return m_srcH; };
-	uint64_t GetZpos(void) { return m_zpos; };
+	uint64_t GetZpos(void) { return m_zpos; }           ///< zpos of the plane
 	void SetZpos(uint64_t zpos) { m_zpos = zpos; };
 
-	int GetCountProps(void) { return m_props ? m_props->count_props : 0; };
-	char *GetPropsInfoName(int prop) { return m_propsInfo[prop]->name; };
-	uint32_t GetPropsInfoPropId(int prop) { return m_propsInfo[prop]->prop_id; };
+	int GetCountProps(void) { return m_props ? m_props->count_props : 0; }       ///< number of properties
+	char *GetPropsInfoName(int prop) { return m_propsInfo[prop]->name; }         ///< name of the given property
+	uint32_t GetPropsInfoPropId(int prop) { return m_propsInfo[prop]->prop_id; } ///< id of the given property
 	drmModeObjectProperties *GetProps(void) { return m_props; };
 	void SetProps(drmModeObjectProperties *props) { m_props = props; };
 	drmModePropertyRes **GetPropsInfo(void) { return m_propsInfo; };

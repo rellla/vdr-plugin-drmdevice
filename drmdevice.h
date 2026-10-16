@@ -78,6 +78,10 @@ inline constexpr std::array DrmModeWhitelist = {
 /**
  * DRM Device
  *
+ * Opens the drm device, selects the connector, crtc, display mode and the
+ * planes for video, osd and pip, and wraps the drm (atomic modesetting),
+ * gbm and EGL calls.
+ *
  * @ingroup drm
  */
 class cDrmDevice {
@@ -92,33 +96,35 @@ public:
 	void ExitGbm(void);
 	int InitEGL(void);
 #endif
-	int Fd(void) { return m_fdDrm; };
+	int Fd(void) { return m_fdDrm; }                    ///< get the drm file descriptor
 	void Close(void);
 
 	// setters and getters
-	uint32_t ConnectorId(void) { return m_connectorId; };
+	uint32_t ConnectorId(void) { return m_connectorId; }  ///< get the connector id
 
-	uint64_t DisplayWidth(void) { return m_drmModeInfo.hdisplay; };
-	uint64_t DisplayHeight(void) { return m_drmModeInfo.vdisplay; };
-	uint64_t OsdWidth(void) { return m_userReqOsdWidth ? m_userReqOsdWidth : DisplayWidth(); };
-	uint64_t OsdHeight(void) { return m_userReqOsdWidth ? m_userReqOsdHeight : DisplayHeight(); };
+	uint64_t DisplayWidth(void) { return m_drmModeInfo.hdisplay; }  ///< get the width of the display mode
+	uint64_t DisplayHeight(void) { return m_drmModeInfo.vdisplay; } ///< get the height of the display mode
+	/** get the osd width (user requested or display width) */
+	uint64_t OsdWidth(void) { return m_userReqOsdWidth ? m_userReqOsdWidth : DisplayWidth(); }
+	/** get the osd height (user requested or display height) */
+	uint64_t OsdHeight(void) { return m_userReqOsdWidth ? m_userReqOsdHeight : DisplayHeight(); }
 
-	uint32_t CrtcId(void) { return m_crtcId; };
-	int UseZpos(void) { return m_useZpos; };
-	uint64_t ZposOverlay(void) { return m_zposOverlay; };
-	uint64_t ZposPrimary(void) { return m_zposPrimary; };
+	uint32_t CrtcId(void) { return m_crtcId; }           ///< get the crtc id
+	int UseZpos(void) { return m_useZpos; }              ///< true, if the planes have a zpos property
+	uint64_t ZposOverlay(void) { return m_zposOverlay; } ///< get the zpos of the overlay plane
+	uint64_t ZposPrimary(void) { return m_zposPrimary; } ///< get the zpos of the primary plane
 
-	cDrmPlane *OsdPlane(void) { return &m_osdPlane; };
-	cDrmPlane *VideoPlane(void) { return &m_videoPlane; };
-	cDrmPlane *PipPlane(void) { return &m_pipPlane; };
-	bool HasPipPlane(void) { return m_pipPlane.GetId(); };
+	cDrmPlane *OsdPlane(void) { return &m_osdPlane; }     ///< get the osd plane
+	cDrmPlane *VideoPlane(void) { return &m_videoPlane; } ///< get the video plane
+	cDrmPlane *PipPlane(void) { return &m_pipPlane; }     ///< get the pip plane
+	bool HasPipPlane(void) { return m_pipPlane.GetId(); } ///< true, if a plane for pip was found
 
 #ifdef USE_GLES
-	EGLSurface EglSurface(void) { return m_eglSurface; };
-	EGLDisplay EglDisplay(void) { return m_eglDisplay; };
-	EGLContext EglContext(void) { return m_eglContext; };
-	int GlInitiated(void) { return m_glInitiated; };
-	struct gbm_surface *GbmSurface(void) { return m_pGbmSurface; };
+	EGLSurface EglSurface(void) { return m_eglSurface; }           ///< get the EGL surface
+	EGLDisplay EglDisplay(void) { return m_eglDisplay; }           ///< get the EGL display
+	EGLContext EglContext(void) { return m_eglContext; }           ///< get the EGL context
+	int GlInitiated(void) { return m_glInitiated; }                ///< true, if the OpenGL/ES context is initialized
+	struct gbm_surface *GbmSurface(void) { return m_pGbmSurface; } ///< get the gbm surface
 
 	cDrmBuffer *GetBufFromBo(struct gbm_bo *);
 #endif
@@ -127,13 +133,14 @@ public:
 	int HandleEvent(void);
 	void InitEvent(void);
 
-	bool CanHandleHdr(void) { return m_hdrMetadata != 0; };
+	bool CanHandleHdr(void) { return m_hdrMetadata != 0; }  ///< true, if the connector supports HDR output metadata
 	bool CanHandleMode(sDrmMode *);
 
 	// drmModeAtomic* wrapper functions
-	drmModeAtomicReqPtr ModeAtomicAlloc(void) { return drmModeAtomicAlloc(); };
-	int ModeAtomicCommit(drmModeAtomicReqPtr req, uint32_t flags, void *user_data) { return drmModeAtomicCommit(m_fdDrm, req, flags, user_data); };
-	void ModeAtomicFree(drmModeAtomicReqPtr req) { drmModeAtomicFree(req); };
+	drmModeAtomicReqPtr ModeAtomicAlloc(void) { return drmModeAtomicAlloc(); } ///< allocate an atomic modeset request
+	/** commit an atomic modeset request */
+	int ModeAtomicCommit(drmModeAtomicReqPtr req, uint32_t flags, void *user_data) { return drmModeAtomicCommit(m_fdDrm, req, flags, user_data); }
+	void ModeAtomicFree(drmModeAtomicReqPtr req) { drmModeAtomicFree(req); }   ///< free an atomic modeset request
 	int SetConnectorCrtcId(drmModeAtomicReqPtr);
 	int SetConnectorHdrOutputMetadata(drmModeAtomicReqPtr, uint32_t);
 	int SetConnectorColorspace(drmModeAtomicReqPtr, uint32_t);

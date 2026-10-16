@@ -32,51 +32,82 @@
  * @{
  */
 
-// State machine definitions
-// Implementing C++17 visitor pattern
+/**
+ * Helper to visit a std::variant with a set of lambdas (C++17 visitor pattern)
+ *
+ * Each lambda handles one alternative of the variant, e.g.
+ * @code
+ * std::visit(overload{
+ *     [](const PlayEvent&) { ... },
+ *     [](const StopEvent&) { ... },
+ * }, event);
+ * @endcode
+ */
 template<class... Ts>
 struct overload : Ts... { using Ts::operator()...; };
+/** Deduction guide for overload */
 template<class... Ts> overload(Ts...) -> overload<Ts...>;
 
+/**
+ * States of the device
+ */
 enum State {
-	STOP,
-	BUFFERING,
-	PLAY,
-	TRICK_SPEED,
-	DETACHED
+	STOP,          ///< no playback (VDR's play mode pmNone)
+	BUFFERING,     ///< playback was requested, the buffers are filled before the playback starts
+	PLAY,          ///< normal playback (or paused)
+	TRICK_SPEED,   ///< fast/slow forward/backward playback
+	DETACHED       ///< the device has released the hardware (DRM, ALSA)
 };
 
+/**
+ * Stream, whose buffer ran empty
+ */
 enum BufferUnderrunType {
-	VIDEO,
-	AUDIO,
+	VIDEO,         ///< the video buffer ran empty
+	AUDIO,         ///< the audio buffer ran empty
 };
 
+/** Start the playback (VDR's Play() or a new play mode) */
 struct PlayEvent {};
+/** Pause the playback (VDR's Freeze()) */
 struct PauseEvent {};
+/** Stop the playback (play mode pmNone) */
 struct StopEvent {};
+/** Start, change or stop trick speed (VDR's TrickSpeed()) */
 struct TrickSpeedEvent {
-	double speed;
-	bool active;
-	bool forward;
+	double speed;          ///< normalized speed factor
+	bool active;           ///< true, if trick speed is active (speed != 0)
+	bool forward;          ///< true, if playing forward
 };
+/** Display a still picture (VDR's StillPicture()) */
 struct StillPictureEvent {
-	const uchar *data;
-	int size;
+	const uchar *data;     ///< pes data of one or more frames (owned by VDR)
+	int size;              ///< size of the data
 };
+/** Release the hardware (detach or an external player takes over) */
 struct DetachEvent {};
+/** Acquire the hardware again */
 struct AttachEvent {};
+/** The audio or video buffer ran empty */
 struct BufferUnderrunEvent {
-	BufferUnderrunType type;
+	BufferUnderrunType type;  ///< the stream, whose buffer ran empty
 };
+/** Enough data is buffered, the playback can start */
 struct BufferingThresholdReachedEvent {};
+/** Resync audio and video, as soon as the video reaches the given pts */
 struct ScheduleResyncAtPtsMsEvent {
-	int64_t pts;
+	int64_t pts;           ///< pts in ms, at which the resync shall be done
 };
+/** Resync audio and video now */
 struct ResyncEvent {};
+/** Change the display mode (resolution, refresh rate) */
 struct DisplayChangeEvent {
-	sDrmMode mode;
+	sDrmMode mode;         ///< the new display mode
 };
 
+/**
+ * All events, which can be sent to the state machine
+ */
 using Event = std::variant<
 	PlayEvent,
 	PauseEvent,
@@ -92,6 +123,12 @@ using Event = std::variant<
 	DisplayChangeEvent
 >;
 
+/**
+ * Get the name of an event (for logging)
+ *
+ * @param e      event
+ * @return       name of the event
+ */
 inline const char* EventToString(const Event& e) {
 	return std::visit(overload{
 		[](const PlayEvent&) -> const char* { return "PlayEvent"; },
@@ -109,6 +146,12 @@ inline const char* EventToString(const Event& e) {
 	}, e);
 }
 
+/**
+ * Get the name of a state (for logging)
+ *
+ * @param s      state
+ * @return       name of the state
+ */
 inline const char* StateToString(State s) {
 	switch(s) {
 		case State::STOP: return "STOP";
@@ -143,9 +186,10 @@ public:
 	cStateMachine(cOutputDevice *);
 	void OnEventReceived(const Event&);
 
-	State GetState(void) const { return m_state; };
-	void SetState(State state) { m_state = state; };
+	State GetState(void) const { return m_state; }           ///< get the current state
+	void SetState(State state) { m_state = state; }          ///< set the state without leaving/entering a state
 	void ChangeState(State);
+	/** Lock the state machine, the returned lock unlocks it, when it goes out of scope */
 	std::unique_lock<std::mutex> Lock(void) const { return std::unique_lock<std::mutex>(m_mutex); };
 	std::unique_lock<std::mutex> TryLock(void) const { return std::unique_lock<std::mutex>(m_mutex, std::try_to_lock); } ///< like Lock(), but don't wait (check owns_lock())
 

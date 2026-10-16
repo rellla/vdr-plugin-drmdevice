@@ -1502,17 +1502,25 @@ bool cOutputDevice::PipIsEnabled(void)
 	return m_pPipHandler->IsEnabled();
 }
 
+/** Enable pip (see cPipHandler::Enable()) */
 void cOutputDevice::PipEnable(void) { m_pPipHandler->Enable(); };
+/** Disable pip (see cPipHandler::Disable()) */
 void cOutputDevice::PipDisable(void) { m_pPipHandler->Disable(); };
+/** Toggle pip (see cPipHandler::Toggle()) */
 void cOutputDevice::PipToggle(void) { m_pPipHandler->Toggle(); };
+/** Switch the pip channel up or down (see cPipHandler::ChannelChange()) */
 void cOutputDevice::PipChannelChange(int dir) { m_pPipHandler->ChannelChange(dir); };
+/** Swap the pip and the main channel (see cPipHandler::ChannelSwap()) */
 void cOutputDevice::PipChannelSwap(bool closePip) { m_pPipHandler->ChannelSwap(closePip); };
+/** Swap the pip position (see cPipHandler::SwapPosition()) */
 void cOutputDevice::PipSwapPosition(void) { m_pPipHandler->SwapPosition(); };
+/** Apply the configured pip size (see cPipHandler::SetSize()) */
 void cOutputDevice::PipSetSize(void) { m_pPipHandler->SetSize(); };
 
 /*
  * Wrapper functions for cVideoRender and cPipHandler
  */
+/** Apply the pip size and position of the config to the renderer (attached state only) */
 void cOutputDevice::SetRenderPipSize(void)
 {
 	auto lock = m_pStateMachine->Lock();
@@ -1522,6 +1530,7 @@ void cOutputDevice::SetRenderPipSize(void)
 	m_pRender->Resume();
 };
 
+/** Show or hide the pip window in the renderer (attached state only) */
 void cOutputDevice::SetRenderPipActive(bool active)
 {
 	auto lock = m_pStateMachine->Lock();

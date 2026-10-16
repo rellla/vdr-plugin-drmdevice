@@ -36,6 +36,7 @@ extern "C" {
  */
 class cVideoDecoder {
 public:
+	/** Create a video decoder, the identifier is used for logging */
 	cVideoDecoder(const char *);
 	int Open(enum AVCodecID, AVCodecParameters *, AVRational, bool);
 	void Close(void);
@@ -43,11 +44,11 @@ public:
 	int ReceiveFrame(AVFrame **);
 	void FlushBuffers(void);
 	int ReopenCodec(enum AVCodecID, AVCodecParameters *, AVRational, int);
-	AVCodecContext *GetContext(void) { return m_pVideoCtx; };
-	bool IsHardwareDecoder(void) { return m_isHardwareDecoder; };
-	const char *Name(void) { return m_pCodecString; };
-	int GetPacketsSent(void) { return m_cntPacketsSent; };
-	int GetFramesReceived(void) { return m_cntFramesReceived; };
+	AVCodecContext *GetContext(void) { return m_pVideoCtx; }     ///< get the codec context (nullptr, if not opened)
+	bool IsHardwareDecoder(void) { return m_isHardwareDecoder; } ///< true, if a hardware decoder is used
+	const char *Name(void) { return m_pCodecString; }            ///< get the codec name
+	int GetPacketsSent(void) { return m_cntPacketsSent; }        ///< number of packets sent since the decoder was opened
+	int GetFramesReceived(void) { return m_cntFramesReceived; }  ///< number of frames received since the decoder was opened
 
 private:
 	AVCodecContext *m_pVideoCtx = nullptr;  ///< video codec context
@@ -59,7 +60,7 @@ private:
 	bool m_isHardwareDecoder = false;       ///< true, if this is a hardware decoder
 
 	int GetExtraData(const AVPacket *);
-	void ResetPacketCounter(void) { m_cntPacketsSent = m_cntFramesReceived = 0; };
+	void ResetPacketCounter(void) { m_cntPacketsSent = m_cntFramesReceived = 0; }  ///< reset the packet and frame counters
 };
 
 #endif

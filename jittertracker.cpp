@@ -16,8 +16,8 @@
 /**
  * Called each time a packet is received.
  *
- * Calculates the diff in PTS to the last received packet and compares that
- * to the diff of the wall clock time of the last received packet to now.
+ * Calculates the time (wall clock) since the last received packet and compares
+ * it to the time between the two packets before. The difference is the jitter.
  */
 void cJitterTracker::PacketReceived(void)
 {

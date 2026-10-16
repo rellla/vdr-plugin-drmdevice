@@ -55,17 +55,26 @@ class cVideoStream;
  * @{
  */
 
+/**
+ * Streams, which are currently played
+ */
 enum PlaybackMode {
-	NONE,
-	AUDIO_AND_VIDEO,
-	AUDIO_ONLY,
-	VIDEO_ONLY
+	NONE,                  ///< nothing has been received yet
+	AUDIO_AND_VIDEO,       ///< audio and video
+	AUDIO_ONLY,            ///< audio only (e.g. radio)
+	VIDEO_ONLY             ///< video only
 };
 
 /** @} */
 
 /**
  * Output Device Implementation
+ *
+ * The VDR output device: receives the audio and video data from VDR, holds the
+ * audio and video streams, the renderer, the osd provider and the pip handler
+ * and controls them by the state machine (cStateMachine).
+ *
+ * The decoders, streams and the renderer only exist in attached state.
  *
  * @ingroup device
  */
@@ -87,7 +96,7 @@ public:
 protected:
 	virtual void MakePrimaryDevice(bool);
 public:
-	virtual cString DeviceName(void) const { return "drmdevice"; }
+	virtual cString DeviceName(void) const { return "drmdevice"; } ///< name of the device
 	virtual bool HasDecoder(void) const;
 
 	// SPU facilities
@@ -137,23 +146,25 @@ protected:
 	// cOutputDevice public API
 	//
 public:
-	cDeviceConfig *Config(void) { return m_pConfig; };
-	cVideoStream *VideoStream(void) { return m_pVideoStream; };
-	cVideoRender *Render(void) { return m_pRender; };
-	cAudioStream *Audio(void) { return m_pAudio; };
+	cDeviceConfig *Config(void) { return m_pConfig; }          ///< get the plugin config
+	cVideoStream *VideoStream(void) { return m_pVideoStream; } ///< get the main video stream (nullptr, if detached)
+	cVideoRender *Render(void) { return m_pRender; }           ///< get the renderer (nullptr, if detached)
+	cAudioStream *Audio(void) { return m_pAudio; }             ///< get the audio stream (nullptr, if detached)
 
 	// Playback, display and decoder
 	void SetDisableDeint(void);
 	void SetDecoderFallbackToSw(bool);
 	void SetEnableHdr(bool);
-	void SetChannelSwitchMode(ChannelSwitchMode mode) { m_channelSwitchMode = mode; };
+	void SetChannelSwitchMode(ChannelSwitchMode mode) { m_channelSwitchMode = mode; }  ///< set the channel switch mode
 	void SetDisplayMode(int);
-	bool FastChannelSwitchAudioInTransferMode(void) { return m_channelSwitchMode == CHANNEL_SWITCH_FAST_AUDIO && Transferring(); };
-	bool FastChannelSwitchInTransferMode(void) { return m_channelSwitchMode != CHANNEL_SWITCH_AVSYNC && Transferring(); };
+	/** true, if audio starts before a/v sync in transfer mode */
+	bool FastChannelSwitchAudioInTransferMode(void) { return m_channelSwitchMode == CHANNEL_SWITCH_FAST_AUDIO && Transferring(); }
+	/** true, if a fast channel switch mode is used in transfer mode */
+	bool FastChannelSwitchInTransferMode(void) { return m_channelSwitchMode != CHANNEL_SWITCH_AVSYNC && Transferring(); }
 	bool CheckPlaybackStartConditions(void);
 	bool CheckAudioPlaybackStartConditions(void);
-	bool IsVideoOnlyPlayback(void) { return m_playbackMode == VIDEO_ONLY; };
-	bool IsAudioOnlyPlayback(void) { return m_playbackMode == AUDIO_ONLY; };
+	bool IsVideoOnlyPlayback(void) { return m_playbackMode == VIDEO_ONLY; }  ///< true, if only video is played
+	bool IsAudioOnlyPlayback(void) { return m_playbackMode == AUDIO_ONLY; }  ///< true, if only audio is played
 
 	// Osd
 #ifdef USE_GLES
@@ -168,8 +179,8 @@ public:
 	void SetScreenSize(int, int);
 
 	// Audio
-	int GetVideoAudioDelayMs(void) { return m_pConfig->ConfigVideoAudioDelayMs; };
-	int GetMinBufferFillLevelThresholdMs(void) { return MIN_BUFFER_FILL_LEVEL_THRESHOLD_MS; };
+	int GetVideoAudioDelayMs(void) { return m_pConfig->ConfigVideoAudioDelayMs; }             ///< get the configured video/audio delay
+	int GetMinBufferFillLevelThresholdMs(void) { return MIN_BUFFER_FILL_LEVEL_THRESHOLD_MS; } ///< get the minimum buffer fill level to start playback
 	void SetPassthroughMask(int);
 	void ResetChannelId(void);
 
@@ -186,19 +197,20 @@ public:
 	void Detach(void);
 	void Attach(void);
 	bool IsDetached(void) const;
-	void ResetOsdProvider(void) { m_pOsdProvider = nullptr; }
+	void ResetOsdProvider(void) { m_pOsdProvider = nullptr; } ///< forget the osd provider (deleted by VDR)
+	/** true, if the osd provider exists */
 	bool IsOsdProviderSet(void) const { return m_pOsdProvider != nullptr; }
-	void SetStartDetached(void) { m_forceDetached = true; };
-	bool IsDraining(void) { return m_draining; };
+	void SetStartDetached(void) { m_forceDetached = true; }   ///< start the plugin in detached state
+	bool IsDraining(void) { return m_draining; }              ///< true, if the device waits for empty buffers
 
 	// Pip
 	int PlayPipVideo(const uchar *, int);
-	void SetDrmCanDisplayPip(bool canDisplay) { m_drmCanDisplayPip = canDisplay; };
-	bool UsePip(void) { return m_drmCanDisplayPip && !m_disablePip && m_pPipHandler; };
+	void SetDrmCanDisplayPip(bool canDisplay) { m_drmCanDisplayPip = canDisplay; }     ///< set, if the drm device has a plane for pip
+	bool UsePip(void) { return m_drmCanDisplayPip && !m_disablePip && m_pPipHandler; } ///< true, if pip can be used
 	void ResetPipStream(void);
-	void ToggleRenderPipPosition(void) { m_pipUseAlt = !m_pipUseAlt; };
+	void ToggleRenderPipPosition(void) { m_pipUseAlt = !m_pipUseAlt; }  ///< toggle the pip position (normal/alternative)
 	// wrapper functions
-	void SetDisablePip(void) { m_disablePip = true; };
+	void SetDisablePip(void) { m_disablePip = true; }   ///< disable pip (workaround option)
 	bool PipIsEnabled(void);
 	void PipEnable(void);
 	void PipDisable(void);
@@ -226,7 +238,7 @@ public:
 	void ResumeOpenGlThread(void);
 #endif
 	bool IsDetachForced(void);
-	void SetDetachForced(void) { m_forceDetached = true; };
+	void SetDetachForced(void) { m_forceDetached = true; }  ///< stay detached (until Attach())
 	int InitAudio(bool);
 	void ResetVideoFilter(void);
 	void SetTrickSpeed(double, bool, bool);
@@ -239,7 +251,7 @@ public:
 private:
 	static constexpr int MIN_BUFFER_FILL_LEVEL_THRESHOLD_MS = 450; ///< min buffering threshold in ms
 
-	std::unique_ptr<cStateMachine> m_pStateMachine;
+	std::unique_ptr<cStateMachine> m_pStateMachine;     ///< the state machine
 
 	bool m_initialized = false;                     ///< true, if the plugin had a successful Initialize()
 	std::atomic<bool> m_draining = false;           ///< true, if the device is in draining mode (waiting for empty buffers)
@@ -258,8 +270,9 @@ private:
 	cReassemblyBufferAudio m_audioReassemblyBuffer; ///< audio pes reassembly buffer
 	cJitterTracker m_audioJitterTracker{"audio"};   ///< audio jitter tracker
 	cJitterTracker m_videoJitterTracker{"video"};   ///< video jitter tracker
-	std::atomic<ChannelSwitchMode> m_channelSwitchMode = CHANNEL_SWITCH_AVSYNC; ///< current channel switch mode
-	bool m_logPlaybackStart = true;
+	/** current channel switch mode */
+	std::atomic<ChannelSwitchMode> m_channelSwitchMode = CHANNEL_SWITCH_AVSYNC;
+	bool m_logPlaybackStart = true;                 ///< log the duration until the playback started
 
 	std::atomic<PlaybackMode> m_playbackMode = NONE; ///< current playback mode
 	int m_audioChannelID = -1;       ///< current audio channel ID
