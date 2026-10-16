@@ -113,7 +113,7 @@ protected:
 	virtual int PlayAudio(const uchar *, int, uchar);
 public:
 	virtual int64_t GetSTC(void);
-	virtual cRect CanScaleVideo(const cRect &, int taCenter);
+	virtual cRect CanScaleVideo(const cRect &, int);
 	virtual void ScaleVideo(const cRect & = cRect::Null);
 	virtual void TrickSpeed(int, bool);
 	virtual void Clear(void);

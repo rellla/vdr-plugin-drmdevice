@@ -281,6 +281,7 @@ std::string cAudioProcessor::GetEqualizerOptions(void) const
  *
  * @param samples   sample buffer
  * @param count     number of bytes in sample buffer
+ * @param volume    volume (0 .. 1000)
  *
  * @todo FIXME: this does hard clipping
  */

@@ -370,6 +370,7 @@ void cAlsaDevice::InitMixer(void)
  * @param channels      Channels requested
  * @param sample_rate   SampleRate requested
  * @param passthrough   use pass-through (AC-3, ...) device
+ * @param downmix       downmix to stereo
  *
  * @retval 0            everything ok
  * @retval -1           something gone wrong
@@ -543,8 +544,11 @@ int cAlsaDevice::Write(const void *data, int framesToWrite)
 /**
  * Check, if all frames have been written
  *
- * @retval true, if all frames have been written or we should try again later
- * @retval false, if not all frames have been written or an error occured
+ * @param framesWritten   number of frames, which were written (or a negative ALSA error code)
+ * @param framesToWrite   number of frames, which should have been written
+ *
+ * @retval true           all frames have been written or we should try again later
+ * @retval false          not all frames have been written or an error occured
  */
 bool cAlsaDevice::CheckWrittenFrames(int framesWritten, int framesToWrite)
 {
@@ -710,9 +714,7 @@ static const char *alsaToFFmpegChannel(const char *alsaName)
 }
 
 /**
- * Put ALSA channel layout in a dynamic array of strings
- *
- * @param pcmHandle      current Alsa PCM handle
+ * Put the channel layout of the current ALSA PCM handle in a dynamic array of strings
  *
  * @return ALSA channel layout as an array of strings
  *

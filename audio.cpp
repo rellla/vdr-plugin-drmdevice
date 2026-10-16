@@ -719,9 +719,6 @@ int cAudioStream::CheckForFilterReady(AVCodecContext *ctx)
  *
  * @param inframe   incoming audio frame to be filtered
  * @param ctx       AVCodec audio decoding context
- *
- * @retval 1        error, send again
- * @retval 0        running
  */
 void cAudioStream::Filter(AVFrame *inframe, AVCodecContext *ctx)
 {

@@ -554,7 +554,6 @@ void cVideoStream::CancelFilterThread(void) {
  *
  * Frames either go through the filter thread or directly into the render buffer.
  *
- * @param videoCtx      ffmpeg video codec context
  * @param frame         frame to render
  */
 void cVideoStream::RenderFrame(AVFrame * frame)

@@ -59,6 +59,7 @@ class cOutputDevice;
 
 /**
  * @addtogroup render
+ * @{
  */
 
 enum drmColorSpace {

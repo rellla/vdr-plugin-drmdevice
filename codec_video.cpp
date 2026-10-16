@@ -464,7 +464,6 @@ int cVideoDecoder::SendPacket(const AVPacket *avpkt)
  * Receive a decoded a video frame
  *
  * @param[out] frame            decoded AVFrame
- * @param instance              instance name for logging
  *
  * @retval 0                    received frame
  * @retval AVERROR(EAGAIN)      get no frame, send avpkt again
