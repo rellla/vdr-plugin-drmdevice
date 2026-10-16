@@ -22,7 +22,6 @@
 #include <vector>
 
 #ifdef USE_GLES
-#include <assert.h>
 #include <gbm.h>
 #include <EGL/egl.h>
 #endif
@@ -743,7 +742,8 @@ bool cVideoRender::DisplayFrame(void)
 	bool pageFlipDone = false;
 	if (drmBuffer) {
 		if (m_framePresentationCounter == 0) {
-			if (m_pCurrentlyDisplayed) {
+			// the frame of the current buffer is already freed, if its page flip failed
+			if (m_pCurrentlyDisplayed && m_pCurrentlyDisplayed->frame) {
 				int64_t interFrameGapMs = std::abs(PtsToMs(drmBuffer->frame->pts - m_pCurrentlyDisplayed->frame->pts));
 				m_framePresentationCounter = GetFramePresentationCount(interFrameGapMs);
 			} else
@@ -888,17 +888,28 @@ static void ClearSoftOsd(cDrmBuffer *buf)
 
 /**
  * Internal function to draw an OSD ARGB image in software
+ *
+ * Copies the area of width x height pixel at xi, yi of the ARGB image to the position x, y
+ * of the OSD buffer. The area is clipped to the buffer.
  */
 static void DrawSoftOsd(cDrmBuffer *buf, int xi, int yi,
                         int width, int height, int pitch,
                         const uint8_t * argb, int x, int y)
 {
+	constexpr int BYTES_PER_PIXEL = 4;
+
 	LOGDEBUG2(L_OSD, "videorender: %s: width %d height %d pitch %d argb %p x %d y %d pitch buf %d xi %d yi %d", __FUNCTION__,
 		width, height, pitch, argb, x, y, buf->Pitch(0), xi, yi);
 
+	if (!argb || x < 0 || y < 0 || xi < 0 || yi < 0)
+		return;
+
+	width = std::min(width, (int)buf->Width() - x);
+	height = std::min(height, (int)buf->Height() - y);
+
 	for (int i = 0; i < height; ++i) {
-		memcpy(buf->Plane(0) + x * 4 + (i + y) * buf->Pitch(0),
-		       argb + i * pitch, std::min((uint32_t)pitch, buf->Pitch(0)));
+		memcpy(buf->Plane(0) + x * BYTES_PER_PIXEL + (i + y) * buf->Pitch(0),
+		       argb + xi * BYTES_PER_PIXEL + (i + yi) * pitch, width * BYTES_PER_PIXEL);
 	}
 }
 
@@ -914,7 +925,10 @@ int cVideoRender::EGLSwapBuffers(void)
 
 	EGL_CHECK(eglSwapBuffers(m_pDrmDevice->EglDisplay(), m_pDrmDevice->EglSurface()));
 	m_pNextBo = gbm_surface_lock_front_buffer(m_pDrmDevice->GbmSurface());
-	assert(m_pNextBo);
+	if (!m_pNextBo) {
+		LOGERROR("videorender: %s: Failed to lock the front buffer", __FUNCTION__);
+		return -1;
+	}
 
 	buf = m_pDrmDevice->GetBufFromBo(m_pNextBo);
 	if (!buf) {
@@ -1598,6 +1612,10 @@ cDrmBuffer *cBufferStrategyReuseSoftware::GetBuffer(cDrmBufferPool *pool, AVDRMF
  ****************************************************************************/
 AVFrame *cDecodingStrategySoftware::PrepareDrmBuffer(cDrmBuffer *buf, int drmDeviceFd, AVFrame *inframe)
 {
+	// a reused buffer may have a different size after a resolution change
+	if (buf->IsDirty() && (buf->Width() != (uint32_t)inframe->width || buf->Height() != (uint32_t)inframe->height))
+		buf->Destroy();
+
 	if (!buf->IsDirty()) {
 		buf->Setup(drmDeviceFd, inframe->width, inframe->height, DRM_FORMAT_NV12, nullptr, true);
 
@@ -1608,11 +1626,13 @@ AVFrame *cDecodingStrategySoftware::PrepareDrmBuffer(cDrmBuffer *buf, int drmDev
 		buf->SetDmaBufHandle(dmaBufHandle);
 	}
 
+	// The linesize of the frame may be larger than the pitch of the buffer (padding),
+	// so only copy the visible width. Both NV12 planes have a width of inframe->width bytes.
 	for (int i = 0; i < inframe->height; ++i)
-		memcpy(buf->Plane(0) + i * buf->Pitch(0), inframe->data[0] + i * inframe->linesize[0], inframe->linesize[0]);
+		memcpy(buf->Plane(0) + i * buf->Pitch(0), inframe->data[0] + i * inframe->linesize[0], inframe->width);
 
 	for (int i = 0; i < inframe->height / 2; ++i)
-		memcpy(buf->Plane(1) + i * buf->Pitch(1), inframe->data[1] + i * inframe->linesize[1], inframe->linesize[1]);
+		memcpy(buf->Plane(1) + i * buf->Pitch(1), inframe->data[1] + i * inframe->linesize[1], inframe->width);
 
 	AVFrame *frame = av_frame_alloc();
 	frame->pts = inframe->pts;
