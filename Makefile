@@ -85,8 +85,8 @@ SOFILE = libvdr-$(PLUGIN).so
 
 ### drmdevice config
 
-_CFLAGS += $(shell pkg-config --cflags alsa libavcodec libavfilter libdrm)
-LIBS += $(shell pkg-config --libs alsa libavcodec libavfilter libdrm)
+_CFLAGS += $(shell pkg-config --cflags alsa libavcodec libavfilter libavformat libavutil libswscale libdrm)
+LIBS += $(shell pkg-config --libs alsa libavcodec libavfilter libavformat libavutil libswscale libdrm)
 ifeq ($(GLES),1)
 ### Check for openglosd dependencies
 ifneq ($(shell pkg-config --exists glesv2 && echo 1),1)
