@@ -112,6 +112,7 @@ const char *cPluginDrmDevice::CommandLineHelp(void)
 	return "  -a device\taudio device (e.g. alsa: hw:0,0)\n"
 	       "  -c channel\taudio mixer channel name (e.g. PCM)\n"
 	       "  -o device\tdrm device (e.g. /dev/dri/card0)\n"
+	       "  -x connector\tdrm connector (e.g. HDMI-A-1)\n"
 	       "  -d resolution\tdisplay resolution (e.g. 1920x1080@50)\n"
 	       "  -g resolution\tosd resolution (e.g. 1920x1080)\n"
 	       "  -D start in detached state\n"
@@ -138,11 +139,7 @@ bool cPluginDrmDevice::ProcessArgs(int argc, char *argv[])
 	//
 
 	for (;;) {
-#ifdef USE_GLES
 		switch (getopt(argc, argv, "-a:c:o:x:d:g:Dw:")) {
-#else
-		switch (getopt(argc, argv, "-a:c:o:x:d:g:D")) {
-#endif
 		case 'a':           // audio device for pcm
 			m_pConfig->ConfigAudioPCMDevice = optarg;
 			continue;
@@ -161,7 +158,7 @@ bool cPluginDrmDevice::ProcessArgs(int argc, char *argv[])
 			int h = 0;
 			double rate = 0.0;
 			if (sscanf(m_pConfig->ConfigDisplayResolution, "%dx%d@%lf", &w, &h, &rate) != 3) {
-				fprintf(stderr, gettext("Wring argument for option '%c'\n"), optopt);
+				fprintf(stderr, gettext("Wrong argument for option '%c'\n"), 'd');
 				return 0;
 			}
 			m_pConfig->UserSetDrmMode = { w, h, rate, false };
@@ -329,7 +326,7 @@ static const char *SVDRPHelpText[] = {
 	"PIPD\n" "        Pip channel down.\n",
 	"PIPC\n" "        Pip swap channels.\n",
 	"PIPS\n" "        Pip switch main stream to pip channel and close pip.\n",
-	"PIIP\n" "        Pip swap positions.\n",
+	"PIPP\n" "        Pip swap positions.\n",
 	NULL
 };
 
@@ -356,6 +353,14 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 	// mediaplayer
 	if (!strcasecmp(command, "PLAY")) {
 		LOGDEBUG2(L_MEDIA, "plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
+		if (!option || !*option) {
+			reply_code = 501;
+			return "Missing url";
+		}
+		if (m_pDevice->IsDetached()) {
+			reply_code = 550;
+			return "DRMDevice is detached";
+		}
 		cControl::Launch(new cDrmDeviceControl(option, m_pDevice));
 		return "PLAY url";
 	}
