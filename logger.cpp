@@ -211,8 +211,6 @@ void cLogger::LogFFmpeg(const char *fmt, va_list vl)
 	if (!(m_logLevel & L_FFMPEG))
 		return;
 
-	av_log_set_level(AV_LOGLEVEL);
-
 	char format[MAX_LOGMESSAGE_SIZE];
 	char prefix[20] = "";
 	pid_t threadId = syscall(__NR_gettid);
@@ -228,8 +226,12 @@ void cLogger::LogFFmpeg(const char *fmt, va_list vl)
  *
  * Log to LOG_DEBUG and add prefix to output
  */
-void cLogger::LogFFmpegCallback([[maybe_unused]] void *ptr, [[maybe_unused]] int level, const char *fmt, va_list vl)
+void cLogger::LogFFmpegCallback([[maybe_unused]] void *ptr, int level, const char *fmt, va_list vl)
 {
+	// a custom callback gets all messages, also the very verbose ones
+	if (level > AV_LOGLEVEL)
+		return;
+
 	if (auto logger = GetLogger())
 		logger->LogFFmpeg(fmt, vl);
 }
