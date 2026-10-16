@@ -10,6 +10,7 @@
 #ifndef __DRMDEVICE_FILLLEVEL_H
 #define __DRMDEVICE_FILLLEVEL_H
 
+#include <cstdint>
 #include <mutex>
 
 /**
@@ -21,8 +22,8 @@ class cBufferFillLevelLowPassFilter {
 public:
 	void Reset();
 	void ResetFramesCounters();
-	int GetFramesReceived() { std::lock_guard<std::mutex> lock(m_mutex); return m_receivedFrames; }
-	int GetFramesPlayed() { std::lock_guard<std::mutex> lock(m_mutex); return m_writtenToAlsaFrames; }
+	int64_t GetFramesReceived() { std::lock_guard<std::mutex> lock(m_mutex); return m_receivedFrames; }
+	int64_t GetFramesPlayed() { std::lock_guard<std::mutex> lock(m_mutex); return m_writtenToAlsaFrames; }
 	void ReceivedFrames(int count) { std::lock_guard<std::mutex> lock(m_mutex); m_receivedFrames += count; }
 	void WroteFrames(int count) { std::lock_guard<std::mutex> lock(m_mutex); m_writtenToAlsaFrames += count; }
 	double GetBufferFillLevelFramesAvg() { std::lock_guard<std::mutex> lock(m_mutex); return m_bufferFillLevelFramesAvg; }
@@ -43,8 +44,9 @@ private:
 
 	std::mutex m_mutex;
 	State m_state = UNINITIALIZED;
-	int m_receivedFrames = 0;
-	int m_writtenToAlsaFrames = 0;
+	// 64 bit, a 32 bit counter overflows after about 12 hours at 48kHz
+	int64_t m_receivedFrames = 0;
+	int64_t m_writtenToAlsaFrames = 0;
 	double m_bufferFillLevelFramesAvg = 0;
 	double m_bufferFillLevelFramesTargetValue = 0;
 	int m_frameCounter = 0;

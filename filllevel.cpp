@@ -17,6 +17,8 @@
  */
 void cBufferFillLevelLowPassFilter::Reset(void)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	m_state = UNINITIALIZED;
 	m_bufferFillLevelFramesAvg = 0;
 	m_frameCounter = 0;
@@ -27,6 +29,8 @@ void cBufferFillLevelLowPassFilter::Reset(void)
  */
 void cBufferFillLevelLowPassFilter::ResetFramesCounters(void)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	m_receivedFrames = 0;
 	m_writtenToAlsaFrames = 0;
 }
@@ -49,7 +53,7 @@ void cBufferFillLevelLowPassFilter::UpdateAvgBufferFillLevel(int hardwareBufferF
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	int bufferFillLevelFrames = m_receivedFrames - m_writtenToAlsaFrames + hardwareBufferFillLevelFrames;
+	int bufferFillLevelFrames = (int)(m_receivedFrames - m_writtenToAlsaFrames) + hardwareBufferFillLevelFrames;
 
 	m_bufferFillLevelFramesAvg = m_bufferFillLevelFramesAvg * (1 - m_floatingAverageAlpha) + bufferFillLevelFrames * m_floatingAverageAlpha;
 
