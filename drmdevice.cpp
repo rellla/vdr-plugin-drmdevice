@@ -399,7 +399,8 @@ int cDrmDevice::Init(void)
 	connector = FindDrmConnector(m_fdDrm, resources, m_userDrmConnector);
 	if (!connector) {
 		LOGERROR("drmdevice: %s: cannot retrieve DRM connector (%d): %m", __FUNCTION__, errno);
-		return -errno;
+		drmModeFreeResources(resources);
+		return -1;
 	}
 	m_connectorId = connector->connector_id;
 	m_connectorName = ConnectorName(connector);
@@ -424,28 +425,35 @@ int cDrmDevice::Init(void)
 	}
 
 	// find connector mode
-	if (FindMode())
+	if (FindMode()) {
+		drmModeFreeConnector(connector);
+		drmModeFreeResources(resources);
 		return -1;
+	}
 
 	m_pRender->SetOsdSize(OsdWidth(), OsdHeight());
 
 	// find encoder
 	for (i = 0; i < resources->count_encoders; i++) {
 		encoder = drmModeGetEncoder(m_fdDrm, resources->encoders[i]);
-		if (encoder->encoder_id == connector->encoder_id)
+		if (encoder && encoder->encoder_id == connector->encoder_id)
 			break;
 		drmModeFreeEncoder(encoder);
 		encoder = NULL;
 	}
 
-	if (encoder) {
+	// an encoder, which is not bound to a crtc yet, has a crtc_id of 0
+	if (encoder && encoder->crtc_id) {
 		m_crtcId = encoder->crtc_id;
 		LOGDEBUG2(L_DRM, "drmdevice: %s: have encoder, m_crtcId %d", __FUNCTION__, m_crtcId);
 	} else {
 		int32_t crtc_id = FindCrtcForConnector(resources, connector);
 		if (crtc_id == -1) {
 			LOGERROR("drmdevice: %s: No crtc found!", __FUNCTION__);
-			return -errno;
+			drmModeFreeEncoder(encoder);
+			drmModeFreeConnector(connector);
+			drmModeFreeResources(resources);
+			return -1;
 		}
 
 		m_crtcId = crtc_id;
@@ -471,6 +479,8 @@ int cDrmDevice::Init(void)
 	// find planes
 	if ((planeRes = drmModeGetPlaneResources(m_fdDrm)) == NULL) {
 		LOGERROR("drmdevice: %s: cannot retrieve PlaneResources (%d): %m", __FUNCTION__, errno);
+		drmModeFreeEncoder(encoder);
+		drmModeFreeResources(resources);
 		return -1;
 	}
 
@@ -515,7 +525,7 @@ int cDrmDevice::Init(void)
 
 			// test pixel format and plane caps
 			for (k = 0; k < plane->count_formats; k++) {
-				if (encoder->possible_crtcs & plane->possible_crtcs) {
+				if (!encoder || (encoder->possible_crtcs & plane->possible_crtcs)) {
 					char tmp[10];
 					switch (plane->formats[k]) {
 						case DRM_FORMAT_NV12:
@@ -732,6 +742,11 @@ int cDrmDevice::FindMode(void)
 	drmModeConnector *connector = drmModeGetConnector(m_fdDrm, m_connectorId);
 	drmModeModeInfo *drmmode = nullptr;
 
+	if (!connector) {
+		LOGERROR("drmdevice: %s: cannot retrieve DRM connector %d (%d): %m", __FUNCTION__, m_connectorId, errno);
+		return -1;
+	}
+
 	// find the user requested mode
 	if (m_userReqDisplayWidth > 0) {
 		for (int i = 0; i < connector->count_modes; i++) {
@@ -798,7 +813,8 @@ int cDrmDevice::FindMode(void)
 	if (!m_pConfig->AutoDetectedDrmMode.width)
 		m_pConfig->AutoDetectedDrmMode = m_pConfig->CurrentDrmMode;
 
-	m_pRender->SetScreenSize(m_drmModeInfo.hdisplay, m_drmModeInfo.vdisplay, GetRefreshRateHz(&m_drmModeInfo), InterlacedMode(drmmode->flags));
+	// drmmode points into the already freed connector, use the copy
+	m_pRender->SetScreenSize(m_drmModeInfo.hdisplay, m_drmModeInfo.vdisplay, GetRefreshRateHz(&m_drmModeInfo), InterlacedMode(m_drmModeInfo.flags));
 
 	return 0;
 }
@@ -858,6 +874,7 @@ int cDrmDevice::InitGbm(void)
 	m_pGbmSurface = gbm_surface_create(m_pGbmDevice, w, h, format, modifier);
 	if (!m_pGbmSurface) {
 		gbm_device_destroy(m_pGbmDevice);
+		m_pGbmDevice = nullptr;
 		LOGERROR("drmdevice: %s: failed to create %d x %d surface bo", __FUNCTION__, w, h);
 		return -1;
 	}
@@ -1169,7 +1186,7 @@ int32_t cDrmDevice::FindCrtcForConnector(const drmModeRes *resources, const drmM
 		if (encoder) {
 			const int32_t crtc_id = FindCrtcForEncoder(resources, encoder);
 			drmModeFreeEncoder(encoder);
-			if (crtc_id != 0) {
+			if (crtc_id != -1) {
 				return crtc_id;
 			}
 		}
@@ -1229,9 +1246,14 @@ int cDrmDevice::SetPropertyRequest(drmModeAtomicReqPtr ModeReq,
 	drmModeObjectPropertiesPtr objectProps =
 		drmModeObjectGetProperties(m_fdDrm, objectID, objectType);
 
+	if (!objectProps)
+		return -EINVAL;
+
 	for (i = 0; i < objectProps->count_props; i++) {
-		if ((Prop = drmModeGetProperty(m_fdDrm, objectProps->props[i])) == NULL)
+		if ((Prop = drmModeGetProperty(m_fdDrm, objectProps->props[i])) == NULL) {
 			LOGDEBUG2(L_DRM, "drmdevice: %s: Unable to query property", __FUNCTION__);
+			continue;
+		}
 
 		if (strcmp(propName, Prop->name) == 0) {
 			id = Prop->prop_id;
@@ -1244,8 +1266,11 @@ int cDrmDevice::SetPropertyRequest(drmModeAtomicReqPtr ModeReq,
 
 	drmModeFreeObjectProperties(objectProps);
 
-	if (id == 0)
+	// don't add an invalid property, the whole atomic commit would fail
+	if (id == 0) {
 		LOGDEBUG2(L_DRM, "drmdevice: %s Unable to find value for property \'%s\'.", __FUNCTION__, propName);
+		return -EINVAL;
+	}
 
 	return drmModeAtomicAddProperty(ModeReq, objectID, id, value);
 }
@@ -1273,8 +1298,10 @@ int cDrmDevice::GetPropertyValue(uint32_t objectID, uint32_t objectType, const c
 		return -1;
 
 	for (i = 0; i < objectProps->count_props; i++) {
-		if ((Prop = drmModeGetProperty(m_fdDrm, objectProps->props[i])) == NULL)
+		if ((Prop = drmModeGetProperty(m_fdDrm, objectProps->props[i])) == NULL) {
 			LOGDEBUG2(L_DRM, "drmdevice: %s: Unable to query property", __FUNCTION__);
+			continue;
+		}
 
 		if (strcmp(propName, Prop->name) == 0) {
 			*value = objectProps->prop_values[i];
@@ -1320,8 +1347,10 @@ uint32_t cDrmDevice::GetPropertyID(uint32_t objectID, uint32_t objectType, const
 		return 0;
 
 	for (i = 0; i < objectProps->count_props; i++) {
-		if ((Prop = drmModeGetProperty(m_fdDrm, objectProps->props[i])) == NULL)
+		if ((Prop = drmModeGetProperty(m_fdDrm, objectProps->props[i])) == NULL) {
 			LOGDEBUG2(L_DRM, "drmdevice: %s: Unable to query property", __FUNCTION__);
+			continue;
+		}
 
 		if (strcmp(propName, Prop->name) == 0) {
 			value = objectProps->props[i];
@@ -1347,6 +1376,9 @@ uint32_t cDrmDevice::GetPropertyID(uint32_t objectID, uint32_t objectType, const
  */
 void cDrmDevice::SaveCrtc(void)
 {
+	if (m_drmModeCrtcSaved)
+		drmModeFreeCrtc(m_drmModeCrtcSaved);
+
 	m_drmModeCrtcSaved = drmModeGetCrtc(m_fdDrm, m_crtcId);
 }
 
@@ -1359,6 +1391,7 @@ void cDrmDevice::RestoreCrtc(void)
 		drmModeSetCrtc(m_fdDrm, m_drmModeCrtcSaved->crtc_id, m_drmModeCrtcSaved->buffer_id,
 			m_drmModeCrtcSaved->x, m_drmModeCrtcSaved->y, &m_connectorId, 1, &m_drmModeCrtcSaved->mode);
 		drmModeFreeCrtc(m_drmModeCrtcSaved);
+		m_drmModeCrtcSaved = nullptr;
 	}
 }
 

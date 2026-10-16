@@ -153,23 +153,23 @@ private:
 	cDeviceConfig *m_pConfig;              ///< pointer to cDeviceConfig object
 
 	int m_fdDrm = -1;                      ///< drm file descriptor
-	uint32_t m_connectorId;                ///< connector id
+	uint32_t m_connectorId = 0;            ///< connector id
 	std::string m_connectorName;           ///< drm connector name
-	drmModeModeInfo m_drmModeInfo;         ///< mode info
-	uint32_t m_crtcId;                     ///< current crtc ID
-	uint32_t m_crtcIndex;                  ///< current crtc index
+	drmModeModeInfo m_drmModeInfo{};      ///< mode info
+	uint32_t m_crtcId = 0;                 ///< current crtc ID
+	uint32_t m_crtcIndex = 0;              ///< current crtc index
 	uint32_t m_hdrMetadata = 0;            ///< property id of HDR_OUTPUT_METADATA
-	drmModeCrtc *m_drmModeCrtcSaved;       ///< saved CRTC infos
-	drmEventContext m_drmEventCtx;         ///< drm event context
+	drmModeCrtc *m_drmModeCrtcSaved = nullptr; ///< saved CRTC infos
+	drmEventContext m_drmEventCtx{};       ///< drm event context
 
 	const char *m_userDrmDevice = nullptr; ///< user requested drm device
 	const char *m_userDrmConnector = nullptr; ///< user requested drm connector
 	int m_userReqDisplayWidth = 0;         ///< user requested display width
-	int m_userReqDisplayHeight;            ///< user requested display height
-	double m_userReqDisplayRefreshRate;    ///< user requested display refresh rate
-	bool m_userReqDisplayInterlaced;       ///< user requested display interlaced mode
+	int m_userReqDisplayHeight = 0;        ///< user requested display height
+	double m_userReqDisplayRefreshRate = 0; ///< user requested display refresh rate
+	bool m_userReqDisplayInterlaced = false; ///< user requested display interlaced mode
 	int m_userReqOsdWidth = 0;             ///< user requested osd width
-	int m_userReqOsdHeight;                ///< user requested osd height
+	int m_userReqOsdHeight = 0;            ///< user requested osd height
 
 	bool m_useZpos = false;                ///< is set, if drm hardware can use zpos
 	uint64_t m_zposOverlay = 0;            ///< zpos of overlay plane
@@ -188,13 +188,13 @@ private:
 	int32_t FindCrtcForConnector(const drmModeRes *, const drmModeConnector *);
 	int FindMode(void);
 #ifdef USE_GLES
-	struct gbm_device *m_pGbmDevice;       ///< pointer to the gbm device
-	struct gbm_surface *m_pGbmSurface;     ///< pointer to the gbm surface
+	struct gbm_device *m_pGbmDevice = nullptr;   ///< pointer to the gbm device
+	struct gbm_surface *m_pGbmSurface = nullptr; ///< pointer to the gbm surface
 
-	EGLSurface m_eglSurface;               ///< EGL surface
-	EGLDisplay m_eglDisplay;               ///< EGL display
-	EGLContext m_eglContext;               ///< EGL context
-	bool m_glInitiated;                    ///< true, if OpenGL/ES context is initiated
+	EGLSurface m_eglSurface = EGL_NO_SURFACE;    ///< EGL surface
+	EGLDisplay m_eglDisplay = EGL_NO_DISPLAY;    ///< EGL display
+	EGLContext m_eglContext = EGL_NO_CONTEXT;    ///< EGL context
+	bool m_glInitiated = false;            ///< true, if OpenGL/ES context is initiated
 
 	EGLConfig GetEGLConfig(void);
 #endif
