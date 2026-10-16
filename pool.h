@@ -22,7 +22,6 @@ template <typename T>
 class cPool {
 protected:
 	std::vector<std::unique_ptr<T>> buffer;
-	size_t currentIndex = 0;
 
 public:
 	cPool(size_t size) {
