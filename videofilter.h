@@ -26,7 +26,6 @@ extern "C"
 #include "queue.h"
 
 class cDrmBuffer;
-class cVideoRender;
 
 /**
  * Deinterlace and Scaling Filters
@@ -40,7 +39,7 @@ class cVideoRender;
  */
 class cVideoFilter : public cThread {
 public:
-	cVideoFilter(cVideoRender *, cQueue<cDrmBuffer> *, const char *, std::function<void(AVFrame *)>);
+	cVideoFilter(cQueue<cDrmBuffer> *, const char *, std::function<void(AVFrame *)>);
 	void InitAndStart(const AVCodecContext *, AVFrame *, bool);
 	void Stop(void);
 	void PushFrame(AVFrame *);
@@ -49,8 +48,6 @@ public:
 	int GetNumFramesToFilter(void) { return m_numFramesToFilter; };
 
 private:
-	cVideoRender *m_pRender;                        ///< pointer to renderer
-
 	AVFilterGraph *m_pFilterGraph = nullptr;        ///< filter graph
 	AVFilterContext *m_pBuffersrcCtx = nullptr;     ///< buffer src context
 	AVFilterContext *m_pBuffersinkCtx = nullptr;    ///< buffer sink context

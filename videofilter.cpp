@@ -24,19 +24,16 @@ extern "C" {
 #include "logger.h"
 #include "misc.h"
 #include "videofilter.h"
-#include "videorender.h"
 
 /**
  * Initiate Filter
  *
- * @param videoRender     renderer
  * @param drmBufferQueue  drm buffer queue
  * @param name            stream name
  * @param frameOutput     frame output function
  */
-cVideoFilter::cVideoFilter(cVideoRender *videoRender, cQueue<cDrmBuffer> *drmBufferQueue, const char *name, std::function<void(AVFrame *)> frameOutput)
+cVideoFilter::cVideoFilter(cQueue<cDrmBuffer> *drmBufferQueue, const char *name, std::function<void(AVFrame *)> frameOutput)
 	: cThread(name),
-	  m_pRender(videoRender),
 	  m_frameOutput(frameOutput),
 	  m_pDrmBufferQueue(drmBufferQueue)
 {
