@@ -88,37 +88,37 @@ public:
 	cRect GetScreenRect(void) { return m_rectOnScreen; };
 
 private:
-	uint32_t m_width;           ///< buffer width
-	uint32_t m_height;          ///< buffer height
-	uint32_t m_pixFmt;          ///< buffer pixel format
+	uint32_t m_width = 0;       ///< buffer width
+	uint32_t m_height = 0;      ///< buffer height
+	uint32_t m_pixFmt = 0;      ///< buffer pixel format
 
 	cRect m_rectOnScreen;       ///< dimensions on screen - set at pageflip, needed for grab
 
-	bool m_dirty;               ///< true, if the buffer is dirty (it was written to)
+	bool m_dirty = false;       ///< true, if the buffer is dirty (it was written to)
 
-	uint32_t m_fbId;            ///< framebuffer id
-	int m_drmDeviceFd;          ///< drm device file descriptor
+	uint32_t m_fbId = 0;        ///< framebuffer id
+	int m_drmDeviceFd = -1;     ///< drm device file descriptor
 
-	int m_numPlanes;            ///< number of planes in the buffer
+	int m_numPlanes = 0;        ///< number of planes in the buffer
 
-	int m_dmaBufHandle[4];      ///< DMA-BUF file descriptor
-	int m_numObjects;           ///< number of prime objects in the buffer
-	int m_objIdx[4];            ///< index of the objects
-	uint32_t m_objectPrimeHandle[4]; ///< primedata objects prime handles (count is numObjects, index is objIdx)
+	int m_dmaBufHandle[4]{0};   ///< DMA-BUF file descriptor
+	int m_numObjects = 0;       ///< number of prime objects in the buffer
+	int m_objIdx[4]{0};         ///< index of the objects
+	uint32_t m_objectPrimeHandle[4]{0}; ///< primedata objects prime handles (count is numObjects, index is objIdx)
 
-	uint8_t *m_pPlane[4];       ///< array of the plane data
-	uint32_t m_planePrimeHandle[4];  ///< array of the plane handles
-	uint32_t m_offset[4];       ///< array of the plane offset
-	uint32_t m_pitch[4];        ///< array of the plane pitch
+	uint8_t *m_pPlane[4]{nullptr};   ///< array of the plane data
+	uint32_t m_planePrimeHandle[4]{0};  ///< array of the plane handles
+	uint32_t m_offset[4]{0};    ///< array of the plane offset
+	uint32_t m_pitch[4]{0};     ///< array of the plane pitch
 	uint32_t m_size[4]{0};      ///< array of the plane size
 	uint64_t m_modifier = DRM_FORMAT_MOD_INVALID;
 
 	bool m_presentationPending = false; ///< true, if buffer presentation is pending
 	bool m_destroyAfterUse = false;     ///< true, if buffer should be destroyed after use
-	bool m_closeHandleOnDestroy;        ///< true, if DMA-BUF handle should be closed on destroy
+	bool m_closeHandleOnDestroy = false; ///< true, if DMA-BUF handle should be closed on destroy
 
 #ifdef USE_GLES
-	struct gbm_bo *m_pBo;       ///< pointer to the gbm buffer object
+	struct gbm_bo *m_pBo = nullptr;  ///< pointer to the gbm buffer object
 #endif
 };
 

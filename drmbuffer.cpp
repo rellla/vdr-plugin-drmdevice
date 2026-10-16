@@ -42,13 +42,6 @@ extern "C" {
  */
 cDrmBuffer::cDrmBuffer(void)
 {
-	m_dirty = false;
-	m_dmaBufHandle[0] = 0;
-
-	m_numPlanes = 0;
-	for (int i = 0; i < 4; i++) {
-		m_pPlane[i] = nullptr;
-	}
 }
 
 #ifdef USE_GLES
@@ -128,7 +121,11 @@ void cDrmBuffer::Destroy(void)
 	for (int i = 0; i < m_numObjects; i++) {
 		if (m_objectPrimeHandle[i] && (drmIoctl(m_drmDeviceFd, DRM_IOCTL_GEM_CLOSE, &m_objectPrimeHandle[i]) < 0))
 			LOGERROR("drmbuffer: %s: cannot close handle %d FB %d GEM (%d): %m", __FUNCTION__, m_objectPrimeHandle[i], m_fbId, errno);
+		m_objectPrimeHandle[i] = 0;
+		m_size[i] = 0;
 	}
+	m_numObjects = 0;
+	m_dmaBufHandle[0] = 0;
 
 	m_width = 0;
 	m_height = 0;
@@ -160,6 +157,7 @@ void cDrmBuffer::Setup(int drmDeviceFd, uint32_t width, uint32_t height, uint32_
 	m_pitch[0] = m_pitch[1] = m_pitch[2] = m_pitch[3] = 0;
 	m_offset[0] = m_offset[1] = m_offset[2] = m_offset[3] = 0;
 	m_numObjects = m_numPlanes = 0;
+	m_size[0] = m_size[1] = m_size[2] = m_size[3] = 0;
 
 	m_width = width;
 	m_height = height;
@@ -301,11 +299,13 @@ void cDrmBuffer::Setup(int drmDeviceFd, uint32_t width, uint32_t height, uint32_
  */
 void cDrmBuffer::FillBlack(void)
 {
-	for (uint32_t i = 0; i < m_width * m_height; ++i) {
-		m_pPlane[0][i] = 0x10;
-		if (i < m_width * m_height / 2)
-			m_pPlane[1][i] = 0x80;
-	}
+	// NV12: Y plane with height lines, interleaved UV plane with height / 2 lines,
+	// the lines may be padded (pitch > width)
+	for (uint32_t i = 0; i < m_height; ++i)
+		memset(m_pPlane[0] + i * m_pitch[0], 0x10, m_width);
+
+	for (uint32_t i = 0; i < m_height / 2; ++i)
+		memset(m_pPlane[1] + i * m_pitch[1], 0x80, m_width);
 }
 
 /**
