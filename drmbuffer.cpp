@@ -144,6 +144,7 @@ void cDrmBuffer::Destroy(void)
  * @param height         buffer height
  * @param pixFmt         buffer pixel format
  * @param primedata      AVDRMFrameDescriptor or NULL (if this is a software buffer)
+ * @param closeHandleOnDestroy  close the DMA-BUF handle in Destroy()
  *
  * @note If this is a software buffer (primedata == nullptr), pixFmt has to be either
  * DRM_FORMAT_NV12 or DRM_FORMAT_ARGB8888. A NV12 buffer is created with one single

@@ -529,10 +529,11 @@ int64_t cOutputDevice::GetSTC(void)
  * Ask the output, if it can scale video
  *
  * @param rect      requested video window rectangle
+ * @param alignment requested alignment of the video window (unused)
  *
- * @return          the real rectangle or cRect::NULL if invalid
+ * @return          the real rectangle or cRect::Null if invalid
  */
-cRect cOutputDevice::CanScaleVideo(const cRect & rect, __attribute__ ((unused)) int alignment)
+cRect cOutputDevice::CanScaleVideo(const cRect & rect, [[maybe_unused]] int alignment)
 {
 	if (m_screenWidth == m_osdWidth && m_screenHeight == m_osdHeight)
 		return rect;
@@ -562,10 +563,7 @@ cRect cOutputDevice::CanScaleVideo(const cRect & rect, __attribute__ ((unused)) 
 /**
  * Scale the currently shown video
  *
- * @param x         video window x coordinate OSD relative
- * @param y         video window x coordinate OSD relative
- * @param width     video window width OSD relative
- * @param height    video window height OSD relative
+ * @param rect      video window (OSD relative), cRect::Null for full screen
  */
 void cOutputDevice::ScaleVideo(const cRect & rect)
 {
@@ -727,7 +725,7 @@ void cOutputDevice::Freeze(void)
  * Display the given I-frame as a still picture.
  *
  * @param data       pes or ts data of a frame
- * @param length     length of data area
+ * @param size       length of data area
  */
 void cOutputDevice::StillPicture(const uchar *data, int size)
 {
@@ -753,7 +751,7 @@ void cOutputDevice::StillPicture(const uchar *data, int size)
  * @retval true         if ready
  * @retval false        if busy
  */
-bool cOutputDevice::Poll(__attribute__ ((unused)) cPoller & poller, int timeoutMs)
+bool cOutputDevice::Poll([[maybe_unused]] cPoller & poller, int timeoutMs)
 {
 //	LOGDEBUG("device: %s: timeout %d", __FUNCTION__, timeout_ms);
 	if (IsDetached())
@@ -1276,7 +1274,7 @@ void cOutputDevice::ResetChannelId(void)
  *
  * @param[out] duped     duped frames
  * @param[out] dropped   dropped frames
- * @param[out] count     number of total rendered frames
+ * @param[out] counter   number of total rendered frames
  */
 void cOutputDevice::GetStats(int *duped, int *dropped, int *counter)
 {
@@ -1540,8 +1538,7 @@ void cOutputDevice::SetRenderPipActive(bool active)
 /**
  * Print the start code, stream id, length, first three bytes (start code) of the payload, and the following 16 bytes of the codec payload.
  *
- * @param data        pointer to stream data
- * @param offset      print from here
+ * @param payload     pointer to the PES packet (at least 28 bytes)
  *
  * @ingroup device
  */

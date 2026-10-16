@@ -60,9 +60,7 @@ static inline cOsdItem *SeparatorName(const char *label)
 }
 
 /**
- * Create a seperator item
- *
- * @param label       text inside separator
+ * Create an empty seperator item
  *
  * @ingroup menu
  */

@@ -420,6 +420,7 @@ int cVideoRender::SetPipBuffer(cDrmBuffer *buf)
  * Commit the frame to the hardware
  *
  * @param buf        video drm buffer
+ * @param pip        pip drm buffer
  *
  * @retval 0         modesetting and commit was done, need to process outstanding DRM events
  * @retval -1        no modesetting and commit was done

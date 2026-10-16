@@ -121,7 +121,8 @@ static int TestCaps(int fd)
 /**
  * Open the given device
  *
- * @param deviceName        name of the device (e.g. "/dev/dri/card0")
+ * @param device            name of the device (e.g. "/dev/dri/card0")
+ * @param[out] resources    drm resources of the device
  *
  * @retval file handle      on success
  * @retval -1               if open failed
@@ -733,9 +734,12 @@ int cDrmDevice::Init(void)
  *
  * Mode selection priority:
  *   1) user requested
- *   2) progressive mode with biggest width@50Hz
- *   3) progressive mode with biggest width@60Hz
- *   4) progressive mode with biggest width@anyHz
+ *   2) progressive mode with biggest width at 50Hz
+ *   3) progressive mode with biggest width at 60Hz
+ *   4) progressive mode with biggest width at any refresh rate
+ *
+ * @retval 0     a mode was found
+ * @retval -1    no mode was found
  */
 int cDrmDevice::FindMode(void)
 {
@@ -826,9 +830,9 @@ int cDrmDevice::FindMode(void)
  * 1) selected mode from setup menu or mode depending on video resolution (RequestedDrmMode)
  * 2) command line requested mode (UserSetDrmMode)
  * 3) other suitable mode:
- *   - mode with biggest width@50Hz
- *   - mode with biggest width@60Hz
- *   - mode with biggest width@anyHz
+ *   - mode with biggest width at 50Hz
+ *   - mode with biggest width at 60Hz
+ *   - mode with biggest width at any refresh rate
  */
 int cDrmDevice::ReInit(void)
 {

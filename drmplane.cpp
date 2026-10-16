@@ -81,7 +81,7 @@ void cDrmPlane::FreeProperties(void)
  * @param srcX         X offset of the source rect
  * @param srcY         Y offset of the source rect
  * @param srcW         width of the source rect
- * @param srccH        height of the source rect
+ * @param srcH         height of the source rect
  */
 void cDrmPlane::SetParams(uint64_t crtcId, uint64_t fbId,
                           uint64_t crtcX, uint64_t crtcY, uint64_t crtcW, uint64_t crtcH,

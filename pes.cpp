@@ -231,6 +231,7 @@ static const std::map<AVCodecID, CodecInfo> AudioCodecMap = {
  *
  * @param data     Pointer to the raw PES packet data
  * @param size     Size of the PES packet in bytes
+ * @param isAudio  true, if this is an audio PES packet
  */
 cPes::cPes(const uint8_t *data, int size, bool isAudio)
 	: m_data(data),

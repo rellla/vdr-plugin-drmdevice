@@ -2159,7 +2159,7 @@ void cOglPixmap::DrawImage(const cPoint &point, int imageHandle)
 	DrawScaledImage(point, imageHandle);
 }
 
-void cOglPixmap::DrawScaledImage(const cPoint &point, const cImage &image, double factorX, double factorY, __attribute__ ((unused)) bool antiAlias)
+void cOglPixmap::DrawScaledImage(const cPoint &point, const cImage &image, double factorX, double factorY, [[maybe_unused]] bool antiAlias)
 {
 	if (!m_pOglThread->Active())
 		return;
@@ -2177,7 +2177,7 @@ void cOglPixmap::DrawScaledImage(const cPoint &point, const cImage &image, doubl
 	MarkDrawPortDirty(cRect(point, cSize(image.Width() * factorX, image.Height() * factorY)).Intersected(DrawPort().Size()));
 }
 
-void cOglPixmap::DrawScaledImage(const cPoint &point, int imageHandle, double factorX, double factorY, __attribute__ ((unused)) bool antiAlias)
+void cOglPixmap::DrawScaledImage(const cPoint &point, int imageHandle, double factorX, double factorY, [[maybe_unused]] bool antiAlias)
 {
 	if (!m_pOglThread->Active())
 		return;
