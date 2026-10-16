@@ -120,7 +120,8 @@ int cOutputDevice::Start(void)
 void cOutputDevice::Stop(void)
 {
 	LOGDEBUG("device: %s", __FUNCTION__);
-	m_pPipHandler->Disable();
+	if (m_pPipHandler)
+		m_pPipHandler->Disable();
 	TriggerEvent(DetachEvent{});
 }
 
@@ -354,7 +355,8 @@ bool cOutputDevice::SetPlayMode(ePlayMode play_mode)
 		// External players like mpv (vdr-plugin-mpv) want to acquire DRM/ALSA
 		// so we release it here and set a flag. As soon as the next SetPlayMode arrives
 		// we then can attach again before changing to the new playmode.
-		m_pPipHandler->Disable();
+		if (m_pPipHandler)
+			m_pPipHandler->Disable();
 		TriggerEvent(DetachEvent{});
 		m_externalPlayerActive = true;
 		break;
@@ -904,7 +906,8 @@ void cOutputDevice::SetDecoderFallbackToSw(bool enable)
 */
 void cOutputDevice::SetEnableHdr(bool enable)
 {
-    m_pRender->SetEnableHdr(enable);
+	if (m_pRender)
+		m_pRender->SetEnableHdr(enable);
 };
 
 /**
@@ -916,13 +919,27 @@ void cOutputDevice::SetDisplayMode(int idx)
 {
 	sDrmMode *mode = &m_pConfig->AutoDetectedDrmMode;
 
+	// The display mode is applied on the next attach.
+	// Don't use IsDetached() here: this is also called by the decoding thread
+	// (cVideoStream::RenderFrame()), which holds the decoding thread mutex.
+	// IsDetached() locks the state machine, which itself waits for the
+	// decoding thread mutex in HaltVideoThreads() -> deadlock.
+	if (m_pStateMachine->GetState() == State::DETACHED)
+		return;
+
 	if (idx == CONFIG_DISPLAY_MODE_FOLLOW_VIDEO ||
 	    idx == CONFIG_DISPLAY_MODE_FOLLOW_VIDEO_INTERLACED) {
 		mode = &m_pConfig->CurrentVideoDrmMode;
 		if (!mode->width || !m_pRender->CanHandleMode(mode))
 			mode = &m_pConfig->AutoDetectedDrmMode;
-	} else if (idx >= CONFIG_DISPLAY_MODE_MANUAL)
-		mode = &m_pConfig->CollectedDrmModes[idx - CONFIG_DISPLAY_MODE_MANUAL];
+	} else if (idx >= CONFIG_DISPLAY_MODE_MANUAL) {
+		size_t modeIdx = idx - CONFIG_DISPLAY_MODE_MANUAL;
+		if (modeIdx >= m_pConfig->CollectedDrmModes.size()) {
+			LOGERROR("device: %s: invalid display mode index %d", __FUNCTION__, idx);
+			return;
+		}
+		mode = &m_pConfig->CollectedDrmModes[modeIdx];
+	}
 
 	// Check, if the requested mode differs from the current one at all
 	if (!m_pConfig->CompareCurrentMode(mode)) {
@@ -1227,7 +1244,8 @@ void cOutputDevice::SetScreenSize(int width, int height)
  */
 void cOutputDevice::SetPassthroughMask(int mask)
 {
-	m_pAudio->SetPassthroughMask(mask);
+	if (m_pAudio)
+		m_pAudio->SetPassthroughMask(mask);
 	if (m_pAudioDecoder)
 		m_pAudioDecoder->SetPassthroughMask(mask);
 }
@@ -1343,6 +1361,9 @@ int cOutputDevice::PlayVideoPkts(AVPacket * pkt)
  */
 void cOutputDevice::Detach(void)
 {
+	if (IsDetached())
+		return;
+
 	if (cDevice::Replaying()) {
 		LOGDEBUG("device: %s: Device is replaying, stop replay first", __FUNCTION__);
 		StopReplay();
@@ -1354,7 +1375,8 @@ void cOutputDevice::Detach(void)
 		MakePrimaryDevice(false);
 	}
 
-	m_pPipHandler->Disable();
+	if (m_pPipHandler)
+		m_pPipHandler->Disable();
 	TriggerEvent(DetachEvent{});
 }
 
@@ -1445,16 +1467,17 @@ bool cOutputDevice::PipIsEnabled(void)
 {
 	auto lock = m_pStateMachine->Lock();
 
-	return m_pPipHandler->IsEnabled();
+	return m_pPipHandler && m_pPipHandler->IsEnabled();
 }
 
-void cOutputDevice::PipEnable(void) { m_pPipHandler->Enable(); };
-void cOutputDevice::PipDisable(void) { m_pPipHandler->Disable(); };
-void cOutputDevice::PipToggle(void) { m_pPipHandler->Toggle(); };
-void cOutputDevice::PipChannelChange(int dir) { m_pPipHandler->ChannelChange(dir); };
-void cOutputDevice::PipChannelSwap(bool closePip) { m_pPipHandler->ChannelSwap(closePip); };
-void cOutputDevice::PipSwapPosition(void) { m_pPipHandler->SwapPosition(); };
-void cOutputDevice::PipSetSize(void) { m_pPipHandler->SetSize(); };
+// The pip handler only exists in attached state
+void cOutputDevice::PipEnable(void) { if (m_pPipHandler) m_pPipHandler->Enable(); };
+void cOutputDevice::PipDisable(void) { if (m_pPipHandler) m_pPipHandler->Disable(); };
+void cOutputDevice::PipToggle(void) { if (m_pPipHandler) m_pPipHandler->Toggle(); };
+void cOutputDevice::PipChannelChange(int dir) { if (m_pPipHandler) m_pPipHandler->ChannelChange(dir); };
+void cOutputDevice::PipChannelSwap(bool closePip) { if (m_pPipHandler) m_pPipHandler->ChannelSwap(closePip); };
+void cOutputDevice::PipSwapPosition(void) { if (m_pPipHandler) m_pPipHandler->SwapPosition(); };
+void cOutputDevice::PipSetSize(void) { if (m_pPipHandler) m_pPipHandler->SetSize(); };
 
 /*
  * Wrapper functions for cVideoRender and cPipHandler
@@ -1776,11 +1799,7 @@ void cOutputDevice::LeaveState(State state)
 			m_pAudioDecoder = new cAudioDecoder(m_pAudio);
 			int err = m_pRender->Init(); // starts display thread
 			if (err < 0) { // drm init failed -> force detached mode
-				delete m_pAudioDecoder;
-				delete m_pVideoStream;
-				delete m_pGrab;
-				delete m_pRender;
-				delete m_pAudio;
+				DeleteDecoderAndOutput();
 				LOGERROR("device: display init failed -> start in detached mode");
 				m_forceDetached = true;
 				break;
@@ -1873,6 +1892,7 @@ void cOutputDevice::EnterState(State state)
 			// now do the detach
 			m_pPipStream->Exit();
 			delete m_pPipStream;
+			m_pPipStream = nullptr;
 
 #ifdef USE_GLES
 			// The opengl thread was probably locked before cmdCopyBufferToOutputFb().
@@ -1880,22 +1900,41 @@ void cOutputDevice::EnterState(State state)
 			// 2) continue the thread (which will skip the waiting cmd->Execute())
 			// 3) do the real thread cancel and cleanup
 			// We need to keep this order to prevent a deadlock!
-			m_pOsdProvider->RequestStopOpenGlThread();
-			m_pOsdProvider->UnlockOpenGlThread();
-			m_pOsdProvider->StopOpenGlThread();
+			// (There is no osd provider, if we are not the primary device.)
+			if (m_pOsdProvider) {
+				m_pOsdProvider->RequestStopOpenGlThread();
+				m_pOsdProvider->UnlockOpenGlThread();
+				m_pOsdProvider->StopOpenGlThread();
+			}
 #endif
 			m_pRender->Exit(); // render must be stopped before videostream!
 			m_pVideoStream->Exit();
 			m_pAudio->Exit(); // audio must be stopped after renderer!
 
-			delete m_pAudioDecoder; // includes a Close()
-			delete m_pVideoStream;
-			delete m_pGrab;
-			delete m_pRender;
-			delete m_pAudio;
+			DeleteDecoderAndOutput();
 
 			break;
 	}
+}
+
+/**
+ * Delete the decoders and the output objects, which only exist in attached state
+ *
+ * The pointers are reset, so that functions which can be called in detached state
+ * (e.g. from the setup menu) can test them.
+ */
+void cOutputDevice::DeleteDecoderAndOutput(void)
+{
+	delete m_pAudioDecoder; // includes a Close()
+	m_pAudioDecoder = nullptr;
+	delete m_pVideoStream;
+	m_pVideoStream = nullptr;
+	delete m_pGrab;
+	m_pGrab = nullptr;
+	delete m_pRender;
+	m_pRender = nullptr;
+	delete m_pAudio;
+	m_pAudio = nullptr;
 }
 
 /**

@@ -286,8 +286,7 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
  */
 cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	: m_pDevice(device),
-	  m_pConfig(m_pDevice->Config()),
-	  m_pAudioDevice(m_pDevice->Audio())
+	  m_pConfig(m_pDevice->Config())
 {
 	//
 	// General
@@ -472,15 +471,21 @@ void cDeviceSetupMenu::Store(void)
 	//
 	// Audio
 	//
+	// The audio stream only exists in attached state. In detached state the
+	// new settings are taken from the config on the next attach.
+	cAudioStream *audio = m_pDevice->Audio();
+
 	SetupStore("AudioSoftvol", m_pConfig->ConfigAudioSoftvol = m_cAudioSoftvol);
-	m_pAudioDevice->SetSoftvol(m_pConfig->ConfigAudioSoftvol);
-	SetupStore("AudioDownmix", m_pConfig->ConfigAudioDownmix = m_cAudioDownmix);
-	m_pAudioDevice->SetDownmix(m_pConfig->ConfigAudioDownmix);
+	if (audio)
+		audio->SetSoftvol(m_pConfig->ConfigAudioSoftvol);
 	// FIXME: can handle more audio state changes here
 	// downmix changed reset audio, to get change direct
-	if (m_pConfig->ConfigAudioDownmix != m_cAudioDownmix) {
+	bool downmixChanged = m_pConfig->ConfigAudioDownmix != m_cAudioDownmix;
+	SetupStore("AudioDownmix", m_pConfig->ConfigAudioDownmix = m_cAudioDownmix);
+	if (audio)
+		audio->SetDownmix(m_pConfig->ConfigAudioDownmix);
+	if (downmixChanged)
 		m_pDevice->ResetChannelId();
-	}
 	m_pConfig->ConfigAudioPassthroughMask = (m_cAudioPassthroughAC3 ? CODEC_AC3 : 0)
 	                                      | (m_cAudioPassthroughEAC3 ? CODEC_EAC3 : 0)
 	                                      | (m_cAudioPassthroughDTS ? CODEC_DTS : 0);
@@ -493,16 +498,20 @@ void cDeviceSetupMenu::Store(void)
 		m_pDevice->SetPassthroughMask(0);
 	}
 	SetupStore("AudioAutoAES", m_pConfig->ConfigAudioAutoAES = m_cAudioAutoAES);
-	m_pAudioDevice->SetAutoAES(m_pConfig->ConfigAudioAutoAES);
+	if (audio)
+		audio->SetAutoAES(m_pConfig->ConfigAudioAutoAES);
 	SetupStore("AudioDelay", m_pConfig->ConfigVideoAudioDelayMs = m_cAudioDelay);
 	SetupStore("AudioNormalize", m_pConfig->ConfigAudioNormalize = m_cAudioNormalize);
 	SetupStore("AudioMaxNormalize", m_pConfig->ConfigAudioMaxNormalize = m_cAudioMaxNormalize);
-	m_pAudioDevice->SetNormalize(m_pConfig->ConfigAudioNormalize, m_pConfig->ConfigAudioMaxNormalize);
+	if (audio)
+		audio->SetNormalize(m_pConfig->ConfigAudioNormalize, m_pConfig->ConfigAudioMaxNormalize);
 	SetupStore("AudioCompression", m_pConfig->ConfigAudioCompression = m_cAudioCompression);
 	SetupStore("AudioMaxCompression", m_pConfig->ConfigAudioMaxCompression = m_cAudioMaxCompression);
-	m_pAudioDevice->SetCompression(m_pConfig->ConfigAudioCompression, m_pConfig->ConfigAudioMaxCompression);
+	if (audio)
+		audio->SetCompression(m_pConfig->ConfigAudioCompression, m_pConfig->ConfigAudioMaxCompression);
 	SetupStore("AudioStereoDescent", m_pConfig->ConfigAudioStereoDescent = m_cAudioStereoDescent);
-	m_pAudioDevice->SetStereoDescent(m_pConfig->ConfigAudioStereoDescent);
+	if (audio)
+		audio->SetStereoDescent(m_pConfig->ConfigAudioStereoDescent);
 
 	//
 	// Audio equalizer
@@ -526,7 +535,8 @@ void cDeviceSetupMenu::Store(void)
 	SetupStore("AudioEqBand16b", m_pConfig->ConfigAudioEqBand[15] = m_cAudioEqBand[15]);
 	SetupStore("AudioEqBand17b", m_pConfig->ConfigAudioEqBand[16] = m_cAudioEqBand[16]);
 	SetupStore("AudioEqBand18b", m_pConfig->ConfigAudioEqBand[17] = m_cAudioEqBand[17]);
-	m_pAudioDevice->SetEqualizer(m_pConfig->ConfigAudioEq, m_pConfig->ConfigAudioEqBand);
+	if (audio)
+		audio->SetEqualizer(m_pConfig->ConfigAudioEq, m_pConfig->ConfigAudioEqBand);
 
 	//
 	// Picture-in-picture
