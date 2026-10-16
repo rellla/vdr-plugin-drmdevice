@@ -57,8 +57,7 @@ cAudioStream::cAudioStream(cOutputDevice *device)
 	  m_pConfig(m_pDevice->Config()),
 	  m_alsa(m_pConfig),
 	  m_softVolume(m_pConfig->ConfigAudioSoftvol),
-	  m_audioProcessor(BYTES_PER_SAMPLE),
-	  m_pMixerChannel(m_pConfig->ConfigAudioMixerChannel)
+	  m_audioProcessor(BYTES_PER_SAMPLE)
 {
 	SetNormalize(m_pConfig->ConfigAudioNormalize, m_pConfig->ConfigAudioMaxNormalize);
 	SetCompression(m_pConfig->ConfigAudioCompression, m_pConfig->ConfigAudioMaxCompression);
