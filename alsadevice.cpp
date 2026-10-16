@@ -249,10 +249,8 @@ void cAlsaDevice::InitMixer(void)
 {
 	const char *device;
 	const char *channel;
-	snd_mixer_t *alsaMixer;
+	snd_mixer_t *alsaMixer = nullptr;
 	snd_mixer_elem_t *alsaMixerElem;
-	long alsaMixerElemMin;
-	long alsaMixerElemMax;
 
 	if (!(device = getenv("ALSA_MIXER"))) {
 		if (!(device = m_pMixerDevice)) {
@@ -264,9 +262,14 @@ void cAlsaDevice::InitMixer(void)
 			channel = "PCM";
 		}
 	}
+	if (m_pMixer) {
+		snd_mixer_close(m_pMixer);
+		m_pMixer = nullptr;
+		m_pMixerElem = nullptr;
+	}
+
 	LOGDEBUG2(L_SOUND, "audio: %s: mixer %s - %s open", __FUNCTION__, device, channel);
-	snd_mixer_open(&alsaMixer, 0);
-	if (alsaMixer && snd_mixer_attach(alsaMixer, device) >= 0
+	if (snd_mixer_open(&alsaMixer, 0) >= 0 && alsaMixer && snd_mixer_attach(alsaMixer, device) >= 0
 		&& snd_mixer_selem_register(alsaMixer, NULL, NULL) >= 0
 		&& snd_mixer_load(alsaMixer) >= 0) {
 
@@ -278,9 +281,8 @@ void cAlsaDevice::InitMixer(void)
 
 			name = snd_mixer_selem_get_name(alsaMixerElem);
 			if (!strcasecmp(name, alsaMixerElem_name)) {
-				snd_mixer_selem_get_playback_volume_range(alsaMixerElem, &alsaMixerElemMin, &alsaMixerElemMax);
-				m_ratio = 1000 * (alsaMixerElemMax - alsaMixerElemMin);
-				LOGDEBUG2(L_SOUND, "audio: %s: %s mixer found %ld - %ld ratio %d", __FUNCTION__, channel, alsaMixerElemMin, alsaMixerElemMax, m_ratio);
+				snd_mixer_selem_get_playback_volume_range(alsaMixerElem, &m_mixerMin, &m_mixerMax);
+				LOGDEBUG2(L_SOUND, "audio: %s: %s mixer found %ld - %ld", __FUNCTION__, channel, m_mixerMin, m_mixerMax);
 				break;
 			}
 
@@ -291,6 +293,8 @@ void cAlsaDevice::InitMixer(void)
 		m_pMixerElem = alsaMixerElem;
 	} else {
 		LOGERROR("audio: %s: can't open mixer '%s'", __FUNCTION__, device);
+		if (alsaMixer)
+			snd_mixer_close(alsaMixer);
 	}
 }
 
@@ -586,9 +590,10 @@ int cAlsaDevice::GetAvailableBufferFrames(bool sync)
  */
 void cAlsaDevice::SetVolume(int volume)
 {
-	int v;
+	long v;
 	if (m_pMixer && m_pMixerElem) {
-		v = (volume * m_ratio) / (1000 * 1000);
+		// map 0 .. 1000 to the volume range of the mixer element (which doesn't need to start at 0)
+		v = m_mixerMin + (long)((int64_t)volume * (m_mixerMax - m_mixerMin) / 1000);
 		snd_mixer_selem_set_playback_volume(m_pMixerElem, SND_MIXER_SCHN_FRONT_LEFT, v);
 		snd_mixer_selem_set_playback_volume(m_pMixerElem, SND_MIXER_SCHN_FRONT_RIGHT, v);
 	}
@@ -604,6 +609,9 @@ void cAlsaDevice::SetVolume(int volume)
  */
 static const char *alsaToFFmpegChannel(const char *alsaName)
 {
+	if (!alsaName)                  // unknown channel position
+		return nullptr;
+
 	if (!strcmp(alsaName, "RL")) return "BL";
 	if (!strcmp(alsaName, "RR")) return "BR";
 
