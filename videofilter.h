@@ -51,9 +51,9 @@ public:
 private:
 	cVideoRender *m_pRender;                        ///< pointer to renderer
 
-	AVFilterGraph *m_pFilterGraph;                  ///< filter graph
-	AVFilterContext *m_pBuffersrcCtx;               ///< buffer src context
-	AVFilterContext *m_pBuffersinkCtx;              ///< buffer sink context
+	AVFilterGraph *m_pFilterGraph = nullptr;        ///< filter graph
+	AVFilterContext *m_pBuffersrcCtx = nullptr;     ///< buffer src context
+	AVFilterContext *m_pBuffersinkCtx = nullptr;    ///< buffer sink context
 
 	cQueue<AVFrame> m_frames{VIDEO_SURFACES_MAX};   ///< queue for frames to be filtered (VIDEO_SURFACES_MAX is defined in misc.h)
 	std::function<void(AVFrame *)> m_frameOutput;   ///< function to output the frame

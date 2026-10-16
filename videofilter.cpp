@@ -76,6 +76,11 @@ void cVideoFilter::InitAndStart(const AVCodecContext *videoCtx, AVFrame *frame, 
 	int ret;
 	char args[512];
 	const char *filterDescr = NULL;
+
+	// a still running filter thread uses the old filter graph
+	Stop();
+	avfilter_graph_free(&m_pFilterGraph);
+
 	m_pFilterGraph = avfilter_graph_alloc();
 	if (!m_pFilterGraph)
 		LOGFATAL("video filter: %s: Cannot alloc filter graph", __FUNCTION__);
@@ -101,7 +106,9 @@ void cVideoFilter::InitAndStart(const AVCodecContext *videoCtx, AVFrame *frame, 
 		}
 	} else if (frame->format == AV_PIX_FMT_YUV420P) {
 		filterDescr = "scale";
-	} else
+	}
+
+	if (!filterDescr)
 		LOGFATAL("video filter: %s: Unexpected pixel format: %d", __FUNCTION__, frame->format);
 
 	m_pBuffersinkCtx = avfilter_graph_alloc_filter(m_pFilterGraph, buffersink, "out");
