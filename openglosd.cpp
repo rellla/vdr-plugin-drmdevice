@@ -238,7 +238,7 @@ cOglGlyph::~cOglGlyph(void)
 
 int cOglGlyph::GetKerningCache(FT_ULong prevSym)
 {
-	for (int i = m_pKerningCache.Size(); --i > 0; ) {
+	for (int i = m_pKerningCache.Size() - 1; i >= 0; i--) {
 		if (m_pKerningCache[i].prevSym == prevSym)
 			return m_pKerningCache[i].kerning;
 	}
@@ -481,8 +481,11 @@ cOglFont::cOglFont(const char *fontName, int charHeight)
 	  m_size(charHeight)
 {
 	int error = FT_New_Face(s_ftLib, m_name, 0, &m_face);
-	if (error)
+	if (error) {
 		LOGERROR("openglosd: %s: failed to open %s!", __FUNCTION__, *m_name);
+		m_face = nullptr;
+		return;                 // Get() drops the font
+	}
 
 	FT_ULong charcode;
 	FT_UInt gindex;
@@ -510,7 +513,8 @@ cOglFont::cOglFont(const char *fontName, int charHeight)
 cOglFont::~cOglFont(void)
 {
 	delete m_pAtlas;
-	FT_Done_Face(m_face);
+	if (m_face)
+		FT_Done_Face(m_face);
 }
 
 cOglFont *cOglFont::Get(const char *name, int charHeight)
@@ -518,12 +522,19 @@ cOglFont *cOglFont::Get(const char *name, int charHeight)
 	if (!s_pFonts)
 		Init();
 
+	if (!s_pFonts)          // FreeType could not be initialized
+		return nullptr;
+
 	cOglFont *font;
 	for (font = s_pFonts->First(); font; font = s_pFonts->Next(font))
 		if (!strcmp(font->Name(), name) && charHeight == font->Size()) {
 			return font;
 		}
 	font = new cOglFont(name, charHeight);
+	if (!font->m_pAtlas) {  // the font file could not be opened
+		delete font;
+		return nullptr;
+	}
 	s_pFonts->Add(font);
 
 	return font;
@@ -1176,7 +1187,8 @@ bool cOglCmdDrawEllipse::Execute(void)
 			vertices = CreateVerticesHalf(numVertices);
 			break;
 		default:
-			break;
+			LOGWARNING("openglosd: %s: invalid quadrants %d", __FUNCTION__, m_quadrants);
+			return false;
 	}
 
 	VertexBuffers[vbEllipse]->ActivateShader();
@@ -1517,9 +1529,12 @@ bool cOglCmdDrawText::Execute(void)
 				break;
 		}
 
-		fa->BindTexture();
-		VertexBuffers[vbText]->SetVertexData(vertices.data(), (vertices.size() / 4));
-		VertexBuffers[vbText]->DrawArrays(vertices.size() / 4);
+		// a count of 0 means the default vertex count of the buffer, so don't draw nothing
+		if (!vertices.empty()) {
+			fa->BindTexture();
+			VertexBuffers[vbText]->SetVertexData(vertices.data(), (vertices.size() / 4));
+			VertexBuffers[vbText]->DrawArrays(vertices.size() / 4);
+		}
 	} else {
 		LOGDEBUG2(L_OPENGL, "openglosd: %s: char %d is not on the texture atlas, use single draw", __FUNCTION__, unknown_char);
 		for (int i = 0; m_pSymbols[i]; i++) {
@@ -2426,16 +2441,16 @@ void cOglPixmap::DrawGridRect(const cRect &rect, int offset, int size, tColor cl
 	char p2[10];
 	char p3[10];
 	char p4[10];
-	sprintf(p1, "%d.%d", x1, y1);
-	sprintf(p2, "%d.%d", x2, y1);
-	sprintf(p3, "%d.%d", x1, y2);
-	sprintf(p4, "%d.%d", x2, y2);
+	snprintf(p1, sizeof(p1), "%d.%d", x1, y1);
+	snprintf(p2, sizeof(p2), "%d.%d", x2, y1);
+	snprintf(p3, sizeof(p3), "%d.%d", x1, y2);
+	snprintf(p4, sizeof(p4), "%d.%d", x2, y2);
 
 	m_pOglThread->DoCmd(new cOglCmdDrawRectangle(m_pFramebuffer, x1, y1, size, size, clr));
 #ifdef GRIDPOINTSTEXT
 	DrawGridText(cPoint(x1, y1), p1, clr, bg, font);
 #endif
-	if (Rect.Width() && Rect.Height()) {
+	if (rect.Width() && rect.Height()) {
 		m_pOglThread->DoCmd(new cOglCmdDrawRectangle(m_pFramebuffer, x2, y1, size, size, clr));
 		m_pOglThread->DoCmd(new cOglCmdDrawRectangle(m_pFramebuffer, x1, y2, size, size, clr));
 		m_pOglThread->DoCmd(new cOglCmdDrawRectangle(m_pFramebuffer, x2, y2, size, size, clr));
