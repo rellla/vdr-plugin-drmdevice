@@ -196,17 +196,8 @@ cH264Parser::cH264Parser(AVPacket *avpkt, int maxFrameNum, int refIdxL0, int ref
 	// SPS is available
 	if (spsOffset != -1) {
 		m_hasSPS = true;
-		int startCodeLength = 0;
-		isValidStartCode(m_pAvpkt->data, spsOffset, m_pAvpkt->size, startCodeLength);
 
-		const uint8_t *nalPayload = &m_pAvpkt->data[spsOffset + startCodeLength + 1];
-		int nalLength = m_pAvpkt->size - spsOffset - startCodeLength -1;
-
-		ConvertEBSPtoRBSP(nalPayload, nalLength);
-		m_pStart = m_rbsp.data();
-		m_nLength = m_rbsp.size();
-
-		m_nCurrentBit = 0;
+		ConvertNalUnitToRBSP(spsOffset);
 
 		int frameCropLeftOffset = 0;
 		int frameCropRightOffset = 0;
@@ -232,13 +223,13 @@ cH264Parser::cH264Parser(AVPacket *avpkt, int maxFrameNum, int refIdxL0, int ref
 			ReadBit();
 			int seqScalingMatrixPresentFlag = ReadBit();
 			if (seqScalingMatrixPresentFlag) {
-				for (int i = 0; i < 8; i++) {
+				for (int i = 0; i < 8 && !m_parseError; i++) {
 					int seqScalingListPresentFlag = ReadBit();
 					if (seqScalingListPresentFlag) {
 						int sizeOfScalingList = (i < 6) ? 16 : 64;
 						int lastScale = 8;
 						int nextScale = 8;
-						for (int j = 0; j < sizeOfScalingList; j++) {
+						for (int j = 0; j < sizeOfScalingList && !m_parseError; j++) {
 							if (nextScale != 0) {
 								int delta_scale = ReadSE();
 								nextScale = (lastScale + delta_scale + 256) % 256;
@@ -257,8 +248,8 @@ cH264Parser::cH264Parser(AVPacket *avpkt, int maxFrameNum, int refIdxL0, int ref
 			ReadBit();
 			ReadSE();
 			ReadSE();
-			int numRefFramesInPicOrderCntCycle = ReadExponentialGolombCode();
-			for (int i = 0; i < numRefFramesInPicOrderCntCycle; i++ ) {
+			unsigned int numRefFramesInPicOrderCntCycle = ReadExponentialGolombCode();
+			for (unsigned int i = 0; i < numRefFramesInPicOrderCntCycle && !m_parseError; i++) {
 				ReadSE();
 			}
 		}
@@ -301,8 +292,9 @@ cH264Parser::cH264Parser(AVPacket *avpkt, int maxFrameNum, int refIdxL0, int ref
 		m_width = ((picWidthInMbsMinusOne + 1) * 16) -
 			subWidthC * (frameCropRightOffset + frameCropLeftOffset);
 
-		m_height = ((2 - frameMbsOnlyFlag)* (picHeightInMapUnitsMinusOne +1) * 16) -
-			subHeightC * ((frameCropBottomOffset * 2) + (frameCropTopOffset * 2));
+		// the vertical crop unit is doubled for field coding (frame_mbs_only_flag = 0)
+		m_height = ((2 - frameMbsOnlyFlag) * (picHeightInMapUnitsMinusOne + 1) * 16) -
+			subHeightC * (2 - frameMbsOnlyFlag) * (frameCropBottomOffset + frameCropTopOffset);
 
 		//if (m_parseError)
 		//	LOGWARNING("SPS parsing error");
@@ -316,17 +308,7 @@ cH264Parser::cH264Parser(AVPacket *avpkt, int maxFrameNum, int refIdxL0, int ref
 	if (ppsOffset != -1) {
 		m_hasPPS = true;
 
-		int startCodeLength = 0;
-		isValidStartCode(m_pAvpkt->data, ppsOffset, m_pAvpkt->size, startCodeLength);
-
-		const uint8_t *nalPayload = &m_pAvpkt->data[ppsOffset + startCodeLength + 1];
-		int nalLength = m_pAvpkt->size - ppsOffset - startCodeLength -1;
-
-		ConvertEBSPtoRBSP(nalPayload, nalLength);
-
-		m_pStart = m_rbsp.data();
-		m_nLength = m_rbsp.size();
-		m_nCurrentBit = 0;
+		ConvertNalUnitToRBSP(ppsOffset);
 
 		ReadExponentialGolombCode(); // PicParameterSetId
 		ReadExponentialGolombCode(); // SeqParameterSetId
@@ -334,15 +316,17 @@ cH264Parser::cH264Parser(AVPacket *avpkt, int maxFrameNum, int refIdxL0, int ref
 		ReadBit(); // entropy_coding_mode_flag
 		ReadBit(); // bottom_field_pic_order_in_frame_present_flag
 
-		int num_slice_groups_minus1 = ReadExponentialGolombCode();
-		if (num_slice_groups_minus1 > 0) {
+		unsigned int num_slice_groups_minus1 = ReadExponentialGolombCode();
+		if (num_slice_groups_minus1 > 7) // the maximum allowed by the spec
+			m_parseError = true;
+		else if (num_slice_groups_minus1 > 0) {
 			int slice_group_map_type = ReadExponentialGolombCode();
 
 			if (slice_group_map_type == 0) {
-				for (int i = 0; i <= num_slice_groups_minus1; i++)
+				for (unsigned int i = 0; i <= num_slice_groups_minus1; i++)
 					ReadExponentialGolombCode(); // run_length_minus1
 			} else if (slice_group_map_type == 2) {
-				for (int i = 0; i < num_slice_groups_minus1; i++) {
+				for (unsigned int i = 0; i < num_slice_groups_minus1; i++) {
 					ReadExponentialGolombCode(); // top_left
 					ReadExponentialGolombCode(); // bottom_right
 				}
@@ -352,14 +336,14 @@ cH264Parser::cH264Parser(AVPacket *avpkt, int maxFrameNum, int refIdxL0, int ref
 				ReadBit();                    // slice_group_change_direction_flag
 				ReadExponentialGolombCode();  // slice_group_change_rate_minus1
 			} else if (slice_group_map_type == 6) {
-				int pic_size_in_map_units_minus1 = ReadExponentialGolombCode();
+				unsigned int pic_size_in_map_units_minus1 = ReadExponentialGolombCode();
 
 				int bits = 0;
-				while ((1 << bits) < (num_slice_groups_minus1 + 1)) {
+				while ((1u << bits) < (num_slice_groups_minus1 + 1)) {
 					bits++;
 				}
 
-				for (int i = 0; i <= pic_size_in_map_units_minus1; i++) {
+				for (unsigned int i = 0; i <= pic_size_in_map_units_minus1 && !m_parseError; i++) {
 					for (int b = 0; b < bits; b++) {
 						ReadBit(); // slice_group_id
 					}
@@ -386,20 +370,12 @@ cH264Parser::cH264Parser(AVPacket *avpkt, int maxFrameNum, int refIdxL0, int ref
 		int startCodeLength = 0;
 		isValidStartCode(m_pAvpkt->data, sliceOffset, m_pAvpkt->size, startCodeLength);
 
-		const uint8_t *nalPayload = &m_pAvpkt->data[sliceOffset + startCodeLength + 1];
-		int nalLength = m_pAvpkt->size - sliceOffset - startCodeLength - 1;
-
-		ConvertEBSPtoRBSP(nalPayload, nalLength);
-
-		m_pStart = m_rbsp.data();
-		m_nLength = m_rbsp.size();
+		ConvertNalUnitToRBSP(sliceOffset);
 
 		uint8_t nalHeader = m_pAvpkt->data[sliceOffset + startCodeLength];
 		m_nalRefIdc = (nalHeader >> 5) & 0x03;
 		m_isReference = (m_nalRefIdc != 0);
 		m_isIDR = ((nalHeader & 0x1F) == 5);
-
-		m_nCurrentBit = 0;
 
 		ReadExponentialGolombCode(); // int first_mb_in_slice =
 		int slice_type_raw = ReadExponentialGolombCode();
@@ -434,29 +410,8 @@ cH264Parser::cH264Parser(AVPacket *avpkt, int maxFrameNum, int refIdxL0, int ref
 
 			refListModFlagL0 = ReadBit();
 
-			if (refListModFlagL0) {
-				int idc;
-				do {
-					idc = ReadExponentialGolombCode();
-
-					if (idc == 0 || idc == 1) {
-						RefPicMod mod {};
-						mod.list = 0;
-						mod.idc = idc;
-						mod.abs_diff_pic_num_minus1 = ReadExponentialGolombCode();
-						m_refMods.push_back(mod);
-					// ignore long-term ?
-					/*
-					} else if (idc == 2) {
-						RefPicMod mod {};
-						mod.list = 0;
-						mod.idc = idc;
-						mod.long_term_pic_num = ReadExponentialGolombCode();
-						m_refMods.push_back(mod);
-					*/
-					}
-				} while (idc != 3);
-			}
+			if (refListModFlagL0)
+				ReadRefPicListModifications(0);
 		} else if (m_sliceType == 1) { // B-slice
 			m_naluString += "            -B- ";
 
@@ -473,54 +428,14 @@ cH264Parser::cH264Parser(AVPacket *avpkt, int maxFrameNum, int refIdxL0, int ref
 			// ----- List 0 -----
 			refListModFlagL0 = ReadBit();
 
-			if (refListModFlagL0) {
-				int idc;
-				do {
-					idc = ReadExponentialGolombCode();
-					if (idc == 0 || idc == 1) {
-						RefPicMod mod {};
-						mod.list = 0;
-						mod.idc = idc;
-						mod.abs_diff_pic_num_minus1 = ReadExponentialGolombCode();
-						m_refMods.push_back(mod);
-					// ignore long-term ?
-					/*
-					} else if (idc == 2) {
-						RefPicMod mod {};
-						mod.list = 0;
-						mod.idc = idc;
-						mod.long_term_pic_num = ReadExponentialGolombCode();
-						m_refMods.push_back(mod);
-					*/
-					}
-				} while (idc != 3);
-			}
+			if (refListModFlagL0)
+				ReadRefPicListModifications(0);
 
 			// ----- List 1 -----
 			refListModFlagL1 = ReadBit();
 
-			if (refListModFlagL1) {
-				int idc;
-				do {
-					idc = ReadExponentialGolombCode();
-					if (idc == 0 || idc == 1) {
-						RefPicMod mod {};
-						mod.list = 1;
-						mod.idc = idc;
-						mod.abs_diff_pic_num_minus1 = ReadExponentialGolombCode();
-						m_refMods.push_back(mod);
-					// ignore long-term ?
-					/*
-					} else if (idc == 2) {
-						RefPicMod mod {};
-						mod.list = 1;
-						mod.idc = idc;
-						mod.long_term_pic_num = ReadExponentialGolombCode();
-						m_refMods.push_back(mod);
-					*/
-					}
-				} while (idc != 3);
-			}
+			if (refListModFlagL1)
+				ReadRefPicListModifications(1);
 		} else if (m_sliceType == 2) { // I-slice
 			m_naluString += " -I-    ";
 		} else if (m_sliceType == 3) { // SP-slice
@@ -660,7 +575,7 @@ unsigned int cH264Parser::ReadBit()
  */
 unsigned int cH264Parser::ReadBits(int n)
 {
-	if (m_nCurrentBit + n > m_nLength * 8) {
+	if (n < 0 || n > 32 || m_nCurrentBit + n > m_nLength * 8) {
 		m_parseError = true;
 		return 0;
 	}
@@ -718,6 +633,73 @@ unsigned int cH264Parser::ReadSE()
 		r = -(r / 2);
 
 	return r;
+}
+
+/**
+ * Read the ref_pic_list_modification() entries of one list
+ *
+ * Stops at the end of the list or on a parse error (e.g. a truncated slice header).
+ *
+ * @param list      reference list (0 or 1)
+ */
+void cH264Parser::ReadRefPicListModifications(int list)
+{
+	// The number of modifications is limited by num_ref_idx_lX_active_minus1 + 1 (max. 32).
+	// Limit the loop, so that garbage data can't produce an endless list.
+	constexpr int MAX_MODIFICATIONS = 33;
+
+	for (int i = 0; i < MAX_MODIFICATIONS; i++) {
+		unsigned int idc = ReadExponentialGolombCode();
+		if (m_parseError || idc == 3)
+			return;
+
+		if (idc == 0 || idc == 1) {
+			RefPicMod mod {};
+			mod.list = list;
+			mod.idc = idc;
+			mod.abs_diff_pic_num_minus1 = ReadExponentialGolombCode();
+			m_refMods.push_back(mod);
+		} else if (idc == 2) {
+			ReadExponentialGolombCode(); // long_term_pic_num (long-term references are ignored)
+		} else {
+			m_parseError = true;
+			return;
+		}
+	}
+
+	m_parseError = true;
+}
+
+/**
+ * Convert the NAL unit at the given offset to RBSP and prepare reading its header
+ *
+ * The NAL unit ends at the next start code or at the end of the packet.
+ *
+ * @param offset     offset of the NAL unit's start code in the packet
+ */
+void cH264Parser::ConvertNalUnitToRBSP(int offset)
+{
+	int startCodeLength = 0;
+	isValidStartCode(m_pAvpkt->data, offset, m_pAvpkt->size, startCodeLength);
+
+	int payloadStart = offset + startCodeLength + 1; // skip the NAL header byte
+	int payloadEnd = m_pAvpkt->size;
+
+	for (int i = payloadStart; i + 3 <= m_pAvpkt->size; i++) {
+		if (ReadBytes(&m_pAvpkt->data[i], 3) == 0x000001) {
+			payloadEnd = i;
+			break;
+		}
+	}
+
+	if (payloadStart < payloadEnd)
+		ConvertEBSPtoRBSP(&m_pAvpkt->data[payloadStart], payloadEnd - payloadStart);
+	else
+		m_rbsp.clear();
+
+	m_pStart = m_rbsp.data();
+	m_nLength = m_rbsp.size();
+	m_nCurrentBit = 0;
 }
 
 void cH264Parser::ConvertEBSPtoRBSP(const uint8_t *src, int length)
