@@ -152,7 +152,7 @@ static int OpenDrmDevice(const char* device, drmModeRes **resources)
  */
 static int FindDrmDevice(drmModeRes **resources)
 {
-	int MAX_DRM_DEVICES = 64;
+	constexpr int MAX_DRM_DEVICES = 64;
 
 	drmDevicePtr devices[MAX_DRM_DEVICES] = { NULL };
 	int num_devices, fd = -1;

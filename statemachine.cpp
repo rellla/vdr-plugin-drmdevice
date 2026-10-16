@@ -148,8 +148,8 @@ void cStateMachine::OnEventReceived(const Event& event)
 			break;
 		case State::BUFFERING:
 			std::visit(overload{
-				[this](const PlayEvent&) { /* ignore */ },
-				[this](const PauseEvent&) { /* ignore */ },
+				[](const PlayEvent&) { /* ignore */ },
+				[](const PauseEvent&) { /* ignore */ },
 				[this](const StopEvent&) {
 					ChangeState(STOP);
 				},
@@ -208,7 +208,7 @@ void cStateMachine::OnEventReceived(const Event& event)
 				[this](const BufferUnderrunEvent&) {
 					ChangeState(BUFFERING);
 				},
-				[&invalid](const BufferingThresholdReachedEvent&) { /* ignore */ },
+				[](const BufferingThresholdReachedEvent&) { /* ignore */ },
 				[this](const ScheduleResyncAtPtsMsEvent& s) {
 					m_pDevice->ScheduleResyncAtPtsMs(s.pts);
 				},
@@ -245,7 +245,7 @@ void cStateMachine::OnEventReceived(const Event& event)
 					needsResume = false;
 				},
 				[&invalid](const AttachEvent&) { invalid(); },
-				[this](const BufferUnderrunEvent&) { /* ignore during trick speed. Fast forward/reverse as fast and as demanded as possible */ },
+				[](const BufferUnderrunEvent&) { /* ignore during trick speed. Fast forward/reverse as fast and as demanded as possible */ },
 				[&invalid](const BufferingThresholdReachedEvent&) { invalid(); },
 				[&invalid](const ScheduleResyncAtPtsMsEvent&) { invalid(); },
 				[&invalid](const ResyncEvent&) { invalid(); },

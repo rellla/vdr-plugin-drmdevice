@@ -53,7 +53,7 @@ cVideoStream::cVideoStream(cVideoRender *render, int hardwareQuirks, cQueue<cDrm
 	  m_identifier(isPipStream ? "PIP" : "main"),
 	  m_frameOutput(frameOutput),
 	  m_pDrmBufferQueue(drmBufferQueue),
-	  m_videoFilter(render, m_pDrmBufferQueue, isPipStream ? "shd PIP filter" : "shd main filter", frameOutput),
+	  m_videoFilter(m_pDrmBufferQueue, isPipStream ? "shd PIP filter" : "shd main filter", frameOutput),
 	  m_hardwareQuirks(hardwareQuirks),
 	  m_userDisabledDeinterlacer(config->ConfigDisableDeint),
 	  m_deinterlacerDeactivated(isPipStream ? true : false)
