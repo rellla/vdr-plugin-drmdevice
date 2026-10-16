@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <mutex>
@@ -438,7 +439,7 @@ void cAudioStream::DropSamplesOlderThanPtsMs(int64_t ptsMs)
 	dropBytes = std::min(dropBytes, (int)m_pRingbuffer.UsedBytes());
 
 	if (dropBytes > 0) {
-		LOGDEBUG2(L_AV_SYNC, "audio: %s: dropping %dms audio samples from ringbuffer (output PTS %s -> %s)",
+		LOGDEBUG2(L_AV_SYNC, "audio: %s: dropping %" PRId64 "ms audio samples from ringbuffer (output PTS %s -> %s)",
 			__FUNCTION__,
 			dropMs,
 			Timestamp2StringMs(GetOutputPtsMsInternal()),
@@ -1128,7 +1129,7 @@ bool cAudioStream::CyclicCall(void)
 	// fake audio only slow forward trickspeed playback
 	if (m_pDevice->IsAudioOnlyPlayback() && m_trickspeed && IsForwardTrickSpeed() && IsSlowTrickSpeed()) {
 		const int64_t FRAME_MS = 20;
-		LOGDEBUG2(L_TRICK, "audio: audio only slow forward trickspeed - drop %dms, sleep %.2fms", FRAME_MS, FRAME_MS / m_trickspeedFactor);
+		LOGDEBUG2(L_TRICK, "audio: audio only slow forward trickspeed - drop %dms, sleep %.2fms", (int)FRAME_MS, FRAME_MS / m_trickspeedFactor);
 		cCondWait::SleepMs(FRAME_MS / m_trickspeedFactor);
 		DropSamplesOlderThanPtsMs(GetOutputPtsMs() + FRAME_MS);
 	}
@@ -1240,7 +1241,7 @@ void cAudioStream::SetHwDelayBaseline(void)
 
 		m_hwBaseline = m_alsa.GetHwDelayFrames();
 
-		LOGDEBUG2(L_SOUND, "audio: %s: first real audio was sent, hwBaseline %ld frames (%dms)", __FUNCTION__, m_hwBaseline, m_alsa.FramesToMs(m_hwBaseline));
+		LOGDEBUG2(L_SOUND, "audio: %s: first real audio was sent, hwBaseline %d frames (%dms)", __FUNCTION__, m_hwBaseline, m_alsa.FramesToMs(m_hwBaseline));
 		m_firstRealAudioReceived = true;
 	}
 }

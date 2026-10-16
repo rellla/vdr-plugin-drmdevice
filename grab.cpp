@@ -52,6 +52,8 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
+#include <cinttypes>
+
 #include <sys/mman.h>
 
 #include <drm_fourcc.h>
@@ -508,7 +510,7 @@ void cGrabBuffer::Set(cDrmBuffer *src)
 
 	m_outputRect.Set(src->GetScreenRect().Point(), src->GetScreenRect().Size());
 
-	LOGDEBUG2(L_GRAB, "%s: %s: Set input buffer: %dx%d pixFmt %d modifier %d num planes %d with %dx%d at %d|%d",
+	LOGDEBUG2(L_GRAB, "%s: %s: Set input buffer: %dx%d pixFmt %u modifier 0x%" PRIx64 " num planes %d with %dx%d at %d|%d",
 		m_identifier, __FUNCTION__, m_width, m_height, m_pixFmt, m_modifier, m_numPlanes, m_outputRect.Width(), m_outputRect.Height(), m_outputRect.X(), m_outputRect.Y());
 	for (int plane = 0; plane < m_numPlanes; plane++) {
 		LOGDEBUG2(L_GRAB, "%s: %s: Copied plane %d address %p pitch %d offset %d size %d",
