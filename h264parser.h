@@ -87,7 +87,7 @@ private:
 	AVPacket *m_pAvpkt;
 	const unsigned char *m_pStart;
 	std::vector<uint8_t> m_rbsp;
-	unsigned short m_nLength;
+	int m_nLength;                 ///< length of the RBSP data in bytes
 	int m_nCurrentBit;
 
 	int m_nalutype = 0;
@@ -115,8 +115,8 @@ private:
 	int m_log2MaxFrameNumMinus4 = -4;             // saved from SPS
 	int m_ppsNumRefIdxL0DefaultActiveMinus1 = -1; // saved from PPS
 	int m_ppsNumRefIdxL1DefaultActiveMinus1 = -1; // saved from PPS
-	int m_numRefIdxL0Active;
-	int m_numRefIdxL1Active;
+	int m_numRefIdxL0Active = 0;
+	int m_numRefIdxL1Active = 0;
 
 	unsigned int ReadBit(void);
 	unsigned int ReadBits(int);
@@ -126,6 +126,8 @@ private:
 	int GetPPSOffset(void);
 	int GetSliceOffset(void);
 	void ConvertEBSPtoRBSP(const uint8_t *, int);
+	void ConvertNalUnitToRBSP(int);
+	void ReadRefPicListModifications(int);
 };
 
 #endif
