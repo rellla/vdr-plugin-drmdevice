@@ -286,8 +286,7 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
  */
 cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	: m_pDevice(device),
-	  m_pConfig(m_pDevice->Config()),
-	  m_pAudioDevice(m_pDevice->Audio())
+	  m_pConfig(m_pDevice->Config())
 {
 	//
 	// General
@@ -460,7 +459,6 @@ void cDeviceSetupMenu::Store(void)
 	// Video
 	//
 	SetupStore("VideoEnableHDR", m_pConfig->ConfigVideoEnableHDR = m_cVideoEnableHDR);
-	m_pDevice->SetEnableHdr(m_pConfig->ConfigVideoEnableHDR);
 	bool displayModeChanged = m_pConfig->ConfigVideoDisplayMode != m_cVideoDisplayMode;
 	m_pConfig->ConfigVideoDisplayMode = m_cVideoDisplayMode;
 	// only save default and auto adjusted modes
@@ -473,36 +471,28 @@ void cDeviceSetupMenu::Store(void)
 	// Audio
 	//
 	SetupStore("AudioSoftvol", m_pConfig->ConfigAudioSoftvol = m_cAudioSoftvol);
-	m_pAudioDevice->SetSoftvol(m_pConfig->ConfigAudioSoftvol);
-	SetupStore("AudioDownmix", m_pConfig->ConfigAudioDownmix = m_cAudioDownmix);
-	m_pAudioDevice->SetDownmix(m_pConfig->ConfigAudioDownmix);
 	// FIXME: can handle more audio state changes here
 	// downmix changed reset audio, to get change direct
-	if (m_pConfig->ConfigAudioDownmix != m_cAudioDownmix) {
+	bool downmixChanged = m_pConfig->ConfigAudioDownmix != m_cAudioDownmix;
+	SetupStore("AudioDownmix", m_pConfig->ConfigAudioDownmix = m_cAudioDownmix);
+	if (downmixChanged)
 		m_pDevice->ResetChannelId();
-	}
 	m_pConfig->ConfigAudioPassthroughMask = (m_cAudioPassthroughAC3 ? CODEC_AC3 : 0)
 	                                      | (m_cAudioPassthroughEAC3 ? CODEC_EAC3 : 0)
 	                                      | (m_cAudioPassthroughDTS ? CODEC_DTS : 0);
 	m_pConfig->ConfigAudioPassthroughState = m_cAudioPassthroughDefault;
 	if (m_pConfig->ConfigAudioPassthroughState) {
 		SetupStore("AudioPassthrough", m_pConfig->ConfigAudioPassthroughMask);
-		m_pDevice->SetPassthroughMask(m_pConfig->ConfigAudioPassthroughMask);
 	} else {
 		SetupStore("AudioPassthrough", -m_pConfig->ConfigAudioPassthroughMask);
-		m_pDevice->SetPassthroughMask(0);
 	}
 	SetupStore("AudioAutoAES", m_pConfig->ConfigAudioAutoAES = m_cAudioAutoAES);
-	m_pAudioDevice->SetAutoAES(m_pConfig->ConfigAudioAutoAES);
 	SetupStore("AudioDelay", m_pConfig->ConfigVideoAudioDelayMs = m_cAudioDelay);
 	SetupStore("AudioNormalize", m_pConfig->ConfigAudioNormalize = m_cAudioNormalize);
 	SetupStore("AudioMaxNormalize", m_pConfig->ConfigAudioMaxNormalize = m_cAudioMaxNormalize);
-	m_pAudioDevice->SetNormalize(m_pConfig->ConfigAudioNormalize, m_pConfig->ConfigAudioMaxNormalize);
 	SetupStore("AudioCompression", m_pConfig->ConfigAudioCompression = m_cAudioCompression);
 	SetupStore("AudioMaxCompression", m_pConfig->ConfigAudioMaxCompression = m_cAudioMaxCompression);
-	m_pAudioDevice->SetCompression(m_pConfig->ConfigAudioCompression, m_pConfig->ConfigAudioMaxCompression);
 	SetupStore("AudioStereoDescent", m_pConfig->ConfigAudioStereoDescent = m_cAudioStereoDescent);
-	m_pAudioDevice->SetStereoDescent(m_pConfig->ConfigAudioStereoDescent);
 
 	//
 	// Audio equalizer
@@ -526,7 +516,6 @@ void cDeviceSetupMenu::Store(void)
 	SetupStore("AudioEqBand16b", m_pConfig->ConfigAudioEqBand[15] = m_cAudioEqBand[15]);
 	SetupStore("AudioEqBand17b", m_pConfig->ConfigAudioEqBand[16] = m_cAudioEqBand[16]);
 	SetupStore("AudioEqBand18b", m_pConfig->ConfigAudioEqBand[17] = m_cAudioEqBand[17]);
-	m_pAudioDevice->SetEqualizer(m_pConfig->ConfigAudioEq, m_pConfig->ConfigAudioEqBand);
 
 	//
 	// Picture-in-picture
@@ -598,6 +587,27 @@ void cDeviceSetupMenu::Store(void)
 	SetupStore("MaxSizeGPUImageCache", m_pConfig->ConfigMaxSizeGPUImageCache = m_cMaxSizeGPUImageCache);
 #endif
 	SetupStore("ShowChannelSwitchDurationMessage", m_pConfig->ConfigShowChannelSwitchDurationMessage = m_cShowChannelSwitchDurationMessage);
+
+	//
+	// Apply the settings to the output objects
+	//
+	// They only exist in attached state, the setup menu may still be open after a detach
+	// (e.g. via SVDRP). On the next attach, they are created with the settings of the config.
+	if (m_pDevice->IsDetached())
+		return;
+
+	m_pDevice->SetEnableHdr(m_pConfig->ConfigVideoEnableHDR);
+	m_pDevice->SetPassthroughMask(m_pConfig->ConfigAudioPassthroughState ? m_pConfig->ConfigAudioPassthroughMask : 0);
+
+	// the audio stream is recreated on an attach, so don't store its pointer in the menu
+	cAudioStream *audio = m_pDevice->Audio();
+	audio->SetSoftvol(m_pConfig->ConfigAudioSoftvol);
+	audio->SetDownmix(m_pConfig->ConfigAudioDownmix);
+	audio->SetAutoAES(m_pConfig->ConfigAudioAutoAES);
+	audio->SetNormalize(m_pConfig->ConfigAudioNormalize, m_pConfig->ConfigAudioMaxNormalize);
+	audio->SetCompression(m_pConfig->ConfigAudioCompression, m_pConfig->ConfigAudioMaxCompression);
+	audio->SetStereoDescent(m_pConfig->ConfigAudioStereoDescent);
+	audio->SetEqualizer(m_pConfig->ConfigAudioEq, m_pConfig->ConfigAudioEqBand);
 
 	if (displayModeChanged)
 		m_pDevice->SetDisplayMode(m_pConfig->ConfigVideoDisplayMode);
