@@ -140,6 +140,7 @@ private:
 	bool m_softVolume;                      ///< flag to use soft volume
 	int m_spdifBurstSize = 0;               ///< size of the current spdif burst
 	std::vector<uint16_t> m_pauseBurst;     ///< holds the burst data itself
+	std::vector<uint8_t> m_amplifyBuffer;   ///< soft volume is applied to a copy of the ringbuffer data
 	int m_hwBaseline = 0;                   ///< saves the hw delay (pause bursts) once a real audio frame to correctly do the AV-Sync
 	bool m_firstRealAudioReceived = false;  ///< false, as long as no real audio was sent - used to trigger the baseline set
 
@@ -168,8 +169,8 @@ private:
 	int m_filterChanged = 0;                ///< filter has changed
 	int m_filterReady = 0;                  ///< filter is ready
 	AVFilterGraph *m_pFilterGraph = nullptr;
-	AVFilterContext *m_pBuffersrcCtx;
-	AVFilterContext *m_pBuffersinkCtx;
+	AVFilterContext *m_pBuffersrcCtx = nullptr;
+	AVFilterContext *m_pBuffersinkCtx = nullptr;
 	int InitFilter(AVCodecContext *);
 	AVFrame *FilterGetFrame(void);
 	int CheckForFilterReady(AVCodecContext *);
