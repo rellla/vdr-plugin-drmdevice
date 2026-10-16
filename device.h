@@ -243,15 +243,15 @@ private:
 	std::atomic<bool> m_draining = false;           ///< true, if the device is in draining mode (waiting for empty buffers)
 	std::mutex m_eventMutex;                        ///< mutex to protect event queue
 	bool m_needsMakePrimary = false;                ///< true, if device should be made a primary device after attach
-	cDvbSpuDecoder *m_pSpuDecoder;                  ///< pointer to spu decoder
+	cDvbSpuDecoder *m_pSpuDecoder = nullptr;        ///< pointer to spu decoder
 	cDeviceConfig *m_pConfig;                       ///< pointer to cDeviceConfig object
-	cVideoRender *m_pRender;                        ///< pointer to cVideoRender object
-	cVideoStream *m_pVideoStream;                   ///< pointer to main video stream
-	cAudioStream *m_pAudio;                         ///< pointer to cAudioStream object
+	cVideoRender *m_pRender = nullptr;              ///< pointer to cVideoRender object (nullptr, if detached)
+	cVideoStream *m_pVideoStream = nullptr;         ///< pointer to main video stream (nullptr, if detached)
+	cAudioStream *m_pAudio = nullptr;               ///< pointer to cAudioStream object (nullptr, if detached)
 	cAudioDecoder *m_pAudioDecoder = nullptr;       ///< pointer to cAudioDecoder object
 	cDeviceOsdProvider *m_pOsdProvider = nullptr;   ///< pointer to cDeviceOsdProvider object
-	cHardwareDevice *m_pHardwareDevice;             ///< pointer to hardware device description
-	cEventHandler *m_pEventHandler;                 ///< event handler thread
+	cHardwareDevice *m_pHardwareDevice = nullptr;   ///< pointer to hardware device description
+	cEventHandler *m_pEventHandler = nullptr;       ///< event handler thread
 	cReassemblyBufferVideo m_videoReassemblyBuffer; ///< video pes reassembly buffer
 	cReassemblyBufferAudio m_audioReassemblyBuffer; ///< audio pes reassembly buffer
 	cJitterTracker m_audioJitterTracker{"audio"};   ///< audio jitter tracker
@@ -261,31 +261,32 @@ private:
 
 	std::atomic<PlaybackMode> m_playbackMode = NONE; ///< current playback mode
 	int m_audioChannelID = -1;       ///< current audio channel ID
-	cGrabber *m_pGrab;               ///< pointer to grabber object
+	cGrabber *m_pGrab = nullptr;     ///< pointer to grabber object (nullptr, if detached)
 
-	cVideoStream *m_pPipStream;      ///< pointer to pip video stream
+	cVideoStream *m_pPipStream = nullptr; ///< pointer to pip video stream (nullptr, if detached)
 	cReassemblyBufferVideo m_pipReassemblyBuffer; ///< pip pes reassembly buffer
-	cPipHandler *m_pPipHandler = nullptr; ///< pointer to pip handler
+	cPipHandler *m_pPipHandler = nullptr; ///< pointer to pip handler (nullptr, if detached)
 	std::mutex m_sizeMutex;          ///< mutex to lock screen size (which is accessed by different threads)
 	std::atomic<bool> m_receivedAudio = false; ///< flag if audio packets have been received
 	std::atomic<bool> m_receivedVideo = false; ///< flag if video packets have been received
 	std::atomic<bool> m_receivedValidAudio = false; ///< flag if valid audio packets have been received
 	std::atomic<bool> m_receivedValidVideo = false; ///< flag if valid video packets have been received
-	bool m_pipUseAlt;                ///< use alternative pip position
+	bool m_pipUseAlt = false;        ///< use alternative pip position
 	bool m_drmCanDisplayPip = true;  ///< true, if the drm device is able to display a pip video
 	bool m_disablePip = false;       ///< true, if pip was disabled by the user
 	int m_volume = 0;                ///< track the volume in the device (for attach)
 
-	int m_osdWidth;
-	int m_osdHeight;
-	int m_screenWidth;
-	int m_screenHeight;
+	int m_osdWidth = 0;              ///< osd width
+	int m_osdHeight = 0;             ///< osd height
+	int m_screenWidth = 0;           ///< screen width
+	int m_screenHeight = 0;          ///< screen height
 
 	bool m_forceDetached = false; ///< start the plugin in detached state
 	bool m_externalPlayerActive = false; ///< true, if we detached for an external player
 
 	int PlayVideoInternal(cVideoStream *, cReassemblyBufferVideo *, const uchar *, int, bool, bool);
 	void FlushAudio(void);
+	void DeleteDecoderAndOutput(void);
 	int64_t GetFirstAudioPtsMsToPlay();
 	int64_t GetFirstVideoPtsMsToPlay();
 	int GetBufferFillLevelThresholdMs();

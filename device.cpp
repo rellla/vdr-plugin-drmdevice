@@ -120,7 +120,8 @@ int cOutputDevice::Start(void)
 void cOutputDevice::Stop(void)
 {
 	LOGDEBUG("device: %s", __FUNCTION__);
-	m_pPipHandler->Disable();
+	if (m_pPipHandler)
+		m_pPipHandler->Disable();
 	TriggerEvent(DetachEvent{});
 }
 
@@ -921,8 +922,14 @@ void cOutputDevice::SetDisplayMode(int idx)
 		mode = &m_pConfig->CurrentVideoDrmMode;
 		if (!mode->width || !m_pRender->CanHandleMode(mode))
 			mode = &m_pConfig->AutoDetectedDrmMode;
-	} else if (idx >= CONFIG_DISPLAY_MODE_MANUAL)
-		mode = &m_pConfig->CollectedDrmModes[idx - CONFIG_DISPLAY_MODE_MANUAL];
+	} else if (idx >= CONFIG_DISPLAY_MODE_MANUAL) {
+		size_t modeIdx = idx - CONFIG_DISPLAY_MODE_MANUAL;
+		if (modeIdx >= m_pConfig->CollectedDrmModes.size()) {
+			LOGERROR("device: %s: invalid display mode index %d", __FUNCTION__, idx);
+			return;
+		}
+		mode = &m_pConfig->CollectedDrmModes[modeIdx];
+	}
 
 	// Check, if the requested mode differs from the current one at all
 	if (!m_pConfig->CompareCurrentMode(mode)) {
@@ -1776,11 +1783,7 @@ void cOutputDevice::LeaveState(State state)
 			m_pAudioDecoder = new cAudioDecoder(m_pAudio);
 			int err = m_pRender->Init(); // starts display thread
 			if (err < 0) { // drm init failed -> force detached mode
-				delete m_pAudioDecoder;
-				delete m_pVideoStream;
-				delete m_pGrab;
-				delete m_pRender;
-				delete m_pAudio;
+				DeleteDecoderAndOutput();
 				LOGERROR("device: display init failed -> start in detached mode");
 				m_forceDetached = true;
 				break;
@@ -1873,6 +1876,7 @@ void cOutputDevice::EnterState(State state)
 			// now do the detach
 			m_pPipStream->Exit();
 			delete m_pPipStream;
+			m_pPipStream = nullptr;
 
 #ifdef USE_GLES
 			// The opengl thread was probably locked before cmdCopyBufferToOutputFb().
@@ -1880,22 +1884,41 @@ void cOutputDevice::EnterState(State state)
 			// 2) continue the thread (which will skip the waiting cmd->Execute())
 			// 3) do the real thread cancel and cleanup
 			// We need to keep this order to prevent a deadlock!
-			m_pOsdProvider->RequestStopOpenGlThread();
-			m_pOsdProvider->UnlockOpenGlThread();
-			m_pOsdProvider->StopOpenGlThread();
+			// (There is no osd provider, if we are not the primary device.)
+			if (m_pOsdProvider) {
+				m_pOsdProvider->RequestStopOpenGlThread();
+				m_pOsdProvider->UnlockOpenGlThread();
+				m_pOsdProvider->StopOpenGlThread();
+			}
 #endif
 			m_pRender->Exit(); // render must be stopped before videostream!
 			m_pVideoStream->Exit();
 			m_pAudio->Exit(); // audio must be stopped after renderer!
 
-			delete m_pAudioDecoder; // includes a Close()
-			delete m_pVideoStream;
-			delete m_pGrab;
-			delete m_pRender;
-			delete m_pAudio;
+			DeleteDecoderAndOutput();
 
 			break;
 	}
+}
+
+/**
+ * Delete the decoders and the output objects, which only exist in attached state
+ *
+ * The pointers are reset, so that functions which can be called in detached state
+ * (e.g. from the setup menu) can test them.
+ */
+void cOutputDevice::DeleteDecoderAndOutput(void)
+{
+	delete m_pAudioDecoder; // includes a Close()
+	m_pAudioDecoder = nullptr;
+	delete m_pVideoStream;
+	m_pVideoStream = nullptr;
+	delete m_pGrab;
+	m_pGrab = nullptr;
+	delete m_pRender;
+	m_pRender = nullptr;
+	delete m_pAudio;
+	m_pAudio = nullptr;
 }
 
 /**
