@@ -88,7 +88,7 @@ public:
 	void SetMatrix4  (const GLchar *, const glm::mat4 &);
 
 private:
-	eShaderType m_type;
+	eShaderType m_type{};
 	GLuint m_id;
 
 	bool Compile(const char *, const char *);
@@ -317,7 +317,7 @@ public:
 	void DrawArrays(int count = 0);
 private:
 	eVertexBufferType m_type;
-	eShaderType m_shader;
+	eShaderType m_shader{};
 	GLuint m_vbo = 0;
 	GLuint m_positionLoc = 0;
 	GLuint m_texCoordsLoc = 1;

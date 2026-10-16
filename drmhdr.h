@@ -119,7 +119,7 @@ private:
 	int m_colorTrc = -1;                           ///< saved transfer charateristics
 	AVMasteringDisplayMetadata m_mdMetadata = { }; ///< saved mastering display metadata fron AVFrame sidedata
 	AVContentLightMetadata m_clMetadata = { };     ///< saved content light metadata fron AVFrame sidedata
-	struct colorspace m_hdr10;                     ///< hdr colorspace
+	struct colorspace m_hdr10{};                     ///< hdr colorspace
 };
 
 #endif

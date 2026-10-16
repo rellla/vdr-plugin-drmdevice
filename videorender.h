@@ -265,7 +265,7 @@ private:
 	std::atomic<bool> m_forwardTrickspeed = true;    ///< true, if trickspeed plays forward
 	std::atomic<bool> m_stillpicture = false;        ///< true, if stillpicture is active
 	std::atomic<int> m_framePresentationCounter = 0; ///< number of times the current frame has to be shown (for slow-motion)
-	int m_numWrongProgressive;                       ///< counter for progressive frames sent in an interlaced stream
+	int m_numWrongProgressive = 0;                   ///< counter for progressive frames sent in an interlaced stream
 	                                                 ///< (only used for logging)
 
 	std::atomic<bool> m_startgrab = false; ///< internal flag to trigger grabbing
@@ -300,7 +300,7 @@ private:
 	int m_framesDuped = 0;              ///< number of frames duplicated
 	int m_framesDropped = 0;            ///< number of frames dropped
 	bool m_lastFrameWasDropped = false; ///< true, if the last frame was dropped
-	AVRational m_timebase;              ///< timebase used for pts, set by first RenderFrame()
+	AVRational m_timebase{1, PTSTICKS}; ///< timebase used for pts, set by first RenderFrame()
 	std::mutex m_timebaseMutex;         ///< mutex used around m_timebase
 	std::atomic<int64_t> m_pts = AV_NOPTS_VALUE; ///< current video PTS
 	std::mutex m_grabMutex;             ///< mutex around grabbing
