@@ -516,7 +516,7 @@ void cVideoRender::LogDroppedDuped(int64_t audioPtsMs, int64_t videoPtsMs, int a
 	else
 		logDropDup = false;
 
-	LOGDEBUG2(L_AV_SYNC, "%s (%d|%d|%d) Pkts %d Frames %d Rb %d bytes (%dms) PTS: in %s a %s v %s user delay %dms hw delay %dms diff %dms",
+	LOGDEBUG2(L_AV_SYNC, "%s (%d|%d|%d) Pkts %zu Frames %zu Rb %d bytes (%dms) PTS: in %s a %s v %s user delay %dms hw delay %" PRId64 "ms diff %dms",
 		(logDropDup && (audioBehindVideoByMs > 0)) ? "Frame duped" : (logDropDup ? "Frame dropped" : "Frames:"),
 		m_framesDropped,
 		m_framesDuped,
@@ -788,11 +788,11 @@ bool cVideoRender::DisplayFrame(void)
 				(now - LOGGER->GetChannelSwitchDataReceivedTime()).count();
 
 			if (m_startCounter == 0) {
-				LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms first frame displayed (+%5dms after first data was received)", channelSwitchDurationMs, durationSinceFirstPacketMs);
+				LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms first frame displayed (+%5dms after first data was received)", (int)channelSwitchDurationMs, (int)durationSinceFirstPacketMs);
 			} else {
 				if (m_pConfig->ConfigShowChannelSwitchDurationMessage)
-					Skins.Message(mtInfo, cString::sprintf(tr("channel switch done in %ldms (%ldms)"), channelSwitchDurationMs, durationSinceFirstPacketMs));
-				LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms playback start fired (+%5dms after first data was received)", channelSwitchDurationMs, durationSinceFirstPacketMs);
+					Skins.Message(mtInfo, cString::sprintf(tr("channel switch done in %ldms (%ldms)"), (long)channelSwitchDurationMs, (long)durationSinceFirstPacketMs));
+				LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms playback start fired (+%5dms after first data was received)", (int)channelSwitchDurationMs, (int)durationSinceFirstPacketMs);
 			}
 		}
 

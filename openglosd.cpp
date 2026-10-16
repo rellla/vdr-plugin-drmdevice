@@ -381,7 +381,7 @@ cOglFontAtlas::cOglFontAtlas(FT_Face face, int height)
 	// Now do the real upload
 	for (FT_ULong i = MIN_CHARCODE; i <= MAX_CHARCODE; i++) {
 		if (FT_Load_Char(face, i, FT_LOAD_NO_BITMAP)) {
-			LOGWARNING("openglosd: %s: Loading char %c failed!", __FUNCTION__, i);
+			LOGWARNING("openglosd: %s: Loading char %lu failed!", __FUNCTION__, (unsigned long)i);
 			continue;
 		}
 

@@ -395,13 +395,13 @@ int cAlsaDevice::Setup(int channels, int sample_rate, bool passthrough, int down
 		"           Set: HWChannels %d HWSampleRate %d\n"
 		"           Format %s, use mmap: %s\n"
 		"           AlsaBufferTime %dms, pcm state: %s\n"
-		"           periodSize %d frames, bufferSize %d frames",
+		"           periodSize %lu frames, bufferSize %lu frames",
 		__FUNCTION__,
 		channels, channelMapString.c_str(), sample_rate, passthrough ? " -> passthrough" : " -> PCM",
 		m_hwNumChannels, m_hwSampleRate,
 		snd_pcm_format_name(SND_PCM_FORMAT_S16), m_useMmap ? "yes" : "no",
 		bufferTimeUs / 1000, snd_pcm_state_name(state),
-		periodSize, m_bufferSizeFrames);
+		(unsigned long)periodSize, (unsigned long)m_bufferSizeFrames);
 
 	return 0;
 }
