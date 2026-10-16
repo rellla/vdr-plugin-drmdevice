@@ -179,7 +179,6 @@ private:
 	uint64_t m_zposPip = 0;                ///< zpos of pip plane
 	cDrmPlane m_pipPlane;                  ///< the pip drm plane
 
-	int CreatePropertyBlob(uint32_t *);
 	int GetPropertyValue(uint32_t, uint32_t, const char *, uint64_t *);
 	uint32_t GetPropertyID(uint32_t, uint32_t, const char *);
 

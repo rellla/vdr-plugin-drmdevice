@@ -1208,24 +1208,6 @@ void cDrmDevice::Close(void)
 }
 
 /**
- * Wrapper to create a property blob
- *
- * Creates a property blob for the drm mode which was found during Init()
- *
- * @param[out] modeID     id of the blob
- *
- * @retval 0              on success
- * @retval -errno         on error
- *
- * @todo    According to drm logs, this blob must be destroyed by calling drmModeDestroyPropertyBlob
- *          which is probably missing
- */
-int cDrmDevice::CreatePropertyBlob(uint32_t *modeID)
-{
-	return drmModeCreatePropertyBlob(m_fdDrm, &m_drmModeInfo, sizeof(m_drmModeInfo), modeID);
-}
-
-/**
  * Add a drm property to an atomic modeset request
  *
  * @param ModeReq     atomic request object
