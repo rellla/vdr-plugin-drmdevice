@@ -10,6 +10,7 @@
  * @license{AGPL-3.0-or-later}
  */
 
+#include <cstdlib>
 #include <string>
 
 #include <vdr/interface.h>
@@ -252,6 +253,8 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 
 	switch (key) {
 		case kOk:
+			if (!item)                      // empty menu
+				break;
 			if (strcasestr(item->Text(), "[..]")) {
 				std::string newPath = m_path.substr(0 ,m_path.find_last_of("/"));
 
@@ -287,7 +290,7 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 				break;
 			}
 			if (m_playlist.empty()) {
-				if (IsValidMediaFile(item->Text())) {
+				if (item && IsValidMediaFile(item->Text())) {
 					PlayMedia(item->Text());
 					return osEnd;
 				}
@@ -300,7 +303,7 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 		case kGreen:
 			if (cDrmDeviceControl::Control()) {
 				cDrmDeviceControl::Control()->Player()->JumpSec(-60);
-			} else {
+			} else if (item) {
 				MakePlayList(item->Text(), "w");
 				Interface->Confirm(tr("New Playlist"), 1, true);
 				if (!m_lastItem.empty())
@@ -312,7 +315,7 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 		case kYellow:
 			if (cDrmDeviceControl::Control()) {
 				cDrmDeviceControl::Control()->Player()->JumpSec(60);
-			} else {
+			} else if (item) {
 				MakePlayList(item->Text(), "a");
 				Interface->Confirm(tr("Added to Playlist"), 1, true);
 			}
@@ -321,7 +324,7 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 			state = osStopReplay;
 			break;
 		case kPlay:
-			if (IsValidMediaFile(item->Text())) {
+			if (item && IsValidMediaFile(item->Text())) {
 				PlayMedia(item->Text());
 				return osEnd;
 			}
@@ -348,7 +351,7 @@ void cDeviceMenu::PlayListMenu(void)
 {
 	cPlaylistEntry *entry = cDrmDeviceControl::Control()->Player()->GetFirstPlaylistEntry();
 	Clear();
-	while (1) {
+	while (entry) {
 		std::string p_string = entry->OsdItemString();
 		Add(new cOsdItem(p_string.c_str()), (entry == cDrmDeviceControl::Control()->Player()->GetCurrentPlaylistEntry()));
 
@@ -381,7 +384,9 @@ void cDeviceMenu::SelectPlaylistMenu(void)
 		if (dirList[i]->d_name[0] != '.' && (strcasestr(dirList[i]->d_name, ".M3U"))) {
 			Add(new cOsdItem(dirList[i]->d_name));
 		}
+		free(dirList[i]);
 	}
+	free(dirList);
 	SetHelp("Play PL", NULL, NULL, NULL);
 	Display();
 }
@@ -444,6 +449,9 @@ void cDeviceMenu::FindFileMenu(std::string searchPath, FILE *playlist)
 				}
 			}
 		}
+		for (i = 0; i < n; i++)
+			free(dirList[i]);
+		free(dirList);
 	}
 
 	if (!playlist) {
