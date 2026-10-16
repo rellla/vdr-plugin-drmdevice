@@ -188,7 +188,8 @@ int cPipHandler::Start(int channelNum)
 		channel = Channels->GetByNumber(channelNum);
 	}
 
-	device = m_pDevice->GetDevice(channel, 0, false);
+	// cDevice::GetDevice() dereferences the channel
+	device = channel ? m_pDevice->GetDevice(channel, 0, false) : nullptr;
 
 	if (channelNum && channel && device) {
 		Stop();
@@ -280,9 +281,12 @@ void cPipHandler::HandleChannelChange(int direction)
 				channel = direction > 0 ? Channels->First() : Channels->Last();
 		}
 
+		if (!channel)       // no wrap around at the end of the channel list
+			break;
+
 		cDevice *device = m_pDevice->GetDevice(channel, 0, false, true);
 
-		if (channel && !channel->GroupSep() && device && device->ProvidesChannel(channel, 0, &ndr) && !ndr) {
+		if (!channel->GroupSep() && device && device->ProvidesChannel(channel, 0, &ndr) && !ndr) {
 			Start(channel->Number());
 			return;
 		}
