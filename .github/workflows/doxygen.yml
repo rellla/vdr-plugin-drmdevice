@@ -66,6 +66,8 @@ jobs:
             | awk '{ print $7 }' | sed 's/[";]//g' | head -n1)
           PROJECT_VERSION="${BASE_VERSION}${GIT_DESCRIBE_VERSION}"
           echo "PROJECT_NUMBER=$PROJECT_VERSION" >> "$DOXYGEN_CONFIG.tmp"
+          # keep the documentation free of warnings
+          echo "WARN_AS_ERROR=FAIL_ON_WARNINGS" >> "$DOXYGEN_CONFIG.tmp"
           echo "Set documentation version number to $PROJECT_VERSION"
 
       - name: Run doxygen
