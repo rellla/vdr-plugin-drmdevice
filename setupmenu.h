@@ -112,7 +112,6 @@ protected:
 private:
 	cOutputDevice *m_pDevice;
 	cDeviceConfig *m_pConfig;
-	cAudioStream *m_pAudioDevice;
 
 	std::vector<std::string> m_displayMode;
 	std::vector<const char *> m_displayModePtrs;
