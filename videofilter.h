@@ -49,7 +49,7 @@ public:
 	int GetNumFramesToFilter(void) { return m_numFramesToFilter; };
 
 private:
-	cVideoRender *m_pRender;                        ///< pointer to renderer
+	[[maybe_unused]] cVideoRender *m_pRender;       ///< pointer to renderer
 
 	AVFilterGraph *m_pFilterGraph = nullptr;        ///< filter graph
 	AVFilterContext *m_pBuffersrcCtx = nullptr;     ///< buffer src context
