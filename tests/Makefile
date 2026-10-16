@@ -36,13 +36,27 @@ endif
 
 # Test sources (in this directory)
 TEST_SOURCES = \
+	test_audioprocessor.cpp \
+	test_config.cpp \
+	test_filllevel.cpp \
+	test_h264parser.cpp \
+	test_misc.cpp \
 	test_pes.cpp \
+	test_pidcontroller.cpp \
+	test_queue.cpp \
+	test_ringbuffer.cpp \
 	test_stubs.cpp
 
 # Plugin sources under test (in the parent directory)
 SOURCES_UNDER_TEST = \
+	audioprocessor.cpp \
+	config.cpp \
+	filllevel.cpp \
+	h264parser.cpp \
 	logger.cpp \
-	pes.cpp
+	pes.cpp \
+	pidcontroller.cpp \
+	ringbuffer.cpp
 
 OBJDIR = obj/$(BUILD)
 OBJS = $(addprefix $(OBJDIR)/, $(TEST_SOURCES:.cpp=.o) $(SOURCES_UNDER_TEST:.cpp=.o))
