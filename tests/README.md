@@ -4,13 +4,23 @@ This directory contains unit tests for the drmdevice VDR plugin using the Catch2
 
 ## Prerequisites
 
-You need to have Catch2 v3 (since Ubuntu 24.04/Debian 13) and lcov installed on your system. On Debian/Ubuntu systems:
+You need to have Catch2 v3 (since Ubuntu 24.04/Debian 13), valgrind and lcov installed on your system. On Debian/Ubuntu systems:
 
 ```bash
-sudo apt-get install catch2 lcov
+sudo apt-get install catch2 valgrind lcov
+```
+
+The tests expect the plugin to be located in the VDR source tree (`vdr/PLUGINS/src/drmdevice`).
+Otherwise set the path to the VDR include directory:
+
+```bash
+make test VDRINCDIR=/path/to/vdr/include
 ```
 
 ## Building and Running Tests
+
+Every build variant uses its own object directory (`obj/<variant>`), so the object files
+of the plugin itself are never touched.
 
 ### Run tests
 
@@ -18,17 +28,33 @@ sudo apt-get install catch2 lcov
 make test
 ```
 
+This also writes a JUnit report to `test-results.xml`.
+
+### Run tests with valgrind
+
+```bash
+make memcheck
+```
+
+The target fails on memory errors and definite memory leaks.
+
+### Run tests with address and undefined behavior sanitizer
+
+```bash
+make sanitize
+```
+
 ### Run specific tests
 
 ```bash
-./test_runner "[pes]"          # Run all PES tests
-./test_runner "cPes - MPEG2"   # Run MPEG2-related tests
+./obj/default/test_runner "[pes]"          # Run all PES tests
+./obj/default/test_runner "cPes - MPEG2"   # Run MPEG2-related tests
 ```
 
 ### List all available tests
 
 ```bash
-./test_runner --list-tests
+./obj/default/test_runner --list-tests
 ```
 
 ## Code Coverage
