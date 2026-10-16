@@ -277,10 +277,12 @@ int cAudioStream::InitFilter(AVCodecContext *audioCtx)
 		if (!channelMapString.empty()) {
 			if (!(channelmap = avfilter_get_by_name("channelmap"))) {
 				LOGWARNING("audio: %s: Could not find the channelmap filter.", __FUNCTION__);
+				avfilter_graph_free(&m_pFilterGraph);
 				return -1;
 			}
 			if (!(pFilterCtx[numFilter] = avfilter_graph_alloc_filter(m_pFilterGraph, channelmap, "channelmap"))) {
 				LOGWARNING("audio: %s: Could not allocate the channelmap instance.", __FUNCTION__);
+				avfilter_graph_free(&m_pFilterGraph);
 				return -1;
 			}
 			snprintf(optionsStr, sizeof(optionsStr),"map=%s", channelMapString.c_str());
@@ -325,6 +327,7 @@ int cAudioStream::InitFilter(AVCodecContext *audioCtx)
 	} else {
 		if (av_channel_layout_copy(&channel_layout, &audioCtx->ch_layout) < 0) {
 			LOGWARNING("audio: %s: Could not copy channel layout", __FUNCTION__);
+			avfilter_graph_free(&m_pFilterGraph);
 			return -1;
 		}
 
@@ -386,11 +389,12 @@ int cAudioStream::InitFilter(AVCodecContext *audioCtx)
 		} else {
 			err = avfilter_link(pFilterCtx[i - 1], 0, pFilterCtx[i], 0);
 		}
-	}
-	if (err < 0) {
-		LOGWARNING("audio: %s: Error connecting audio filters", __FUNCTION__);
-		avfilter_graph_free(&m_pFilterGraph);
-		return -1;
+
+		if (err < 0) {
+			LOGWARNING("audio: %s: Error connecting audio filters", __FUNCTION__);
+			avfilter_graph_free(&m_pFilterGraph);
+			return -1;
+		}
 	}
 
 	// Configure the graph.
@@ -481,6 +485,12 @@ void cAudioStream::RebuildPauseBurst(int size)
 	if (size == m_spdifBurstSize)
 		return;
 
+	// the burst needs at least the 8 byte IEC61937 header
+	if (size < 8) {
+		LOGWARNING("audio: %s: invalid spdif burst size %d", __FUNCTION__, size);
+		return;
+	}
+
 	LOGDEBUG2(L_SOUND, "audio: %s: spdif burst size changed %d -> %d, rebuild pause burst", __FUNCTION__, m_spdifBurstSize, size);
 
 	m_spdifBurstSize = size;
@@ -496,7 +506,7 @@ void cAudioStream::RebuildPauseBurst(int size)
 	spdif[2] = htole16(IEC61937_NULL);
 	spdif[3] = 0;
 
-	memset(m_pauseBurst.data() + 4, 0, m_spdifBurstSize - 8);
+	memset(m_pauseBurst.data() + 4, 0, (m_pauseBurst.size() - 4) * sizeof(uint16_t));
 }
 
 /**
@@ -712,8 +722,12 @@ void cAudioStream::Filter(AVFrame *inframe, AVCodecContext *ctx)
 //	if (!inframe)
 //		LOGDEBUG2(L_SOUND, "audio: %s: NO inframe!", __FUNCTION__);
 
-	outframe = FilterGetFrame();
-	EnqueueFrame(outframe);
+	if (!m_filterReady)
+		return;
+
+	// the filter graph may deliver more than one frame
+	while ((outframe = FilterGetFrame()))
+		EnqueueFrame(outframe);
 }
 
 /**
@@ -1194,9 +1208,12 @@ bool cAudioStream::SendAudio(int freeAlsaBufferFrames)
 
 	// muting pass-through AC-3, can produce disturbance
 	if (m_volume == 0 || (m_softVolume && !m_alsa.IsPassthroughActive())) {
-		// FIXME: quick&dirty cast
-		m_audioProcessor.Amplify((int16_t *) data, bytesToWrite, m_volume);
-		// FIXME: if not all are written, we double amplify them
+		// Amplify a copy: data, which is not written now, stays in the ringbuffer
+		// and must not be amplified twice on the next call
+		m_amplifyBuffer.resize(bytesToWrite);
+		memcpy(m_amplifyBuffer.data(), data, bytesToWrite);
+		m_audioProcessor.Amplify(reinterpret_cast<int16_t *>(m_amplifyBuffer.data()), bytesToWrite, m_volume);
+		data = m_amplifyBuffer.data();
 	}
 
 	int framesToWrite = m_alsa.BytesToFrames(bytesToWrite);
