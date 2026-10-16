@@ -87,18 +87,29 @@ bool cVideoStream::Drain(void)
  * This function bypasses the PES fragmentation/reassembly mechanism and directly
  * pushes an already-complete AVPacket to the m_packets queue for decoding. Used
  * when packets are received from sources that don't require fragmentation handling.
+ * The stream takes the ownership of the packet, a packet which can't be queued is freed.
  *
  * @param avpkt    The AVPacket to push to the queue
  * @return         true if the packet was successfully pushed, false otherwise
  */
 bool cVideoStream::PushAvPacket(AVPacket *avpkt)
 {
+	if (!avpkt)          // e.g. an empty reassembly buffer
+		return false;
+
 	if (avpkt->pts != AV_NOPTS_VALUE)
 		m_inputPts = avpkt->pts;
 
 	LOGDEBUG2(L_PACKET, "videostream: %s: push PTS %s", __FUNCTION__, Timestamp2StringPts(avpkt->pts));
 
-	return m_packets.Push(avpkt);
+	if (!m_packets.Push(avpkt)) {
+		// nobody retries a rejected packet, so don't leak it
+		LOGWARNING("videostream: %s: %s: packet queue full, drop packet", m_identifier, __FUNCTION__);
+		av_packet_free(&avpkt);
+		return false;
+	}
+
+	return true;
 }
 
 /**
@@ -462,9 +473,9 @@ void cVideoStream::DecodeInput(void)
  */
 void cVideoStream::GetVideoSize(int *width, int *height, double *aspect_ratio)
 {
-	AVCodecContext *videoCtx = m_pDecoder->GetContext();
+	AVCodecContext *videoCtx = m_pDecoder ? m_pDecoder->GetContext() : nullptr;
 
-	if (m_pDecoder && videoCtx) {
+	if (videoCtx && videoCtx->coded_height > 0) {
 		*width = videoCtx->coded_width;
 		*height = videoCtx->coded_height;
 		*aspect_ratio = *width / (double)*height;
@@ -560,7 +571,8 @@ void cVideoStream::RenderFrame(AVFrame * frame)
 			// If there are issues in the stream this might not be correct.
 			if (m_ptsForFramerateDetection != AV_NOPTS_VALUE) {
 				int64_t delta = frame->pts - m_ptsForFramerateDetection;
-				m_framerate = 1.0 / (delta * av_q2d(m_timebase));
+				if (delta > 0 && av_q2d(m_timebase) > 0)  // e.g. a repeated or reordered pts
+					m_framerate = 1.0 / (delta * av_q2d(m_timebase));
 			}
 			m_ptsForFramerateDetection = frame->pts;
 		}
