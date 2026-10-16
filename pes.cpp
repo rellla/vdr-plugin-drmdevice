@@ -189,7 +189,13 @@ static const std::map<AVCodecID, CodecInfo> AudioCodecMap = {
 			       (syncWord & 0b0000'0000'0000'0011'1100'0000) != ADTS_SAMPLING_FREQUENCY_FORBIDDEN_VALUE;
 		},
 		.GetFrameSize = [](const uint8_t* data) -> int {
-			return ((data[3] & 0x03) << 11) | ((data[4] & 0xFF) << 3) | ((data[5] & 0xE0) >> 5);
+			constexpr int ADTS_HEADER_SIZE = 7;
+
+			int frameSize = ((data[3] & 0x03) << 11) | ((data[4] & 0xFF) << 3) | ((data[5] & 0xE0) >> 5);
+			if (frameSize < ADTS_HEADER_SIZE) // the frame length includes the header
+				throw std::invalid_argument("ADTS: invalid frame size");
+
+			return frameSize;
 		}
 	}},
 	{AV_CODEC_ID_DTS, {
@@ -562,7 +568,10 @@ SyncWordInfo cReassemblyBufferAudio::FindTwoConsecutiveFramesWithSameSyncWord(vo
 
 		try {
 			// determine the length of the first found potential frame by reading the frame's header
-			int sizeOfFirstFrame = AudioCodecMap.at(firstFrame.codecId).GetFrameSize(&m_buffer.Peek()[firstFrame.pos]);
+			const CodecInfo &codecInfo = AudioCodecMap.at(firstFrame.codecId);
+			int sizeOfFirstFrame = codecInfo.GetFrameSize(&m_buffer.Peek()[firstFrame.pos]);
+			if (sizeOfFirstFrame < codecInfo.minSize) // a frame can't be smaller than its header, the buffer would get stuck
+				throw std::invalid_argument("frame size smaller than the header");
 			int secondSyncWord = firstFrame.pos + sizeOfFirstFrame;
 
 			// check if another sync word follows immediately after the first frame to validate the header of the first frame is a real header and no random data
@@ -712,11 +721,11 @@ void cPtsTrackingBuffer::Erase(size_t amount)
 	// The reassembled frame's PTS value will become the PTS value of the PES packet where the frame starts.
 	// Therefore, always keep the PTS value for position 0 in the buffer, which is the PTS value of the PES packet where the frame starts.
 	// This is normally the largest PTS value to be removed, or, if future position 0 already has a PTS value, that value will be used.
+	// If no PTS value was pushed before the new position 0 (e.g. the buffer started with fragmented data after a reset),
+	// the PTS of the data at the new position 0 is unknown.
 	int64_t smallestPts = AV_NOPTS_VALUE;
 	auto it = m_pts.upper_bound(amount);
-	if (it == m_pts.begin())
-		LOGFATAL("pes: %s: %s: no PTS value found for position 0 after erasing %zu bytes", __FUNCTION__, m_identifier, amount);
-	else {
+	if (it != m_pts.begin()) {
 		--it;  // Move to the last entry before 'amount'
 		smallestPts = it->second;
 	}
