@@ -563,7 +563,7 @@ int cDrmDevice::Init(void)
 					}
 				}
 			}
-			LOGDEBUG2(L_DRM, "drmdevice: %s", __FUNCTION__, pixelformats);
+			LOGDEBUG2(L_DRM, "drmdevice: %s: %s", __FUNCTION__, pixelformats);
 		}
 		drmModeFreePlane(plane);
 	}
@@ -676,14 +676,14 @@ int cDrmDevice::Init(void)
 	}
 
 	if (drmSetMaster(m_fdDrm) < 0) {
-		LOGDEBUG2(L_DRM, "drmdevice: Failed to set drm master, try authorize instead: {}", strerror(errno));
+		LOGDEBUG2(L_DRM, "drmdevice: Failed to set drm master, try authorize instead: %s", strerror(errno));
 
 		drm_magic_t magic;
 		if (drmGetMagic(m_fdDrm, &magic) < 0)
-			LOGFATAL("drmdevice: Failed to get drm magic: {}", strerror(errno));
+			LOGFATAL("drmdevice: Failed to get drm magic: %s", strerror(errno));
 
 		if (drmAuthMagic(m_fdDrm, magic) < 0)
-			LOGFATAL("drmdevice: Failed to authorize drm magic: {}", strerror(errno));
+			LOGFATAL("drmdevice: Failed to authorize drm magic: %s", strerror(errno));
 	}
 
 	drmModeFreePlaneResources(planeRes);
@@ -1439,7 +1439,7 @@ int cDrmDevice::CreateHdrBlob(struct hdr_output_metadata *data, size_t size, uin
 {
 	int ret = drmModeCreatePropertyBlob(m_fdDrm, data, size, blobID);
 	if (ret)
-		LOGDEBUG2(L_DRM, "drmdevice: %s: failed to create hdr property blob: id %d, data %p (%d) ret %d", __FUNCTION__, blobID, data, size, ret);
+		LOGDEBUG2(L_DRM, "drmdevice: %s: failed to create hdr property blob: id %u, data %p (%zu) ret %d", __FUNCTION__, *blobID, (void *)data, size, ret);
 
 	return ret;
 }
