@@ -246,7 +246,7 @@ flowchart TD
 When managing the VDR states (play/pause/trick speed/...), the following paradigms are followed:
 
 - On every call of above VDR methods, we wait at a single and central location, that the display and decoding threads finish their currently processing packet/frame. Then, the threads are locked (halted), and the necessary changes are done in a thread-safe and predictable way, until they resume their normal work.
-- What should happen in which state is also handled in a single and central location. Therefore, VDR's state is tracked in a variable. When one of PlayMode()/Freeze()/Clear()/... are invoked (I call it "events"), they are handled according to in which state VDR is currently in (play/stop/trickspeed). So, you can clearly see in the code, what happens in a particular state, when a specific event is received. The state transitions are handled in cStateMachine::OnEventReceived() and what shall be done when entering or leaving a state is done in cOutputDevice::EnterState()/cOutputDevice::LeaveState().
+- What should happen in which state is also handled in a single and central location. Therefore, VDR's state is tracked in a variable. When one of PlayMode()/Freeze()/Clear()/... are invoked (I call it "events"), they are handled according to in which state VDR is currently in (play/stop/trickspeed). So, you can clearly see in the code, what happens in a particular state, when a specific event is received. The state transitions are handled in cStateMachine::OnEventReceived() and what shall be done when entering or leaving a state is done in cOutputDevice::EnterState() and cOutputDevice::LeaveState().
 
 This was introduced in PR #91.
 
