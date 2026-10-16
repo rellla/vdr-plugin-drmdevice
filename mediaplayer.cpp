@@ -110,7 +110,10 @@ cDrmDevicePlayer::cDrmDevicePlayer(const char *url, cOutputDevice *device)
 
 cDrmDevicePlayer::~cDrmDevicePlayer()
 {
+	// stop the player thread before freeing the data it uses
 	m_stopped = true;
+	Cancel(3);
+	Detach();
 	free(m_pSource);
 
 	while (m_pFirstEntry) {
@@ -147,7 +150,7 @@ void cDrmDevicePlayer::Action(void)
 	m_noModify = false;
 
 	if (IsM3UPlaylist(m_pSource)) {
-		while(m_pCurrentEntry) {
+		while (m_pCurrentEntry && Running()) {
 			m_jumpSec = 0;
 			Play(m_pCurrentEntry->GetPath().c_str());
 
@@ -167,7 +170,7 @@ void cDrmDevicePlayer::Action(void)
 	} else
 		Play(m_pSource);
 
-	while(m_pAudio->GetHardwareOutputPtsMs() != AV_NOPTS_VALUE)
+	while (Running() && m_pAudio->GetHardwareOutputPtsMs() != AV_NOPTS_VALUE)
 		usleep(5000);
 
 	cDrmDeviceControl::Control()->Close();
@@ -219,7 +222,7 @@ void cDrmDevicePlayer::SetEntry(int index)
 	cPlaylistEntry *entry;
 	entry = m_pFirstEntry;
 
-	for (int i = 0; i < index ; i++) {
+	for (int i = 0; i < index && entry; i++) {
 		entry = entry->GetNextEntry();
 	}
 
@@ -241,10 +244,11 @@ void cDrmDevicePlayer::Play(const char *url)
 	const AVCodec *videoCodec;
 #endif
 	int err = 0;
-	int audioStreamIdx = 0;
+	int audioStreamIdx = -1;
 	int videoStreamIdx;
 	int jumpStreamIdx = 0;
 	int startTime;
+	int64_t lastPts = AV_NOPTS_VALUE;      // last pts of the stream used for jumping
 
 	m_stopped = false;
 	m_jumpSec = 0;
@@ -259,6 +263,7 @@ void cDrmDevicePlayer::Play(const char *url)
 #endif
 	if (avformat_find_stream_info(format, NULL) < 0) {
 		LOGERROR("mediaplayer: %s: Could not retrieve stream info from file '%s'", __FUNCTION__, url);
+		avformat_close_input(&format);
 		return;
 	}
 
@@ -302,6 +307,9 @@ void cDrmDevicePlayer::Play(const char *url)
 				av_packet_free(&packet);
 				break;
 			}
+
+			if (packet->stream_index == jumpStreamIdx && packet->pts != AV_NOPTS_VALUE)
+				lastPts = packet->pts;
 		}
 
 		if (audioStreamIdx == packet->stream_index) {
@@ -328,18 +336,22 @@ void cDrmDevicePlayer::Play(const char *url)
 		while (m_paused && !m_stopped)
 			sleep(1);
 
-		if (m_jumpSec && format->pb->seekable) {
+		// the packet may already be consumed here, so jump relative to the last read pts
+		if (m_jumpSec && format->pb && format->pb->seekable && lastPts != AV_NOPTS_VALUE) {
 			av_seek_frame(format, format->streams[jumpStreamIdx]->index,
-				packet->pts + (int64_t)(m_jumpSec /		// - BufferOffset
+				lastPts + (int64_t)(m_jumpSec /		// - BufferOffset
 				av_q2d(format->streams[jumpStreamIdx]->time_base)), 0);
 			m_pDevice->Clear();
 			m_jumpSec = 0;
+			lastPts = AV_NOPTS_VALUE;
 
 			if (packet) {
 				av_packet_free(&packet);
 				packet = nullptr;
 			}
 		}
+		if (m_jumpSec && !(format->pb && format->pb->seekable))
+			m_jumpSec = 0;                     // can't jump in this stream
 
 		if (m_stopped) {
 			m_pDevice->Clear();
@@ -354,7 +366,6 @@ void cDrmDevicePlayer::Play(const char *url)
 	m_currentTime = 0;
 
 	avformat_close_input(&format);
-	avformat_free_context(format);
 }
 
 /*****************************************************************************
