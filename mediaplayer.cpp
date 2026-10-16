@@ -49,7 +49,7 @@ cDrmDevicePlayer *cDrmDeviceControl::m_pPlayer = NULL; //< Player instance
  *
  * @param path    full path name to the file
  */
-cPlaylistEntry::cPlaylistEntry(std::string path)
+cPlaylistEntry::cPlaylistEntry(const std::string &path)
 	: m_path(path)
 {
 	m_file = m_path.substr(m_path.find_last_of("/") +1, std::string::npos);

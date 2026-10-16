@@ -47,7 +47,7 @@ public:
 #endif
 
 private:
-	cOsd *m_pOsd;                              ///< pointer to single OSD (currently not really used in cDeviceOsdProvider?)
+	cOsd *m_pOsd = nullptr;                              ///< pointer to single OSD (currently not really used in cDeviceOsdProvider?)
 	cOutputDevice *m_pDevice;                  ///< pointer to the cOutputDevice object
 #ifdef USE_GLES
 	std::shared_ptr<cOglThread> m_pOglThread;  ///< OpenGL OSD thread

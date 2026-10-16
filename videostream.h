@@ -102,7 +102,7 @@ private:
 	cVideoFilter m_videoFilter;         ///< pointer to deinterlace/scaling video filter thread
 	std::mutex m_mutex;                 ///< mutex for decoding thread control
 
-	bool m_checkFilterThreadNeeded;                 ///< set, if we have to check, if filter thread is needed at start of playback
+	bool m_checkFilterThreadNeeded = false;                 ///< set, if we have to check, if filter thread is needed at start of playback
 	int m_hardwareQuirks;                           ///< hardware specific quirks
 	bool m_userDisabledDeinterlacer = false;        ///< set, if the user configured the deinterlace to be disabled
 	bool m_deinterlacerDeactivated;                 ///< set, if the deinterlacer should be disabled temporarily (trickspeed, stillpicture, pip)
@@ -116,10 +116,10 @@ private:
 	enum AVCodecID m_codecId = AV_CODEC_ID_NONE;    ///< current codec id
 	AVCodecParameters *m_pPar = nullptr;            ///< current codec parameters
 	std::atomic<struct AVRational> m_timebase;      ///< current codec timebase
-	int m_trickpkts;                                ///< how many avpkt does the decoder need in trickspeed mode?
+	int m_trickpkts = 0;                                ///< how many avpkt does the decoder need in trickspeed mode?
 	int m_sentTrickPkts = 0;                        ///< how many avpkt have been sent to the decoder in trickspeed mode?
 	std::atomic<bool> m_newStream = false;          ///< flag for new stream
-	bool m_interlaced;                              ///< flag for interlaced stream
+	bool m_interlaced = false;                              ///< flag for interlaced stream
 	double m_framerate = 0.0;                       ///< current stream framerate
 
 	int64_t m_inputPts = AV_NOPTS_VALUE;            ///< PTS of the first packet in the input buffer

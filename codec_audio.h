@@ -76,14 +76,14 @@ private:
 	AVFrame *m_pFrame;                          ///< decoded ffmpeg audio frame
 	int64_t m_lastPts = AV_NOPTS_VALUE;         ///< last seen PTS
 	int m_passthroughMask;                      ///< passthrough mask to be set
-	int m_currentPassthroughMask;               ///< current passthrough mask
-	int m_currentSampleRate;                    ///< current sample rate
-	int m_currentNumChannels;                   ///< current number of channels
-	int m_currentHwSampleRate;                  ///< current hw sample rate
-	int m_currentHwNumChannels;                 ///< current number of hw channels
+	int m_currentPassthroughMask = 0;               ///< current passthrough mask
+	int m_currentSampleRate = 0;                    ///< current sample rate
+	int m_currentNumChannels = 0;                   ///< current number of channels
+	int m_currentHwSampleRate = 0;                  ///< current hw sample rate
+	int m_currentHwNumChannels = 0;                 ///< current number of hw channels
 	std::mutex m_mutex;                         ///< decoder mutex
 
-	std::array<uint8_t, 32768> m_spdifIoBuffer; ///< spdif I/O buffer
+	std::array<uint8_t, 32768> m_spdifIoBuffer{}; ///< spdif I/O buffer
 	AVFormatContext *m_spdifFmtCtx = nullptr;   ///< spdif muxer context
 	std::vector<uint8_t> m_spdifOutputBuf;      ///< spdif muxer output
 

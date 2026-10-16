@@ -263,7 +263,7 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 				m_lastItem = m_path.substr(m_path.find_last_of("/") + 1);
 
 				m_path = newPath;
-				FindFileMenu(m_path.c_str(), NULL);
+				FindFileMenu(m_path, NULL);
 				break;
 			}
 			if (cDrmDeviceControl::Control() && cDrmDeviceControl::Control()->Player()->GetCurrentPlaylistEntry()) {
@@ -279,7 +279,7 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 				struct stat sb;
 				if (stat(newPath.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
 					m_path = newPath;
-					FindFileMenu(newPath.c_str(), NULL);
+					FindFileMenu(newPath, NULL);
 				}
 			}
 			break;
@@ -309,7 +309,7 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 				if (!m_lastItem.empty())
 					m_lastItem.clear();
 				m_lastItem = item->Text();
-				FindFileMenu(m_path.c_str(), NULL);
+				FindFileMenu(m_path, NULL);
 			}
 			break;
 		case kYellow:
@@ -397,7 +397,7 @@ void cDeviceMenu::SelectPlaylistMenu(void)
  * @param searchPath     path to start search mediafile
  * @param playlist       if there is a play list write to play list else make a new menu
  */
-void cDeviceMenu::FindFileMenu(std::string searchPath, FILE *playlist)
+void cDeviceMenu::FindFileMenu(const std::string &searchPath, FILE *playlist)
 {
 	struct dirent **dirList;
 	int n, i;
@@ -425,7 +425,7 @@ void cDeviceMenu::FindFileMenu(std::string searchPath, FILE *playlist)
 			} else {
 				if (S_ISDIR(fileAttributs.st_mode) && dirList[i]->d_name[0] != '.') {
 					if (playlist) {
-						FindFileMenu(str.c_str(), playlist);
+						FindFileMenu(str, playlist);
 					} else {
 						Add(new cOsdItem(dirList[i]->d_name),
 							!m_lastItem.compare(0, m_lastItem.length(), dirList[i]->d_name));
@@ -484,7 +484,7 @@ void cDeviceMenu::MakePlayList(const char * target, const char * mode)
 		fprintf(playlist, "%s/%s\n", m_path.c_str(), target);
 	} else {
 		std::string str = m_path + "/" + target;
-		FindFileMenu(str.c_str(), playlist);
+		FindFileMenu(str, playlist);
 	}
 
 	fclose (playlist);

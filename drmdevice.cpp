@@ -298,7 +298,7 @@ static inline bool AlmostEqual(double a, double b)
  *
  * @ingroup drm
  */
-static bool Contains(drmModeModeInfo *mode, std::vector<sDrmMode> modes)
+static bool Contains(drmModeModeInfo *mode, const std::vector<sDrmMode> &modes)
 {
 	for (size_t i = 0; i < modes.size(); i++) {
 		bool interlaced = InterlacedMode(mode->flags);

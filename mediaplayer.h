@@ -33,7 +33,7 @@ class cOutputDevice;
  */
 class cPlaylistEntry {
 public:
-	cPlaylistEntry(std::string);
+	cPlaylistEntry(const std::string &);
 
 	std::string OsdItemString(void);
 	cPlaylistEntry* GetNextEntry(void) { return m_pNextEntry; };
