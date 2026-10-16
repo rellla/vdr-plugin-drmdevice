@@ -14,7 +14,7 @@ PLUGIN = drmdevice
 PLUGINENTRY = plugindrmdevice
 
 # Source documentation:
-DOXYGEN  ?= /usr/bin/doxygen
+DOXYGEN  ?= doxygen
 DOXYFILE  = doxygen/Doxyfile
 
 # Use OpenGL/ES for OSD? Disable autodetection by setting GLES=1 or GLES=0 with make command
@@ -268,6 +268,7 @@ test:
 	@$(MAKE) -C tests test
 
 # Source documentation:
+.PHONY: srcdoc
 srcdoc:
 	@cat $(DOXYFILE) > $(DOXYFILE).tmp
 	@echo PROJECT_NUMBER = $(VERSION) >> $(DOXYFILE).tmp
