@@ -89,16 +89,16 @@ public:
 
 private:
 	cVideoRender *m_pRender;         ///< pointer to cVideoRender object
-	uint8_t *m_grabbedImage;         ///< pointer to the finished grabbed image
-	int m_grabbedSize;               ///< data size of the grabbed image
+	uint8_t *m_grabbedImage = nullptr; ///< pointer to the finished grabbed image
+	int m_grabbedSize = 0;           ///< data size of the grabbed image
 	std::atomic<bool> m_active = false; ///< true, if a grab process is currently running
 
 	bool m_isJpeg = true;            ///< true, if a jpeg image was requested
-	int m_quality;                   ///< quality of the jpeg image
-	int m_grabbedWidth;              ///< pixel width of the grabbed image
-	int m_grabbedHeight;             ///< pixel height of the grabbed image
-	int m_screenWidth;               ///< pixel screenwidth
-	int m_screenHeight;              ///< pixel screenheight
+	int m_quality = 0;               ///< quality of the jpeg image
+	int m_grabbedWidth = 0;          ///< pixel width of the grabbed image
+	int m_grabbedHeight = 0;         ///< pixel height of the grabbed image
+	int m_screenWidth = 0;           ///< pixel screenwidth
+	int m_screenHeight = 0;          ///< pixel screenheight
 
 	uint8_t *GetGrabbedVideoData(int *, int *, int *, int *, int *);
 	uint8_t *GetGrabbedPipData(int *, int *, int *, int *, int *);

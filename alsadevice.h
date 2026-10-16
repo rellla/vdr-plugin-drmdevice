@@ -92,7 +92,7 @@ private:
 	unsigned int m_hwSampleRate = 0;          ///< hardware sample rate in Hz
 	unsigned int m_hwNumChannels = 0;         ///< number of hardware channels
 	int m_downmix;                            ///< set stereo downmix
-	bool m_useMmap;                           ///< use mmap
+	bool m_useMmap = false;                   ///< use mmap
 
 	bool ShouldAppendAES(void) { return m_appendAES && m_passthroughMask; };
 	char *OpenDevice(const char *);

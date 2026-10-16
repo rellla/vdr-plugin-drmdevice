@@ -41,7 +41,7 @@ cSoftOsd::~cSoftOsd(void)
 {
 	LOGDEBUG2(L_OSD, "osd: %s: level %d", __FUNCTION__, m_osdLevel);
 
-	SetActive(false);	// done by SetActive(): OsdClose();
+	cSoftOsd::SetActive(false);	// done by SetActive(): OsdClose(), no dynamic binding in the destructor
 }
 
 /**

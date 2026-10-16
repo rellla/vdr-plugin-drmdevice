@@ -73,7 +73,6 @@ cVideoRender::cVideoRender(cOutputDevice *device)
 	m_pNextBo = nullptr;
 	m_pOldBo = nullptr;
 #endif
-	m_timebase = av_make_q(1, PTSTICKS);
 	SetPipSize(m_pConfig->ConfigPipUseAlt);
 }
 

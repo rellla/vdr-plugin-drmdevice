@@ -66,19 +66,19 @@ private:
 	uint64_t m_type = 0;                ///< type: DRM_PLANE_TYPE_PRIMARY or
 	                                    ///<       DRM_PLANE_TYPE_OVERLAY
 	drmModeObjectProperties *m_props = nullptr;
-	drmModePropertyRes **m_propsInfo;
+	drmModePropertyRes **m_propsInfo = nullptr;
 
 	// The modesetting parameters for a drm commit
-	uint64_t m_crtcId;                ///< CRTC_ID
-	uint64_t m_fbId;                  ///< FB_ID
-	uint64_t m_crtcX;                 ///< CRTC_X
-	uint64_t m_crtcY;                 ///< CRTC_Y
-	uint64_t m_crtcW;                 ///< CRTC_W
-	uint64_t m_crtcH;                 ///< CRTC_H
-	uint64_t m_srcX;                  ///< SRC_X
-	uint64_t m_srcY;                  ///< SRC_Y
-	uint64_t m_srcW;                  ///< SRC_W
-	uint64_t m_srcH;                  ///< SRC_H
+	uint64_t m_crtcId = 0;            ///< CRTC_ID
+	uint64_t m_fbId = 0;              ///< FB_ID
+	uint64_t m_crtcX = 0;             ///< CRTC_X
+	uint64_t m_crtcY = 0;             ///< CRTC_Y
+	uint64_t m_crtcW = 0;             ///< CRTC_W
+	uint64_t m_crtcH = 0;             ///< CRTC_H
+	uint64_t m_srcX = 0;              ///< SRC_X
+	uint64_t m_srcY = 0;              ///< SRC_Y
+	uint64_t m_srcW = 0;              ///< SRC_W
+	uint64_t m_srcH = 0;              ///< SRC_H
 	uint64_t m_zpos = 0;              ///< ZPOS
 
 	int SetPropertyRequest(drmModeAtomicReqPtr, const char *, uint64_t);

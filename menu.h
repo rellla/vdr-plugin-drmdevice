@@ -60,7 +60,7 @@ private:
 	// mediaplayer
 	void MainMenu(void);
 	void SelectPlaylistMenu(void);
-	void FindFileMenu(std::string, FILE *);
+	void FindFileMenu(const std::string &, FILE *);
 	void MakePlayList(const char *, const char *);
 	bool IsValidMediaFile(const char *);
 	void PlayMedia(const char *);
