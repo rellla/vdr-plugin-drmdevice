@@ -161,10 +161,6 @@ private:
 	bool m_useCompressor;                   ///< flag to use compress volume
 	bool m_useEqualizer;                    ///< flag to use equalizer
 
-	// mixer
-	const char *m_pMixerDevice = nullptr;   ///< mixer device name (not used)
-	const char *m_pMixerChannel;            ///< mixer channel name
-
 	// filter
 	int m_filterChanged = 0;                ///< filter has changed
 	int m_filterReady = 0;                  ///< filter is ready

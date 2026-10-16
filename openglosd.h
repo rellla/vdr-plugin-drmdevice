@@ -318,7 +318,6 @@ public:
 private:
 	eVertexBufferType m_type;
 	eShaderType m_shader;
-	GLuint m_vao;
 	GLuint m_vbo = 0;
 	GLuint m_positionLoc = 0;
 	GLuint m_texCoordsLoc = 1;

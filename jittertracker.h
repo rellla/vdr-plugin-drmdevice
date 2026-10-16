@@ -34,7 +34,7 @@ private:
 	std::atomic<int> m_longTermMaxJitterMs = 0;
 	bool m_firstPacket = true;
 	bool m_secondPacket = true;
-	const char *m_identifier;
+	[[maybe_unused]] const char *m_identifier; ///< stream name (for debugging)
 };
 
 #endif
