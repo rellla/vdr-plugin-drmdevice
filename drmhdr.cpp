@@ -126,7 +126,7 @@ int cHdrMetadata::Build(struct hdr_output_metadata *data, int colorPrimaries, in
 	}
 
 	int maxLum = 4000;
-	int minLum = 0050;
+	int minLum = 50;                       // 0.005 cd/m², in units of 0.0001 cd/m²
 	if (mdMetadata) { // we got Metadata
 		if (mdMetadata->has_primaries) {
 			LOGDEBUG2(L_DRM, "HDR %s: Mastering Display Metadata:", __FUNCTION__);
