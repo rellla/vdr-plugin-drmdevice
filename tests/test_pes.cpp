@@ -1556,3 +1556,72 @@ TEST_CASE("cPtsTrackingBuffer - Reset functionality", "[ptstracking]") {
         REQUIRE(buffer.GetPts() == AV_NOPTS_VALUE);
     }
 }
+
+TEST_CASE("cPtsTrackingBuffer - Erase without any known PTS", "[ptstracking][erase]") {
+    // Regression test: the buffer can start with fragmented data without a PTS
+    // (e.g. after a reset because of an invalid PES packet). This aborted VDR before.
+    cPtsTrackingBuffer buffer("TEST");
+
+    std::vector<uint8_t> fragment(10, 0xAA);
+    buffer.Push(fragment.data(), fragment.size(), AV_NOPTS_VALUE);
+    REQUIRE(buffer.GetPts() == AV_NOPTS_VALUE);
+
+    SECTION("Erase a part") {
+        buffer.Erase(4);
+        REQUIRE(buffer.GetSize() == 6);
+        REQUIRE(buffer.GetPts() == AV_NOPTS_VALUE);
+    }
+
+    SECTION("Erase everything") {
+        buffer.Erase(10);
+        REQUIRE(buffer.GetSize() == 0);
+        REQUIRE(buffer.GetPts() == AV_NOPTS_VALUE);
+    }
+
+    SECTION("A later PTS is not assigned to the data in front of it") {
+        std::vector<uint8_t> frame(10, 0xBB);
+        buffer.Push(frame.data(), frame.size(), 5000);
+
+        buffer.Erase(4);
+        REQUIRE(buffer.GetPts() == AV_NOPTS_VALUE);
+
+        buffer.Erase(6);
+        REQUIRE(buffer.GetPts() == 5000);
+    }
+}
+
+TEST_CASE("cReassemblyBufferVideo - Pop fragmented data without PTS", "[reassembly][video]") {
+    // Regression test: this aborted VDR before
+    cReassemblyBufferVideo buffer;
+
+    std::vector<uint8_t> fragment(64, 0x00);
+    buffer.Push(fragment.data(), fragment.size(), AV_NOPTS_VALUE);
+
+    AVPacket *pkt = buffer.PopAvPacket();
+    REQUIRE(pkt != nullptr);
+    REQUIRE(pkt->size == 64);
+    REQUIRE(pkt->pts == AV_NOPTS_VALUE);
+    REQUIRE(buffer.IsEmpty());
+
+    av_packet_free(&pkt);
+}
+
+TEST_CASE("cReassemblyBufferAudio - ADTS frame length smaller than the header", "[reassembly][audio][framesize]") {
+    cReassemblyBufferAudio buffer;
+
+    // ADTS header with frame_length = 0
+    const uint8_t header[7] = { 0xFF, 0xF1, 0x50, 0x80, 0x00, 0x1F, 0xFC };
+    REQUIRE_THROWS_AS(buffer.GetFrameSizeForCodec(AV_CODEC_ID_AAC, header), std::invalid_argument);
+
+    SECTION("A buffer full of such headers doesn't get stuck") {
+        // Regression test: before, the buffer was never truncated and grew forever
+        std::vector<uint8_t> data;
+        for (int i = 0; i < 20; i++)
+            data.insert(data.end(), header, header + sizeof(header));
+
+        buffer.Push(data.data(), data.size(), 9000);
+
+        REQUIRE(buffer.PopAvPacket() == nullptr);
+        REQUIRE(buffer.GetSize() <= 6); // only the last bytes, which could contain a partial sync word, are kept
+    }
+}
