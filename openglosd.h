@@ -189,7 +189,7 @@ private:
 	GLuint m_texture = 0;
 	int m_width = 0;
 	int m_height = 0;
-	cOglAtlasGlyph* m_pGlyph[MAX_CHARCODE - MIN_CHARCODE + 1];
+	cOglAtlasGlyph* m_pGlyph[MAX_CHARCODE - MIN_CHARCODE + 1]{};
 };
 
 /**
@@ -220,9 +220,9 @@ private:
 	int m_size;
 	int m_height = 0;
 	int m_bottom = 0;
-	FT_Face m_face;
+	FT_Face m_face = nullptr;
 	mutable cList<cOglGlyph> m_glyphCache;
-	cOglFontAtlas *m_pAtlas;
+	cOglFontAtlas *m_pAtlas = nullptr;
 
 	cOglFont(const char *, int);
 	static void Init(void);
