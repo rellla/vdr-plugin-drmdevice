@@ -85,7 +85,7 @@ private:
 	cPlaylistEntry *m_pCurrentEntry = nullptr;
 
 	char *m_pSource;
-	int m_entries;
+	int m_entries = 0;
 	cOutputDevice *m_pDevice;
 	cAudioStream *m_pAudio;
 	std::atomic<int> m_jumpSec = 0;
