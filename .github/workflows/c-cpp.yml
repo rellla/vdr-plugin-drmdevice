@@ -4,139 +4,105 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'DEVELOPER/**'
+      - 'doxygen/**'
+      - 'LICENSE.md'
+      - '.github/dependabot.yml'
+      - '.github/workflows/doxygen.yml'
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'DEVELOPER/**'
+      - 'doxygen/**'
+      - 'LICENSE.md'
+      - '.github/dependabot.yml'
+      - '.github/workflows/doxygen.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+# cancel outdated runs of the same branch/pull request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GCC, OpenGL/ES
+            cxx: g++
+            gles: 1
+            check-i18n: true
+            artifact: vdr-drmdevice
+          - name: GCC, no OpenGL/ES
+            cxx: g++
+            gles: 0
+            artifact: vdr-drmdevice-no-gles
 
     steps:
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          pkg-config \
-          git \
-          catch2 \
-          lcov \
-          valgrind \
-          gettext \
-          cppcheck \
-          libavcodec-dev \
-          libavfilter-dev \
-          libavformat-dev \
-          libavutil-dev \
-          libasound2-dev \
-          libdrm-dev \
-          libgbm-dev \
-          libgles2-mesa-dev \
-          libegl1-mesa-dev \
-          libglm-dev \
-          libfreetype6-dev \
-          libfontconfig-dev
+      - name: Checkout plugin repository
+        uses: actions/checkout@v7
+        with:
+          path: drmdevice
 
-    - name: Clone VDR repository
-      run: git clone https://github.com/vdr-projects/vdr.git
+      - name: Set up build environment
+        uses: ./drmdevice/.github/actions/setup-build-env
 
-    - name: Checkout plugin repository
-      uses: actions/checkout@v4
-      with:
-        path: vdr/PLUGINS/src/drmdevice
+      - name: Build plugin
+        run: |
+          make -C vdr/PLUGINS/src/drmdevice -j"$(nproc)" \
+            CXX=${{ matrix.cxx }} GLES=${{ matrix.gles }} \
+            INCLUDES="-isystem $PWD/vdr/include -Werror"
 
-    - name: Build plugin (with OpenGL/ES support)
-      run: |
-        cd vdr
-        make include-dir vdr.pc
-        make -C PLUGINS/src/drmdevice INCLUDES="-isystem `pwd`/include -Werror" GLES=1
-        cd PLUGINS/src/drmdevice
-        if ! git diff --quiet -- po/*.po; then
-          echo "ERROR: The translation files need to be updated:"
-          git --no-pager diff -- po/*.po
-          exit 1
-        fi
-      continue-on-error: false
+      - name: Check translation files
+        if: matrix.check-i18n
+        working-directory: vdr/PLUGINS/src/drmdevice
+        run: |
+          if ! git diff --quiet -- po/*.po; then
+            echo "::error::The translation files need to be updated:"
+            git --no-pager diff -- po/*.po
+            exit 1
+          fi
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: vdr-drmdevice
-        path: vdr/PLUGINS/src/drmdevice/libvdr-drmdevice.so
-        if-no-files-found: error
+      - name: Upload build artifacts
+        if: matrix.artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: vdr/PLUGINS/src/drmdevice/libvdr-drmdevice.so
+          if-no-files-found: error
 
-    - name: Run cppcheck
-      run: |
-        cd vdr/PLUGINS/src/drmdevice
-        cppcheck --quiet --error-exitcode=1 .
-
-    - name: Run unit tests
-      run: |
-        cd vdr/PLUGINS/src/drmdevice/tests
-        make test
-      continue-on-error: false
-
-    - name: Publish test results
-      uses: EnricoMi/publish-unit-test-result-action@v2
-      with:
-        files: vdr/PLUGINS/src/drmdevice/tests/test-results.xml
-        check_name: Unit Test Results
-
-    - name: Generate coverage report
-      run: |
-        cd vdr/PLUGINS/src/drmdevice/tests
-        make coverage-html
-
-    - name: Upload coverage HTML report
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-html-report
-        path: vdr/PLUGINS/src/drmdevice/tests/coverage-html/
-
-  build-without-gles:
-    runs-on: ubuntu-latest
+  build-debian-testing:
+    # catches API changes of upcoming FFmpeg, libdrm and compiler versions early
+    name: Build (Debian testing, GCC, OpenGL/ES)
+    runs-on: ubuntu-24.04
+    container: debian:testing
 
     steps:
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          pkg-config \
-          git \
-          gettext \
-          libavcodec-dev \
-          libavfilter-dev \
-          libavformat-dev \
-          libavutil-dev \
-          libasound2-dev \
-          libdrm-dev \
-          libgbm-dev \
-          libglm-dev \
-          libfreetype6-dev \
-          libfontconfig-dev
+      - name: Install git
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git ca-certificates
 
-    - name: Clone VDR repository
-      run: git clone https://github.com/vdr-projects/vdr.git
+      - name: Checkout plugin repository
+        uses: actions/checkout@v7
+        with:
+          path: drmdevice
 
-    - name: Checkout plugin repository
-      uses: actions/checkout@v4
-      with:
-        path: vdr/PLUGINS/src/drmdevice
+      - name: Set up build environment
+        uses: ./drmdevice/.github/actions/setup-build-env
 
-    - name: Build plugin (without OpenGL/ES support)
-      run: |
-        cd vdr
-        make include-dir vdr.pc
-        make -C PLUGINS/src/drmdevice INCLUDES="-isystem `pwd`/include -Werror" GLES=0
-      continue-on-error: false
-
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: vdr-drmdevice-no-gles
-        path: vdr/PLUGINS/src/drmdevice/libvdr-drmdevice.so
-        if-no-files-found: error
+      - name: Build plugin
+        run: |
+          make -C vdr/PLUGINS/src/drmdevice -j"$(nproc)" GLES=1 \
+            INCLUDES="-isystem $PWD/vdr/include -Werror"

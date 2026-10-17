@@ -13,7 +13,7 @@ srcdoc
 *.gcno
 *.gcov
 
-tests/test_runner
+tests/obj/
 tests/test-results.xml
 tests/coverage.info
 tests/coverage-html/
