@@ -51,6 +51,7 @@ cVideoStream::cVideoStream(cVideoRender *render, int hardwareQuirks, cQueue<cDrm
 	  m_pDecoder(nullptr),
 	  m_pRender(render),
 	  m_identifier(isPipStream ? "PIP" : "main"),
+	  m_isPipStream(isPipStream),
 	  m_frameOutput(frameOutput),
 	  m_pDrmBufferQueue(drmBufferQueue),
 	  m_videoFilter(m_pDrmBufferQueue, isPipStream ? "shd PIP filter" : "shd main filter", frameOutput),
@@ -637,8 +638,8 @@ void cVideoStream::RenderFrame(AVFrame * frame)
 	double refreshRateHzMode = m_useDeinterlacer ? m_framerate * 2 : m_framerate;
 	bool interlacedMode = m_useDeinterlacer ? false : m_interlaced;
 
-	// reset the display mode if needed
-	if (m_framerate &&
+	// reset the display mode if needed (the display mode follows the main stream only)
+	if (!m_isPipStream && m_framerate &&
 	   (m_pConfig->CurrentVideoDrmMode.width         != m_pDecoder->GetContext()->coded_width ||
 	    m_pConfig->CurrentVideoDrmMode.height        != m_pDecoder->GetContext()->coded_height ||
 	    m_pConfig->CurrentVideoDrmMode.refreshRateHz != refreshRateHzMode ||
