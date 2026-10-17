@@ -1,0 +1,65 @@
+name: Set up the build environment
+description: >
+  Installs the build dependencies of the plugin, prepares a shallow VDR source
+  tree (./vdr) with the include directory and vdr.pc and moves the plugin
+  checkout into it (./vdr/PLUGINS/src/drmdevice).
+
+inputs:
+  plugin-path:
+    description: Path of the plugin checkout, which is moved into the VDR source tree
+    required: false
+    default: drmdevice
+  extra-packages:
+    description: Additional Debian/Ubuntu packages to install
+    required: false
+    default: ''
+  vdr-ref:
+    description: VDR branch or tag to build against (empty for the default branch)
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install build dependencies
+      shell: bash
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        SUDO=""
+        if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
+        $SUDO apt-get update -qq
+        $SUDO apt-get install -y -qq --no-install-recommends \
+          build-essential \
+          ca-certificates \
+          git \
+          gettext \
+          pkg-config \
+          libavcodec-dev \
+          libavfilter-dev \
+          libavformat-dev \
+          libavutil-dev \
+          libswscale-dev \
+          libasound2-dev \
+          libdrm-dev \
+          libgbm-dev \
+          libgles-dev \
+          libegl-dev \
+          libglm-dev \
+          libfreetype-dev \
+          libfontconfig-dev \
+          ${{ inputs.extra-packages }}
+
+    - name: Prepare VDR source tree
+      shell: bash
+      run: |
+        git clone --quiet --depth 1 ${{ inputs.vdr-ref && format('--branch {0}', inputs.vdr-ref) || '' }} \
+          https://github.com/vdr-projects/vdr.git vdr
+        git -C vdr log -1 --format='Building against VDR %h (%cs): %s'
+        make -C vdr include-dir vdr.pc
+
+    - name: Move the plugin into the VDR source tree
+      shell: bash
+      run: |
+        mkdir -p vdr/PLUGINS/src
+        mv "${{ inputs.plugin-path }}" vdr/PLUGINS/src/drmdevice
