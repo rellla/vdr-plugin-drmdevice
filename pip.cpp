@@ -74,7 +74,8 @@ void cPipReceiver::Receive(const uchar *data, int size)
 			return;
 		cCondWait::SleepMs(RETRYWAITMS);
 	}
-	m_pDevice->ResetPipStream();
+	// don't wait for the state machine here, see cOutputDevice::TryResetPipStream()
+	m_pDevice->TryResetPipStream();
 	m_numLostPackets++;
 	if (cTimeMs::Now() - m_lastErrorReport > ERRORDELTASEC) {
 		LOGWARNING("pipreceiver: %d TS packet(s) not accepted in pip stream", m_numLostPackets);
@@ -162,7 +163,11 @@ cPipHandler::cPipHandler(cOutputDevice *device)
 
 cPipHandler::~cPipHandler(void)
 {
-	Stop();
+	// The handler is deleted by the state machine on a detach, which holds the state
+	// machine lock and has halted the render thread. So don't use Stop(), which locks
+	// both again in ResetPipStream(). The pip stream is destroyed by the device anyway.
+	m_active = false;
+	delete m_pPipReceiver;
 }
 
 /**
