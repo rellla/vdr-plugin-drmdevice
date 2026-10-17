@@ -1450,6 +1450,36 @@ void cOutputDevice::ResetPipStream(void)
 {
 	auto lock = m_pStateMachine->Lock();
 
+	ResetPipStreamLocked();
+}
+
+/**
+ * Resets pip stream and render pipeline, if the state machine isn't locked
+ *
+ * This is used by the pip receiver, which runs in VDR's receiver thread. While
+ * the receiver thread is in cPipReceiver::Receive(), VDR holds its receiver mutex.
+ * The state machine detaches the pip receiver on a detach, which needs this mutex.
+ * So the receiver thread must not wait for the state machine.
+ *
+ * @retval true     the pip stream was reset
+ * @retval false    the state machine is locked (e.g. a state change is in progress)
+ */
+bool cOutputDevice::TryResetPipStream(void)
+{
+	std::unique_lock<std::mutex> lock = m_pStateMachine->TryLock();
+	if (!lock.owns_lock())
+		return false;
+
+	ResetPipStreamLocked();
+
+	return true;
+}
+
+/**
+ * Resets pip stream and render pipeline, the caller has to lock the state machine
+ */
+void cOutputDevice::ResetPipStreamLocked(void)
+{
 	m_pPipStream->Halt();
 
 	m_pPipStream->CancelFilterThread();
