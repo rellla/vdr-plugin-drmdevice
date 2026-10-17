@@ -16,7 +16,9 @@ The tests cover the parts of the plugin, which can be tested without any hardwar
 | `test_queue.cpp`          | thread-safe queue                                       |
 | `test_ringbuffer.cpp`     | audio ring buffer                                       |
 
-`test_stubs.cpp` provides the few VDR symbols, which are needed to link the tests.
+Every `test_*.cpp` in this directory is built automatically. Regression tests of fixed bugs
+are kept in `test_*_regressions.cpp`. `h264streamwriter.h` composes H.264 NAL units for the
+H.264 tests and `test_stubs.cpp` provides the few VDR symbols, which are needed to link the tests.
 
 ## Prerequisites
 

@@ -35,17 +35,8 @@ $(error Unknown BUILD variant '$(BUILD)', use default, sanitize or coverage)
 endif
 
 # Test sources (in this directory)
-TEST_SOURCES = \
-	test_audioprocessor.cpp \
-	test_config.cpp \
-	test_filllevel.cpp \
-	test_h264parser.cpp \
-	test_misc.cpp \
-	test_pes.cpp \
-	test_pidcontroller.cpp \
-	test_queue.cpp \
-	test_ringbuffer.cpp \
-	test_stubs.cpp
+# (every test_*.cpp, test_stubs.cpp provides the needed VDR symbols)
+TEST_SOURCES = $(sort $(wildcard test_*.cpp))
 
 # Plugin sources under test (in the parent directory)
 SOURCES_UNDER_TEST = \
