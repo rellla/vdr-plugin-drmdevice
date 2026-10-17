@@ -27,13 +27,13 @@ public:
 	int GetShortTermMaxJitterMs(void) { return m_shortTermMaxJitterMs; };
 
 private:
-	int64_t m_lastDiffMs = 0;
-	std::chrono::steady_clock::time_point m_lastTime;
-	std::atomic<int> m_shortTermMaxJitterMs = 0;
-	int m_packetCounter = 0;
-	std::atomic<int> m_longTermMaxJitterMs = 0;
-	bool m_firstPacket = true;
-	bool m_secondPacket = true;
+	int64_t m_lastDiffMs = 0;                           ///< time between the last two packets
+	std::chrono::steady_clock::time_point m_lastTime;   ///< arrival time of the last packet
+	std::atomic<int> m_shortTermMaxJitterMs = 0;        ///< short term maximum jitter
+	int m_packetCounter = 0;                            ///< number of received packets
+	std::atomic<int> m_longTermMaxJitterMs = 0;         ///< long term maximum jitter
+	bool m_firstPacket = true;                          ///< true, until the first packet was received
+	bool m_secondPacket = true;                         ///< true, until the second packet was received
 	[[maybe_unused]] const char *m_identifier; ///< stream name (for debugging)
 };
 

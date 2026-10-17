@@ -1471,12 +1471,19 @@ bool cOutputDevice::PipIsEnabled(void)
 }
 
 // The pip handler only exists in attached state
+/** Enable pip (see cPipHandler::Enable()) */
 void cOutputDevice::PipEnable(void) { if (m_pPipHandler) m_pPipHandler->Enable(); };
+/** Disable pip (see cPipHandler::Disable()) */
 void cOutputDevice::PipDisable(void) { if (m_pPipHandler) m_pPipHandler->Disable(); };
+/** Toggle pip (see cPipHandler::Toggle()) */
 void cOutputDevice::PipToggle(void) { if (m_pPipHandler) m_pPipHandler->Toggle(); };
+/** Switch the pip channel up or down (see cPipHandler::ChannelChange()) */
 void cOutputDevice::PipChannelChange(int dir) { if (m_pPipHandler) m_pPipHandler->ChannelChange(dir); };
+/** Swap the pip and the main channel (see cPipHandler::ChannelSwap()) */
 void cOutputDevice::PipChannelSwap(bool closePip) { if (m_pPipHandler) m_pPipHandler->ChannelSwap(closePip); };
+/** Swap the pip position (see cPipHandler::SwapPosition()) */
 void cOutputDevice::PipSwapPosition(void) { if (m_pPipHandler) m_pPipHandler->SwapPosition(); };
+/** Apply the configured pip size (see cPipHandler::SetSize()) */
 void cOutputDevice::PipSetSize(void) { if (m_pPipHandler) m_pPipHandler->SetSize(); };
 
 /*

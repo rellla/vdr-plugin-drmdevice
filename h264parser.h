@@ -84,11 +84,11 @@ public:
 	bool HasParseError(void) const { return m_parseError; };
 
 private:
-	AVPacket *m_pAvpkt;
-	const unsigned char *m_pStart;
-	std::vector<uint8_t> m_rbsp;
+	AVPacket *m_pAvpkt;            ///< the parsed packet
+	const unsigned char *m_pStart; ///< start of the RBSP data, which is read
+	std::vector<uint8_t> m_rbsp;   ///< RBSP data of the current NAL unit (without emulation prevention bytes)
 	int m_nLength;                 ///< length of the RBSP data in bytes
-	int m_nCurrentBit;
+	int m_nCurrentBit;             ///< current bit position in the RBSP data
 
 	int m_nalutype = 0;
 	int m_width = 0;
@@ -112,11 +112,11 @@ private:
 	bool m_hasInvalidBackwardReferences = false;
 	bool m_hasValidReferences = false;
 
-	int m_log2MaxFrameNumMinus4 = -4;             // saved from SPS
-	int m_ppsNumRefIdxL0DefaultActiveMinus1 = -1; // saved from PPS
-	int m_ppsNumRefIdxL1DefaultActiveMinus1 = -1; // saved from PPS
-	int m_numRefIdxL0Active = 0;
-	int m_numRefIdxL1Active = 0;
+	int m_log2MaxFrameNumMinus4 = -4;             ///< saved from SPS
+	int m_ppsNumRefIdxL0DefaultActiveMinus1 = -1; ///< saved from PPS
+	int m_ppsNumRefIdxL1DefaultActiveMinus1 = -1; ///< saved from PPS
+	int m_numRefIdxL0Active = 0;                        ///< number of active references in list 0
+	int m_numRefIdxL1Active = 0;                        ///< number of active references in list 1
 
 	unsigned int ReadBit(void);
 	unsigned int ReadBits(int);

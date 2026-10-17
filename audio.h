@@ -164,9 +164,9 @@ private:
 	// filter
 	int m_filterChanged = 0;                ///< filter has changed
 	int m_filterReady = 0;                  ///< filter is ready
-	AVFilterGraph *m_pFilterGraph = nullptr;
-	AVFilterContext *m_pBuffersrcCtx = nullptr;
-	AVFilterContext *m_pBuffersinkCtx = nullptr;
+	AVFilterGraph *m_pFilterGraph = nullptr;            ///< audio filter graph
+	AVFilterContext *m_pBuffersrcCtx = nullptr;         ///< source (input) of the filter graph
+	AVFilterContext *m_pBuffersinkCtx = nullptr;        ///< sink (output) of the filter graph
 	int InitFilter(AVCodecContext *);
 	AVFrame *FilterGetFrame(void);
 	int CheckForFilterReady(AVCodecContext *);
