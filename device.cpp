@@ -944,6 +944,18 @@ void cOutputDevice::SetDisplayMode(int idx)
 }
 
 /**
+ * Check, if video arrived during an audio only playback
+ *
+ * Then a resync is needed to start the video playback.
+ *
+ * @return true, if a resync is needed
+ */
+bool cOutputDevice::VideoArrivedInAudioOnlyPlayback(void)
+{
+	return m_pStateMachine->GetState() == PLAY && m_playbackMode == AUDIO_ONLY && m_receivedVideo;
+}
+
+/**
  * Check, if all conditions are met to start the playback
  *
  * During the BUFFERING state, this method determines when sufficient audio/video data
@@ -972,11 +984,6 @@ void cOutputDevice::SetDisplayMode(int idx)
  */
 bool cOutputDevice::CheckPlaybackStartConditions()
 {
-	if (m_pStateMachine->GetState() == PLAY && m_playbackMode == AUDIO_ONLY && m_receivedVideo) {
-		TriggerEvent(ResyncEvent{});
-		return false;
-	}
-
 	if (m_pStateMachine->GetState() != BUFFERING)
 		return false;
 
