@@ -147,6 +147,7 @@ public:
 	void SetState(State state) { m_state = state; };
 	void ChangeState(State);
 	std::unique_lock<std::mutex> Lock(void) const { return std::unique_lock<std::mutex>(m_mutex); };
+	std::unique_lock<std::mutex> TryLock(void) const { return std::unique_lock<std::mutex>(m_mutex, std::try_to_lock); } ///< like Lock(), but don't wait (check owns_lock())
 
 private:
 	cOutputDevice *m_pDevice;                ///< pointer to the device
