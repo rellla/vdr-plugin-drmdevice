@@ -1,0 +1,88 @@
+name: Static analysis
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'DEVELOPER/**'
+      - 'doxygen/**'
+      - 'LICENSE.md'
+      - '.github/dependabot.yml'
+      - '.github/workflows/doxygen.yml'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'DEVELOPER/**'
+      - 'doxygen/**'
+      - 'LICENSE.md'
+      - '.github/dependabot.yml'
+      - '.github/workflows/doxygen.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# cancel outdated runs of the same branch/pull request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-clang:
+    name: Build (Clang, ${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: OpenGL/ES
+            gles: 1
+          - name: no OpenGL/ES
+            gles: 0
+
+    steps:
+      - name: Checkout plugin repository
+        uses: actions/checkout@v7
+        with:
+          path: drmdevice
+
+      - name: Set up build environment
+        uses: ./drmdevice/.github/actions/setup-build-env
+        with:
+          extra-packages: clang
+
+      - name: Build plugin
+        # clang warns about some issues, which gcc doesn't (e.g. unused private fields)
+        run: |
+          make -C vdr/PLUGINS/src/drmdevice -j"$(nproc)" \
+            CXX=clang++ GLES=${{ matrix.gles }} \
+            INCLUDES="-isystem $PWD/vdr/include -Werror" \
+            libvdr-drmdevice.so
+
+  cppcheck:
+    name: cppcheck
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout plugin repository
+        uses: actions/checkout@v7
+
+      - name: Install cppcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends cppcheck
+
+      - name: Run cppcheck
+        run: |
+          cppcheck --version
+          # check both configurations, with and without OpenGL/ES
+          for config in -DUSE_GLES -UUSE_GLES; do
+            echo "::group::cppcheck $config"
+            cppcheck --quiet --error-exitcode=1 -j"$(nproc)" --std=c++17 --inline-suppr \
+              --enable=warning,performance,portability "$config" .
+            echo "::endgroup::"
+          done
