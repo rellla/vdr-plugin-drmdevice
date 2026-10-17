@@ -97,6 +97,7 @@ private:
 	cVideoDecoder *m_pDecoder;          ///< video decoder
 	cVideoRender *m_pRender;            ///< video renderer
 	const char *m_identifier;           ///< identifier string for logging
+	bool m_isPipStream;                 ///< true, if this is the pip stream
 	std::function<void(AVFrame *)> m_frameOutput;   ///< function to output the frame
 	cQueue<cDrmBuffer> *m_pDrmBufferQueue;          ///< pointer to renderer's DRM buffer queue
 	cVideoFilter m_videoFilter;         ///< pointer to deinterlace/scaling video filter thread
