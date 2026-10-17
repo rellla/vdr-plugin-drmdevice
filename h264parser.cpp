@@ -702,6 +702,15 @@ void cH264Parser::ConvertNalUnitToRBSP(int offset)
 	m_nCurrentBit = 0;
 }
 
+/**
+ * Convert EBSP (encapsulated byte sequence payload) to RBSP
+ *
+ * Removes the emulation prevention bytes (0x03 after two zero bytes) and
+ * stores the result in m_rbsp.
+ *
+ * @param src       EBSP data
+ * @param length    length of the EBSP data in bytes
+ */
 void cH264Parser::ConvertEBSPtoRBSP(const uint8_t *src, int length)
 {
 	m_rbsp.clear();

@@ -65,8 +65,8 @@ private:
 	uint32_t m_planeId = 0;             ///< the plane's ID
 	uint64_t m_type = 0;                ///< type: DRM_PLANE_TYPE_PRIMARY or
 	                                    ///<       DRM_PLANE_TYPE_OVERLAY
-	drmModeObjectProperties *m_props = nullptr;
-	drmModePropertyRes **m_propsInfo = nullptr;
+	drmModeObjectProperties *m_props = nullptr;         ///< properties of the plane
+	drmModePropertyRes **m_propsInfo = nullptr;         ///< property infos (names, ids) of the plane
 
 	// The modesetting parameters for a drm commit
 	uint64_t m_crtcId = 0;            ///< CRTC_ID
