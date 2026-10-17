@@ -100,10 +100,10 @@ public:
 	void Push(const uint8_t *, int, int64_t);
 	void Erase(size_t);
 	int64_t GetPts(void);
-	const uint8_t *Peek(void) { return &m_data[0]; }
-	void Reset(void) { m_data.clear(); m_pts.clear(); }
-	int GetSize(void) { return m_data.size(); }
-	const char *GetIdentifier(void) { return m_identifier; }
+	const uint8_t *Peek(void) { return m_data.data(); }           ///< get the buffered data (nullptr, if empty)
+	void Reset(void) { m_data.clear(); m_pts.clear(); }           ///< drop all data and pts values
+	int GetSize(void) { return m_data.size(); }                   ///< get the number of buffered bytes
+	const char *GetIdentifier(void) { return m_identifier; }      ///< get the identifier
 private:
 	const char *m_identifier;
 	std::map<size_t, int64_t> m_pts;     ///< Map of buffer positions to PTS values
