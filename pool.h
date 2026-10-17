@@ -21,7 +21,7 @@
 template <typename T>
 class cPool {
 protected:
-	std::vector<std::unique_ptr<T>> buffer;
+	std::vector<std::unique_ptr<T>> buffer;    ///< the pooled objects
 
 public:
 	cPool(size_t size) {

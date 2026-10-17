@@ -84,17 +84,17 @@ private:
 	cPlaylistEntry *m_pFirstEntry = nullptr;
 	cPlaylistEntry *m_pCurrentEntry = nullptr;
 
-	char *m_pSource;
-	int m_entries = 0;
-	cOutputDevice *m_pDevice;
-	cAudioStream *m_pAudio;
-	std::atomic<int> m_jumpSec = 0;
-	std::atomic<bool> m_paused = false;
-	std::atomic<bool> m_stopped = false;
-	std::atomic<bool> m_random = false;
-	bool m_noModify = false;
-	int m_currentTime = 0;
-	int m_duration = 0;
+	char *m_pSource;                                    ///< played file or playlist
+	int m_entries = 0;                                  ///< number of playlist entries
+	cOutputDevice *m_pDevice;                           ///< pointer to the device
+	cAudioStream *m_pAudio;                             ///< pointer to the audio stream
+	std::atomic<int> m_jumpSec = 0;                     ///< requested jump in seconds
+	std::atomic<bool> m_paused = false;                 ///< true, if paused
+	std::atomic<bool> m_stopped = false;                ///< true, if the current file shall be stopped
+	std::atomic<bool> m_random = false;                 ///< true, if random play is active
+	bool m_noModify = false;                            ///< true, if the next entry was already selected (don't advance)
+	int m_currentTime = 0;                              ///< current playback position in seconds
+	int m_duration = 0;                                 ///< duration of the current file in seconds
 };
 
 /**
