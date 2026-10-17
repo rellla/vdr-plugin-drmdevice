@@ -715,7 +715,11 @@ bool cVideoRender::DisplayFrame(void)
 {
 	bool frameTick = m_flipCounter % m_framesPerFlipCycle == 0;
 
-	if (m_pDevice->CheckPlaybackStartConditions())
+	// The events are triggered in ProcessEvents(), after the render mutex is unlocked.
+	// The state machine halts this thread, so the events must not be triggered here.
+	if (m_pDevice->VideoArrivedInAudioOnlyPlayback())
+		m_eventQueue.push_back(ResyncEvent{});
+	else if (m_pDevice->CheckPlaybackStartConditions())
 		m_eventQueue.push_back(BufferingThresholdReachedEvent{});
 
 	if (m_pDevice->CheckAudioPlaybackStartConditions())
