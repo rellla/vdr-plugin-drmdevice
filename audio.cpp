@@ -1272,11 +1272,18 @@ void cAudioStream::ResetHwDelayBaseline(void)
  */
 void cAudioStream::ProcessEvents(void)
 {
-	std::lock_guard<std::mutex> lock(m_queueMutex);
-	for (Event event : m_eventQueue)
-		m_pDevice->TriggerEvent(event);
+	std::vector<Event> events;
 
-	m_eventQueue.clear();
+	{
+		std::lock_guard<std::mutex> lock(m_queueMutex);
+		events.swap(m_eventQueue);
+	}
+
+	// Trigger the events without holding the queue mutex: the state machine may lock
+	// m_mutex (e.g. in FlushBuffers()), while a thread in Enqueue() holds m_mutex
+	// and waits for the queue mutex.
+	for (const Event &event : events)
+		m_pDevice->TriggerEvent(event);
 }
 
 /**
