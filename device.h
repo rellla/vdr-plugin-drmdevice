@@ -213,6 +213,7 @@ public:
 	// state transitioning functions
 	void TriggerEvent(const Event&);
 	bool VideoArrivedInAudioOnlyPlayback(void);
+	bool TryResetPipStream(void);
 
 	void LeaveState(State);
 	void EnterState(State);
@@ -288,6 +289,7 @@ private:
 	int PlayVideoInternal(cVideoStream *, cReassemblyBufferVideo *, const uchar *, int, bool, bool);
 	void FlushAudio(void);
 	void DeleteDecoderAndOutput(void);
+	void ResetPipStreamLocked(void);
 	int64_t GetFirstAudioPtsMsToPlay();
 	int64_t GetFirstVideoPtsMsToPlay();
 	int GetBufferFillLevelThresholdMs();
