@@ -212,6 +212,7 @@ public:
 
 	// state transitioning functions
 	void TriggerEvent(const Event&);
+	bool VideoArrivedInAudioOnlyPlayback(void);
 
 	void LeaveState(State);
 	void EnterState(State);
