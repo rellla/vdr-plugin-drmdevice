@@ -110,8 +110,8 @@ protected:
 	int m_cShowChannelSwitchDurationMessage;
 
 private:
-	cOutputDevice *m_pDevice;
-	cDeviceConfig *m_pConfig;
+	cOutputDevice *m_pDevice;                          ///< pointer to the device
+	cDeviceConfig *m_pConfig;                          ///< pointer to the config
 
 	std::vector<std::string> m_displayMode;
 	std::vector<const char *> m_displayModePtrs;
