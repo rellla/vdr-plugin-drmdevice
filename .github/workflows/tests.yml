@@ -1,0 +1,85 @@
+name: Unit tests
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'DEVELOPER/**'
+      - 'doxygen/**'
+      - 'LICENSE.md'
+      - '.github/dependabot.yml'
+      - '.github/workflows/doxygen.yml'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'DEVELOPER/**'
+      - 'doxygen/**'
+      - 'LICENSE.md'
+      - '.github/dependabot.yml'
+      - '.github/workflows/doxygen.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# cancel outdated runs of the same branch/pull request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      checks: write          # publish the test results
+      pull-requests: write   # comment the test results
+
+    steps:
+      - name: Checkout plugin repository
+        uses: actions/checkout@v7
+        with:
+          path: drmdevice
+
+      - name: Set up build environment
+        uses: ./drmdevice/.github/actions/setup-build-env
+        with:
+          extra-packages: catch2 lcov valgrind
+
+      - name: Run unit tests
+        working-directory: vdr/PLUGINS/src/drmdevice/tests
+        run: make -j"$(nproc)" test
+
+      - name: Run unit tests with valgrind
+        working-directory: vdr/PLUGINS/src/drmdevice/tests
+        run: make memcheck
+
+      - name: Run unit tests with address and undefined behavior sanitizer
+        working-directory: vdr/PLUGINS/src/drmdevice/tests
+        run: make -j"$(nproc)" sanitize
+
+      - name: Publish test results
+        # the token of pull requests from forks has no write permission
+        if: >-
+          always() &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: vdr/PLUGINS/src/drmdevice/tests/test-results.xml
+          check_name: Unit Test Results
+
+      - name: Generate coverage report
+        working-directory: vdr/PLUGINS/src/drmdevice/tests
+        run: make -j"$(nproc)" coverage-html
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html-report
+          path: vdr/PLUGINS/src/drmdevice/tests/coverage-html/
