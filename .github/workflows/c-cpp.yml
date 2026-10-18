@@ -48,6 +48,15 @@ jobs:
             cxx: g++
             gles: 0
             artifact: vdr-drmdevice-no-gles
+          # the latest releases of the older VDR versions
+          - name: GCC, OpenGL/ES, VDR 2.6
+            cxx: g++
+            gles: 1
+            vdr-ref: '2.6'
+          - name: GCC, OpenGL/ES, VDR 2.4
+            cxx: g++
+            gles: 1
+            vdr-ref: '2.4'
 
     steps:
       - name: Checkout plugin repository
@@ -57,6 +66,8 @@ jobs:
 
       - name: Set up build environment
         uses: ./drmdevice/.github/actions/setup-build-env
+        with:
+          vdr-ref: ${{ matrix.vdr-ref }}
 
       - name: Build plugin
         run: |
