@@ -618,16 +618,32 @@ int cAudioStream::Setup(AVRational timebase, int samplerate, int channels, bool 
 	   (channels == (int)m_alsa.GetHwNumChannels() || (m_alsa.GetDownmix() && m_alsa.GetHwNumChannels() == 2)))
 		return 1;
 
-	if (Active()) {
-		Stop();
-		DropAlsaBuffers();
-	}
+	// remember, if the audio was playing (e.g. an audio track change during the playback)
+	bool wasPlaying = !m_paused;
+
+	// Stop the thread and always drop the device buffers: the PCM may still be running
+	// or in xrun state, even if the thread isn't active, and the hw params can't be
+	// changed then. The data in the ringbuffer has the old format, so drop it, too.
+	Stop();
+	FlushBuffers();
+	DropAlsaBuffers();
 
 	err = m_alsa.Setup(channels, samplerate, passthrough, m_pConfig->ConfigAudioDownmix);
-	if (err)
+	if (err) {
 		LOGERROR("audio: %s: failed!", __FUNCTION__);
-	else
-		Start();
+		return err;
+	}
+
+	Start();
+
+	// All buffered audio was dropped. Let the state machine buffer again and resync audio
+	// and video, otherwise the output runs empty (an underrun in passthrough mode doesn't
+	// trigger the buffering, the receiver gets gaps and video frames are dropped or duped).
+	if (wasPlaying && !m_pDevice->IsDraining()) {
+		LOGDEBUG2(L_SOUND, "audio: %s: format changed during the playback, buffer again", __FUNCTION__);
+		std::lock_guard<std::mutex> lock(m_queueMutex);
+		m_eventQueue.push_back(BufferUnderrunEvent{AUDIO});
+	}
 
 	return err;
 }
