@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout plugin repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -49,7 +49,7 @@ jobs:
           echo "GIT_DESCRIBE_VERSION=$GIT_DESCRIBE_VERSION" >> $GITHUB_ENV
 
       - name: Setup pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Install dependencies
         run: |
@@ -79,7 +79,7 @@ jobs:
         run: touch $DOXYGEN_OUTPUT/.nojekyll
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ${{ env.DOXYGEN_OUTPUT }}
 
@@ -93,4 +93,4 @@ jobs:
     steps:
       - name: Deploy to github pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
