@@ -14,6 +14,7 @@
 #define __DRMDEVICE_CODEC_AUDIO_H
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <vector>
@@ -81,6 +82,8 @@ private:
 	int m_currentNumChannels = 0;               ///< current number of channels
 	int m_currentHwSampleRate = 0;              ///< current hw sample rate
 	int m_currentHwNumChannels = 0;             ///< current number of hw channels
+	bool m_currentPassthrough = false;          ///< true, if the audio is currently set up for passthrough
+	std::atomic<bool> m_passthroughFailed = false; ///< true, if the passthrough of the current codec failed (decode it instead)
 	std::mutex m_mutex;                         ///< decoder mutex
 
 	std::array<uint8_t, 32768> m_spdifIoBuffer{}; ///< spdif I/O buffer
