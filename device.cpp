@@ -453,10 +453,17 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 		if (!(avpkt = m_audioReassemblyBuffer.PopAvPacket()))
 			break;
 
-		if (m_pAudioDecoder->GetCodecId() == AV_CODEC_ID_NONE && m_audioReassemblyBuffer.GetCodec() != AV_CODEC_ID_NONE) {
-			// The playback has just started
+		// (Re)open the decoder, if the playback has just started or the codec changed.
+		// The PES stream id doesn't change between AC-3 and E-AC-3 (both are private stream 1),
+		// so the codec has to be compared.
+		AVCodecID codecId = m_audioReassemblyBuffer.GetCodec();
+		if (codecId != AV_CODEC_ID_NONE && m_pAudioDecoder->GetCodecId() != codecId) {
+			if (m_pAudioDecoder->GetCodecId() != AV_CODEC_ID_NONE)
+				LOGINFO("device: %s: audio codec changed from %s to %s", __FUNCTION__,
+					avcodec_get_name(m_pAudioDecoder->GetCodecId()), avcodec_get_name(codecId));
+
 			m_pAudioDecoder->Close();
-			m_pAudioDecoder->Open(m_audioReassemblyBuffer.GetCodec());
+			m_pAudioDecoder->Open(codecId);
 		}
 
 		m_pAudioDecoder->Decode(avpkt);
