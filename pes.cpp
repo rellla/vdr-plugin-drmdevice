@@ -132,9 +132,10 @@ static const std::map<AVCodecID, CodecInfo> AudioCodecMap = {
 			constexpr uint32_t AC3_SYNC_WORD_MASK = 0xFFFF00;
 			constexpr uint32_t AC3_SYNC_WORD = 0x0B77 << (24-16);
 
+			// bsid (the upper 5 bits of byte 5): 0..10 is AC-3 (9 and 10 are the reduced sample rates)
 			uint32_t syncWord = ReadBytes(data, 3);
 			return (syncWord & AC3_SYNC_WORD_MASK) == AC3_SYNC_WORD &&
-			       data[5] <= (10 << 3);
+			       (data[5] >> 3) <= 10;
 		},
 		.GetFrameSize = [](const uint8_t* data) -> int {
 			constexpr uint16_t Ac3FrameSizeTable[38][3] = {
@@ -166,8 +167,10 @@ static const std::map<AVCodecID, CodecInfo> AudioCodecMap = {
 		.MatchSyncWord = [](const uint8_t* data) -> bool {
 			constexpr uint32_t AC3_SYNC_WORD = 0x0B77 << (24-16);
 
+			// bsid (the upper 5 bits of byte 5): 11..16 is E-AC-3, higher values are invalid
 			uint32_t syncWord = ReadBytes(data, 3);
-			return (syncWord & 0xFFFF00) == AC3_SYNC_WORD && data[5] > (10 << 3);
+			int bsid = data[5] >> 3;
+			return (syncWord & 0xFFFF00) == AC3_SYNC_WORD && bsid > 10 && bsid <= 16;
 		},
 		.GetFrameSize = [](const uint8_t* data) -> int {
 			if ((data[4] & 0xF0) == 0xF0)
