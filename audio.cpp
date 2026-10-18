@@ -14,6 +14,7 @@
  * @license{AGPL-3.0-or-later}
  */
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>

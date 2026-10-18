@@ -1347,7 +1347,8 @@ void cOutputDevice::Detach(void)
 		StopReplay();
 	}
 
-	if (IsPrimaryDevice(false)) {
+	// IsPrimaryDevice(false) is not available before VDR 2.6.0
+	if (this == cDevice::PrimaryDevice()) {
 		m_needsMakePrimary = true;
 		MakePrimaryDevice(false);
 	}
