@@ -314,6 +314,14 @@ int cAlsaDevice::Setup(int channels, int sample_rate, bool passthrough, int down
 	m_downmix = downmix;
 	m_useMmap = false;
 
+	// the hw params can only be changed in the OPEN, SETUP and PREPARED state
+	snd_pcm_state_t pcmState = snd_pcm_state(m_pPCMHandle);
+	if (pcmState != SND_PCM_STATE_OPEN && pcmState != SND_PCM_STATE_SETUP && pcmState != SND_PCM_STATE_PREPARED) {
+		LOGDEBUG2(L_SOUND, "audio: %s: drop the pcm in state %s", __FUNCTION__, snd_pcm_state_name(pcmState));
+		if ((err = snd_pcm_drop(m_pPCMHandle)) < 0)
+			LOGERROR("audio: %s: snd_pcm_drop(): %s", __FUNCTION__, snd_strerror(err));
+	}
+
 	// fill hw params
 	snd_pcm_hw_params_t *hwparams;
 	snd_pcm_hw_params_alloca(&hwparams);
