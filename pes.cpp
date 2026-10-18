@@ -499,7 +499,7 @@ AVPacket *cReassemblyBufferAudio::PopAvPacket(void)
 	if (detectedCodec == AV_CODEC_ID_NONE)
 		return nullptr; // No sync word found in the buffer. Wait for more data.
 	else if (m_codec != AV_CODEC_ID_NONE && detectedCodec != m_codec)
-		LOGERROR("pes: %s: audio codec changed unexpectedly from %s to %s", __FUNCTION__, avcodec_get_name(m_codec), avcodec_get_name(detectedCodec));
+		LOGDEBUG2(L_CODEC, "pes: %s: audio codec changed from %s to %s", __FUNCTION__, avcodec_get_name(m_codec), avcodec_get_name(detectedCodec));
 
 	m_codec = detectedCodec;
 
