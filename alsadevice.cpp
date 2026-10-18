@@ -340,26 +340,37 @@ int cAlsaDevice::Setup(int channels, int sample_rate, bool passthrough, int down
 		LOGERROR("audio: %s: SampleRate %d not supported (%s)", __FUNCTION__, sample_rate, snd_strerror(err));
 		return -1;
 	}
-	if ((int)m_hwSampleRate != sample_rate)
+	if ((int)m_hwSampleRate != sample_rate) {
+		// the receiver can't decode a bitstream with another sample rate
+		if (passthrough) {
+			LOGERROR("audio: %s: passthrough needs a sample rate of %d, but the device only offers %d", __FUNCTION__, sample_rate, m_hwSampleRate);
+			return -1;
+		}
 		LOGDEBUG2(L_SOUND, "audio: %s: sample_rate %d m_hwSampleRate %d", __FUNCTION__, sample_rate, m_hwSampleRate);
+	}
 
 	// pre-test, if channels could be set near requested channels or if a donwmix is necessary
 	m_hwNumChannels = channels;
 	if ((err = snd_pcm_hw_params_set_channels_near(m_pPCMHandle, hwparams, &m_hwNumChannels)) < 0)
 		LOGWARNING("audio: %s: %d channels not supported! %s", __FUNCTION__, m_hwNumChannels, snd_strerror(err));
-	// force downmix without respect to the setup menu entry
-	if ((int)m_hwNumChannels != channels && !passthrough)
+	if ((int)m_hwNumChannels != channels) {
+		if (passthrough) {
+			LOGERROR("audio: %s: passthrough needs %d channels, but the device only offers %d", __FUNCTION__, channels, m_hwNumChannels);
+			return -1;
+		}
+		// force downmix without respect to the setup menu entry
 		m_downmix = 1;
+	}
 
 	// pre-test setting buffer time
 	unsigned bufferTimeUs = 100'000;
 	if ((err = snd_pcm_hw_params_set_buffer_time_near(m_pPCMHandle, hwparams, &bufferTimeUs, NULL)) < 0)
 		LOGWARNING("audio: %s: bufferTime %d not supported! %s", __FUNCTION__, bufferTimeUs, snd_strerror(err));
 
-	// set params
+	// set params (a bitstream must not be resampled)
 	if ((err = snd_pcm_set_params(m_pPCMHandle, SND_PCM_FORMAT_S16,
 		m_useMmap ? SND_PCM_ACCESS_MMAP_INTERLEAVED : SND_PCM_ACCESS_RW_INTERLEAVED,
-		m_hwNumChannels, m_hwSampleRate, 1, bufferTimeUs))) {
+		m_hwNumChannels, m_hwSampleRate, passthrough ? 0 : 1, bufferTimeUs))) {
 
 		snd_pcm_state_t state = snd_pcm_state(m_pPCMHandle);
 		LOGERROR("audio: %s: set params error: %s\n"
