@@ -619,10 +619,37 @@ TEST_CASE("cReassemblyBufferAudio - AC3 codec detection", "[reassembly][audio]")
     SECTION("Detect E-AC3 audio codec") {
         cReassemblyBufferAudio buffer;
 
-        // E-AC3 sync word: 0x0B77 with bitstream ID > 10
-        std::vector<uint8_t> fragment = { 0x0B, 0x77, 0x00, 0x00, 0x00, 0x51 }; // E-AC3 header (byte 5 > 0x50)
+        // E-AC3 sync word: 0x0B77 with bitstream ID 16
+        std::vector<uint8_t> fragment = { 0x0B, 0x77, 0x00, 0x00, 0x00, 0x80 }; // E-AC3 header (bsid 16)
 
         REQUIRE(buffer.DetectCodecFromSyncWord(fragment.data(), fragment.size()) == AV_CODEC_ID_EAC3);
+    }
+
+    SECTION("bsid 10 with a non-zero bsmod is AC3") {
+        cReassemblyBufferAudio buffer;
+
+        // byte 5 = bsid (5 bits) | bsmod (3 bits): bsid 10, bsmod 1
+        std::vector<uint8_t> fragment = { 0x0B, 0x77, 0x00, 0x00, 0x00, (10 << 3) | 1 };
+
+        REQUIRE(buffer.DetectCodecFromSyncWord(fragment.data(), fragment.size()) == AV_CODEC_ID_AC3);
+    }
+
+    SECTION("bsid 11 is E-AC3") {
+        cReassemblyBufferAudio buffer;
+
+        std::vector<uint8_t> fragment = { 0x0B, 0x77, 0x00, 0x00, 0x00, 11 << 3 };
+
+        REQUIRE(buffer.DetectCodecFromSyncWord(fragment.data(), fragment.size()) == AV_CODEC_ID_EAC3);
+    }
+
+    SECTION("bsid above 16 is neither AC3 nor E-AC3") {
+        cReassemblyBufferAudio buffer;
+
+        std::vector<uint8_t> fragment = { 0x0B, 0x77, 0x00, 0x00, 0x00, 17 << 3 };
+
+        AVCodecID codec = buffer.DetectCodecFromSyncWord(fragment.data(), fragment.size());
+        REQUIRE(codec != AV_CODEC_ID_AC3);
+        REQUIRE(codec != AV_CODEC_ID_EAC3);
     }
 }
 
@@ -1125,7 +1152,7 @@ TEST_CASE("cReassemblyBufferAudio - GetFrameSize E-AC3 codec", "[reassembly][aud
     SECTION("E-AC3 frame - minimum size (1 word = 2 bytes)") {
         // Frame size = (((data[2] & 0x07) << 8) + data[3] + 1) * 2
         // data[2] = 0x00, data[3] = 0x00 → (0 + 0 + 1) * 2 = 2 bytes
-        std::vector<uint8_t> data = {0x0B, 0x77, 0x00, 0x00, 0x00, 0x51};
+        std::vector<uint8_t> data = {0x0B, 0x77, 0x00, 0x00, 0x00, 0x80}; // bsid 16
         int frameSize = buffer.GetFrameSizeForCodec(AV_CODEC_ID_EAC3, data.data());
         REQUIRE(frameSize == 2);
     }
@@ -1133,7 +1160,7 @@ TEST_CASE("cReassemblyBufferAudio - GetFrameSize E-AC3 codec", "[reassembly][aud
     SECTION("E-AC3 frame - 100 words (200 bytes)") {
         // (99 + 1) * 2 = 200 bytes
         // 99 = 0x63, data[2] = 0x00, data[3] = 0x63
-        std::vector<uint8_t> data = {0x0B, 0x77, 0x00, 0x63, 0x00, 0x51};
+        std::vector<uint8_t> data = {0x0B, 0x77, 0x00, 0x63, 0x00, 0x80}; // bsid 16
         int frameSize = buffer.GetFrameSizeForCodec(AV_CODEC_ID_EAC3, data.data());
         REQUIRE(frameSize == 200);
     }
@@ -1141,7 +1168,7 @@ TEST_CASE("cReassemblyBufferAudio - GetFrameSize E-AC3 codec", "[reassembly][aud
     SECTION("E-AC3 frame - 512 words (1024 bytes)") {
         // (511 + 1) * 2 = 1024 bytes
         // 511 = 0x1FF, data[2] = 0x01, data[3] = 0xFF
-        std::vector<uint8_t> data = {0x0B, 0x77, 0x01, 0xFF, 0x00, 0x51};
+        std::vector<uint8_t> data = {0x0B, 0x77, 0x01, 0xFF, 0x00, 0x80}; // bsid 16
         int frameSize = buffer.GetFrameSizeForCodec(AV_CODEC_ID_EAC3, data.data());
         REQUIRE(frameSize == 1024);
     }
@@ -1149,7 +1176,7 @@ TEST_CASE("cReassemblyBufferAudio - GetFrameSize E-AC3 codec", "[reassembly][aud
     SECTION("E-AC3 frame - maximum 11-bit size (2047 words = 4094 bytes)") {
         // (2046 + 1) * 2 = 4094 bytes
         // 2046 = 0x7FE, data[2] = 0x07, data[3] = 0xFE
-        std::vector<uint8_t> data = {0x0B, 0x77, 0x07, 0xFE, 0x00, 0x51};
+        std::vector<uint8_t> data = {0x0B, 0x77, 0x07, 0xFE, 0x00, 0x80}; // bsid 16
         int frameSize = buffer.GetFrameSizeForCodec(AV_CODEC_ID_EAC3, data.data());
         REQUIRE(frameSize == 4094);
     }
@@ -1160,7 +1187,7 @@ TEST_CASE("cReassemblyBufferAudio - GetFrameSize E-AC3 error conditions", "[reas
 
     SECTION("E-AC3 invalid fscod/fscod2 combination") {
         // data[4] & 0xF0 == 0xF0 is invalid
-        std::vector<uint8_t> data = {0x0B, 0x77, 0x00, 0x00, 0xF0, 0x51};
+        std::vector<uint8_t> data = {0x0B, 0x77, 0x00, 0x00, 0xF0, 0x80};
         REQUIRE_THROWS_AS(buffer.GetFrameSizeForCodec(AV_CODEC_ID_EAC3, data.data()), std::invalid_argument);
     }
 }
