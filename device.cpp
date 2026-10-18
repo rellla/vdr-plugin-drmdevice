@@ -808,8 +808,13 @@ bool cOutputDevice::DrainDevice(void)
 
 	// enter drain mode once
 	if (!m_draining) {
-		if (!m_videoReassemblyBuffer.IsEmpty())
+		if (!m_videoReassemblyBuffer.IsEmpty()) {
+			// VDR calls DrainDevice() until it returns true, so retry later instead of dropping the last frame
+			if (m_pVideoStream->IsInputBufferFull())
+				return false;
+
 			m_pVideoStream->PushAvPacket(m_videoReassemblyBuffer.PopAvPacket());
+		}
 
 		if (!m_pVideoStream->Drain())
 			return false;
@@ -1670,9 +1675,14 @@ void cOutputDevice::HandleStillPicture(const uchar *data, int size)
 	while (currentPacketStart < data + size) {
 		cPesVideo pesPacket((const uint8_t*)currentPacketStart, size - (currentPacketStart - data));
 
-		if (pesPacket.IsValid())
-			PlayVideoInternal(m_pVideoStream, &m_videoReassemblyBuffer, currentPacketStart, pesPacket.GetPacketLength(), false, true);
-		else {
+		if (pesPacket.IsValid()) {
+			// The decoder is halted while the event is handled, so the queue can't be drained here.
+			// VDR clears the device before a still picture, so this should never happen.
+			if (!PlayVideoInternal(m_pVideoStream, &m_videoReassemblyBuffer, currentPacketStart, pesPacket.GetPacketLength(), false, true)) {
+				LOGWARNING("device: %s: packet queue full, still picture is incomplete", __FUNCTION__);
+				break;
+			}
+		} else {
 			LOGWARNING("device: %s: invalid PES packet", __FUNCTION__);
 			break;
 		}
