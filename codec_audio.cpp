@@ -126,6 +126,8 @@ void cAudioDecoder::Open(AVCodecID codecId, AVCodecParameters *par, AVRational t
 	m_currentNumChannels = 0;
 	m_currentHwNumChannels = 0;
 	m_currentPassthroughMask = 0;
+	m_currentPassthrough = false;
+	m_passthroughFailed = false;
 }
 
 /**
@@ -282,6 +284,9 @@ const std::vector<uint8_t> &cAudioDecoder::BuildIEC61937(const AVPacket *avpkt)
  */
 bool cAudioDecoder::ShouldTryPassthrough(void)
 {
+	if (m_passthroughFailed)
+		return false;
+
 	return (m_passthroughMask & CODEC_AC3  && m_pAudioCtx->codec_id == AV_CODEC_ID_AC3) ||
 	       (m_passthroughMask & CODEC_EAC3 && m_pAudioCtx->codec_id == AV_CODEC_ID_EAC3) ||
 	       (m_passthroughMask & CODEC_DTS  && m_pAudioCtx->codec_id == AV_CODEC_ID_DTS);
@@ -295,7 +300,8 @@ bool cAudioDecoder::ShouldTryPassthrough(void)
  */
 int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 {
-	if (m_currentPassthroughMask == m_passthroughMask &&
+	if (m_currentPassthrough     == passthrough &&
+	    m_currentPassthroughMask == m_passthroughMask &&
 	    m_currentNumChannels     == m_currentHwNumChannels &&
 	    m_currentSampleRate      == m_currentHwSampleRate)
 		return 0;
@@ -308,29 +314,25 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 		m_currentHwSampleRate = AUDIO_PASSTHROUGH_RATE_HZ;
 		m_currentHwNumChannels = AUDIO_PASSTHROUGH_NUM_CHANNELS;
 
-		// E-AC3 over HDMI: some receivers need HBR
+		// E-AC-3 needs four times the sample rate (IEC 61937-3), there is no fallback
 		if (m_pAudioCtx->codec_id == AV_CODEC_ID_EAC3)
 			m_currentHwSampleRate *= 4;
 	}
 
 	int err = 0;
 	if ((err = m_pAudio->Setup(m_pAudioCtx->pkt_timebase, m_currentHwSampleRate, m_currentHwNumChannels, passthrough)) < 0) {
-		// E-AC3 over HDMI: try without HBR
-		m_currentHwSampleRate /= 4;
-
-		if (m_pAudioCtx->codec_id != AV_CODEC_ID_EAC3 ||
-		  ((err = m_pAudio->Setup(m_pAudioCtx->pkt_timebase, m_currentHwSampleRate, m_currentHwNumChannels, passthrough)) < 0)) {
-			LOGERROR("audiocodec: %s: format change update error", __FUNCTION__);
-			m_currentHwSampleRate = 0;
-			m_currentHwNumChannels = 0;
-			return err;
-		}
+		LOGERROR("audiocodec: %s: format change update error", __FUNCTION__);
+		m_currentHwSampleRate = 0;
+		m_currentHwNumChannels = 0;
+		m_currentSampleRate = -1; // set up again with the next call
+		return err;
 	}
 
 	// remember for next update check
 	m_currentSampleRate = m_currentHwSampleRate;
 	m_currentNumChannels = m_currentHwNumChannels;
 	m_currentPassthroughMask = m_passthroughMask;
+	m_currentPassthrough = passthrough;
 
 	// audio was newly set up (err == 0)
 	if (!err)
@@ -370,7 +372,11 @@ void cAudioDecoder::Decode(const AVPacket *avpkt)
 int cAudioDecoder::Passthrough(const AVPacket *avpkt)
 {
 	if (CheckUpdateFormat(true)) {
-		LOGERROR("audiocodec: %s: unsupported format!", __FUNCTION__);
+		// e.g. the device doesn't offer the needed sample rate (yet)
+		LOGWARNING("audiocodec: %s: passthrough of %s is not possible, decode it until the next codec change", __FUNCTION__, avcodec_get_name(m_pAudioCtx->codec_id));
+		m_passthroughFailed = true;
+		CloseSpdifMuxer();
+		DecodePCM(avpkt);
 		return 0;
 	}
 
@@ -469,4 +475,5 @@ void cAudioDecoder::FlushBuffers(void)
 void cAudioDecoder::SetPassthroughMask(int mask)
 {
 	m_passthroughMask = mask & (CODEC_AC3 | CODEC_EAC3 | CODEC_DTS);
+	m_passthroughFailed = false; // try again with the new settings
 }
