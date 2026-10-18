@@ -93,40 +93,106 @@ void cAlsaDevice::Exit(void)
 char *cAlsaDevice::OpenDevice(const char *device)
 {
 	int err;
-	char prefix[40];
-	char tmp[80];
 
 	if (!device)
 		return NULL;
 
 	LOGDEBUG2(L_SOUND, "audio: %s: try opening device '%s'", __FUNCTION__, device);
 
-	if (ShouldAppendAES()) {
-		if (!(strchr(device, ':')))
-			snprintf(prefix, sizeof(prefix), "%s:", device);
-		else
-			snprintf(prefix, sizeof(prefix), "%s,", device);
-
-		snprintf(tmp, sizeof(tmp), "%sAES0=%d,AES1=%d,AES2=0,AES3=%d",
-			prefix,
-			IEC958_AES0_NONAUDIO | IEC958_AES0_PRO_EMPHASIS_NONE,
-			IEC958_AES1_CON_ORIGINAL | IEC958_AES1_CON_PCM_CODER,
-			IEC958_AES3_CON_FS_48000);
-
-		LOGDEBUG2(L_SOUND, "audio: %s: auto append AES: %s -> %s", __FUNCTION__, device, tmp);
-	} else {
-		snprintf(tmp, sizeof(tmp), "%s", device);
-	}
+	// the AES parameters are adjusted to the format in Setup()
+	std::string deviceString = BuildDeviceString(device, false, 48000);
 
 	// open none blocking; if device is already used, we don't want wait
-	if ((err = snd_pcm_open(&m_pPCMHandle, tmp, SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK)) < 0) {
+	if ((err = snd_pcm_open(&m_pPCMHandle, deviceString.c_str(), SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK)) < 0) {
 		LOGWARNING("audio: %s: could not open device '%s' error: %s", __FUNCTION__, device, snd_strerror(err));
 		return NULL;
 	}
 
-	LOGDEBUG2(L_SOUND, "audio: %s: opened device '%s'", __FUNCTION__, device);
+	m_deviceName = device;
+	m_openedDevice = deviceString;
+
+	LOGDEBUG2(L_SOUND, "audio: %s: opened device '%s'", __FUNCTION__, deviceString.c_str());
 
 	return (char *)device;
+}
+
+/**
+ * Build the device string with the IEC958 channel status (AES parameters)
+ *
+ * If enabled, the channel status is appended to the device name: the non-audio
+ * flag is only set for passthrough, and the sample rate is set to the rate of the
+ * stream (e.g. 192kHz for E-AC-3).
+ *
+ * @param device        device name
+ * @param passthrough   true, if the device is used for passthrough
+ * @param sampleRate    sample rate in Hz
+ *
+ * @return the device string to be opened
+ */
+std::string cAlsaDevice::BuildDeviceString(const char *device, bool passthrough, int sampleRate)
+{
+	if (!ShouldAppendAES() || !strcmp(device, "null"))
+		return device;
+
+	int aes3;
+	switch (sampleRate) {
+		case 32000:  aes3 = IEC958_AES3_CON_FS_32000;  break;
+		case 44100:  aes3 = IEC958_AES3_CON_FS_44100;  break;
+		case 48000:  aes3 = IEC958_AES3_CON_FS_48000;  break;
+		case 88200:  aes3 = IEC958_AES3_CON_FS_88200;  break;
+		case 96000:  aes3 = IEC958_AES3_CON_FS_96000;  break;
+		case 176400: aes3 = IEC958_AES3_CON_FS_176400; break;
+		case 192000: aes3 = IEC958_AES3_CON_FS_192000; break;
+		default:     aes3 = IEC958_AES3_CON_FS_NOTID;  break;
+	}
+
+	char aes[80];
+	snprintf(aes, sizeof(aes), "%sAES0=%d,AES1=%d,AES2=0,AES3=%d",
+		strchr(device, ':') ? "," : ":",
+		(passthrough ? IEC958_AES0_NONAUDIO : 0) | IEC958_AES0_CON_NOT_COPYRIGHT | IEC958_AES0_CON_EMPHASIS_NONE,
+		IEC958_AES1_CON_ORIGINAL | IEC958_AES1_CON_PCM_CODER,
+		aes3);
+
+	return std::string(device) + aes;
+}
+
+/**
+ * Close the device and open it with another device string (e.g. other AES parameters)
+ *
+ * If the device can't be opened, the plain device or the null device is opened,
+ * so there is always a valid pcm handle.
+ *
+ * @param deviceString  the device string to be opened
+ *
+ * @return true, if the requested device string could be opened
+ */
+bool cAlsaDevice::ReopenDevice(const std::string &deviceString)
+{
+	LOGDEBUG2(L_SOUND, "audio: %s: reopen '%s' as '%s'", __FUNCTION__, m_openedDevice.c_str(), deviceString.c_str());
+
+	if (m_pPCMHandle) {
+		snd_pcm_close(m_pPCMHandle);
+		m_pPCMHandle = nullptr;
+	}
+
+	std::vector<std::string> candidates = { deviceString, m_deviceName, "null" };
+	for (const std::string &candidate : candidates) {
+		int err = snd_pcm_open(&m_pPCMHandle, candidate.c_str(), SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
+		if (err < 0) {
+			LOGERROR("audio: %s: could not open device '%s' error: %s", __FUNCTION__, candidate.c_str(), snd_strerror(err));
+			m_pPCMHandle = nullptr;
+			continue;
+		}
+
+		if ((err = snd_pcm_nonblock(m_pPCMHandle, 0)) < 0)
+			LOGERROR("audio: %s: can't set block mode: %s", __FUNCTION__, snd_strerror(err));
+
+		m_openedDevice = candidate;
+		return candidate == deviceString;
+	}
+
+	LOGFATAL("audio: %s: could not open any device", __FUNCTION__);
+	return false;
 }
 
 /**
@@ -313,6 +379,12 @@ int cAlsaDevice::Setup(int channels, int sample_rate, bool passthrough, int down
 	int err;
 	m_downmix = downmix;
 	m_useMmap = false;
+
+	// The IEC958 channel status is set, when the device is opened, so reopen it,
+	// if the passthrough state or the sample rate changed
+	std::string deviceString = BuildDeviceString(m_deviceName.c_str(), passthrough, sample_rate);
+	if (!m_deviceName.empty() && deviceString != m_openedDevice && !ReopenDevice(deviceString))
+		return -1;
 
 	// the hw params can only be changed in the OPEN, SETUP and PREPARED state
 	snd_pcm_state_t pcmState = snd_pcm_state(m_pPCMHandle);

@@ -628,7 +628,11 @@ int cAudioStream::Setup(AVRational timebase, int samplerate, int channels, bool 
 	FlushBuffers();
 	DropAlsaBuffers();
 
-	err = m_alsa.Setup(channels, samplerate, passthrough, m_pConfig->ConfigAudioDownmix);
+	{
+		// the device may be reopened, other threads must not access it meanwhile
+		std::lock_guard<std::mutex> lock(m_mutex);
+		err = m_alsa.Setup(channels, samplerate, passthrough, m_pConfig->ConfigAudioDownmix);
+	}
 	if (err) {
 		LOGERROR("audio: %s: failed!", __FUNCTION__);
 		return err;

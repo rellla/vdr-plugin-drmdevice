@@ -93,9 +93,13 @@ private:
 	unsigned int m_hwNumChannels = 0;         ///< number of hardware channels
 	int m_downmix;                            ///< set stereo downmix
 	bool m_useMmap = false;                   ///< use mmap
+	std::string m_deviceName;                 ///< name of the used device (without the AES parameters)
+	std::string m_openedDevice;               ///< the device string, which was opened (with the AES parameters)
 
 	bool ShouldAppendAES(void) { return m_appendAES && m_passthroughMask; };
 	char *OpenDevice(const char *);
+	std::string BuildDeviceString(const char *, bool, int);
+	bool ReopenDevice(const std::string &);
 	char *FindDevice(const char *, const char *);
 	bool InitDevice(void);
 	void InitMixer(void);
