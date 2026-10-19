@@ -24,6 +24,7 @@ extern "C" {
 }
 
 #include <vdr/player.h>
+#include <vdr/remux.h>
 
 #include "audio.h"
 #include "device.h"
@@ -72,6 +73,47 @@ std::string cPlaylistEntry::OsdItemString(void)
 /*****************************************************************************
  * cDrmDevicePlayer (cPlayer mediaplayer)
  ****************************************************************************/
+
+/**
+ * Timebase of all packets sent to the device
+ *
+ * The device works with the 90kHz timebase of VDR's PES packets, e.g. the
+ * renderer converts the frame pts to ms with it.
+ *
+ * @ingroup mediaplayer
+ */
+static constexpr AVRational PES_TIMEBASE = { 1, PTSTICKS };
+
+/**
+ * Pts of the start of a media file in the PES timebase
+ *
+ * The device handles negative pts as a pts wrap, so the pts of the packets
+ * are moved by 10s. This keeps them positive, even if a stream starts a bit
+ * before the start time of the file.
+ *
+ * @ingroup mediaplayer
+ */
+static constexpr int64_t MEDIA_START_PTS = 10LL * PTSTICKS;
+
+/**
+ * Convert the timestamps of a packet to the PES timebase
+ *
+ * @param pkt             packet to convert
+ * @param timebase        timebase of the packet's stream
+ * @param startTime       start time of the file (AV_TIME_BASE units)
+ *
+ * @ingroup mediaplayer
+ */
+static void RescaleToPesTimebase(AVPacket *pkt, AVRational timebase, int64_t startTime)
+{
+	av_packet_rescale_ts(pkt, timebase, PES_TIMEBASE);
+
+	int64_t offset = MEDIA_START_PTS - av_rescale_q(startTime, AV_TIME_BASE_Q, PES_TIMEBASE);
+	if (pkt->pts != AV_NOPTS_VALUE)
+		pkt->pts += offset;
+	if (pkt->dts != AV_NOPTS_VALUE)
+		pkt->dts += offset;
+}
 
 /**
  * Returns true, if the playlist is a m3u playlist
@@ -247,7 +289,7 @@ void cDrmDevicePlayer::Play(const char *url)
 	int audioStreamIdx = -1;
 	int videoStreamIdx;
 	int jumpStreamIdx = 0;
-	int startTime;
+	int64_t startTime;
 	int64_t lastPts = AV_NOPTS_VALUE;      // last pts of the stream used for jumping
 
 	m_stopped = false;
@@ -270,7 +312,7 @@ void cDrmDevicePlayer::Play(const char *url)
 	for (unsigned int i = 0; i < format->nb_streams; i++) {
 		if (format->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
 			m_pDevice->SetAudioCodec(format->streams[i]->codecpar->codec_id,
-				format->streams[i]->codecpar, format->streams[i]->time_base);
+				format->streams[i]->codecpar, PES_TIMEBASE);
 			audioStreamIdx = jumpStreamIdx = i;
 			break;
 		}
@@ -283,12 +325,12 @@ void cDrmDevicePlayer::Play(const char *url)
 	} else {
 		m_pDevice->SetVideoCodec(videoCodec->id,
 			format->streams[videoStreamIdx]->codecpar,
-			format->streams[videoStreamIdx]->time_base);
+			PES_TIMEBASE);
 		jumpStreamIdx = videoStreamIdx;
 	}
 
 	m_duration = format->duration / AV_TIME_BASE;
-	startTime = format->start_time / AV_TIME_BASE;
+	startTime = format->start_time != AV_NOPTS_VALUE ? format->start_time : 0;
 
 	AVPacket *packet = nullptr;
 	while (!m_stopped) {
@@ -310,21 +352,24 @@ void cDrmDevicePlayer::Play(const char *url)
 
 			if (packet->stream_index == jumpStreamIdx && packet->pts != AV_NOPTS_VALUE)
 				lastPts = packet->pts;
+
+			if (packet->stream_index >= 0 && packet->stream_index < (int)format->nb_streams)
+				RescaleToPesTimebase(packet, format->streams[packet->stream_index]->time_base, startTime);
 		}
 
 		if (audioStreamIdx == packet->stream_index) {
 			if (!m_pDevice->PlayAudioPkts(packet)) {
-				usleep(packet->duration * AV_TIME_BASE *
-					av_q2d(format->streams[audioStreamIdx]->time_base));
+				usleep(packet->duration * AV_TIME_BASE * av_q2d(PES_TIMEBASE));
 			} else {
-				m_currentTime = m_pAudio->GetHardwareOutputPtsMs() / 1000 - startTime;
+				int64_t ptsMs = m_pAudio->GetHardwareOutputPtsMs();
+				if (ptsMs != AV_NOPTS_VALUE)
+					m_currentTime = (ptsMs - MEDIA_START_PTS * 1000 / PTSTICKS) / 1000;
 				av_packet_free(&packet);
 				packet = nullptr;
 			}
 		} else if (videoStreamIdx == packet->stream_index) {
 			if (!m_pDevice->PlayVideoPkts(packet)) {
-				usleep(packet->duration * AV_TIME_BASE *
-					av_q2d(format->streams[videoStreamIdx]->time_base));
+				usleep(packet->duration * AV_TIME_BASE * av_q2d(PES_TIMEBASE));
 			} else {
 				packet = nullptr;
 			}
