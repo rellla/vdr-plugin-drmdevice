@@ -258,8 +258,9 @@ private:
 	std::vector<Event> m_eventQueue;    ///< event queue for incoming events
 	std::atomic<double> m_refreshRateHz; ///< screen refresh rate in Hz
 
-	cQueue<cDrmBuffer> m_drmBufferQueue{VIDEO_SURFACES_MAX};     ///< queue for DRM buffers to be displayed (VIDEO_SURFACES_MAX is defined in misc.h)
-	cQueue<cDrmBuffer> m_pipDrmBufferQueue{VIDEO_SURFACES_MAX};  ///< queue for PIP DRM buffers to be displayed (VIDEO_SURFACES_MAX is defined in misc.h)
+	constexpr static int VIDEO_RENDER_QUEUE_MAX = 5;                ///< maximum number of frames in the render queue
+	cQueue<cDrmBuffer> m_drmBufferQueue{VIDEO_RENDER_QUEUE_MAX};    ///< queue for DRM buffers to be displayed
+	cQueue<cDrmBuffer> m_pipDrmBufferQueue{VIDEO_RENDER_QUEUE_MAX}; ///< queue for PIP DRM buffers to be displayed
 	std::atomic<double> m_trickspeedFactor = 0;      ///< current trick speed
 	std::atomic<bool> m_trickspeed = false;          ///< true, if trickspeed is active
 	std::atomic<bool> m_forwardTrickspeed = true;    ///< true, if trickspeed plays forward

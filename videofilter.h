@@ -49,16 +49,17 @@ public:
 	int GetNumFramesToFilter(void) { return m_numFramesToFilter; };
 
 private:
-	cVideoRender *m_pRender;                        ///< pointer to renderer
+	cVideoRender *m_pRender;                          ///< pointer to renderer
+	constexpr static int VIDEO_FILTER_QUEUE_MAX = 3;  ///< maximum number of decoded frames waiting for the filter
 
-	AVFilterGraph *m_pFilterGraph;                  ///< filter graph
-	AVFilterContext *m_pBuffersrcCtx;               ///< buffer src context
-	AVFilterContext *m_pBuffersinkCtx;              ///< buffer sink context
+	AVFilterGraph *m_pFilterGraph;                    ///< filter graph
+	AVFilterContext *m_pBuffersrcCtx;                 ///< buffer src context
+	AVFilterContext *m_pBuffersinkCtx;                ///< buffer sink context
 
-	cQueue<AVFrame> m_frames{VIDEO_SURFACES_MAX};   ///< queue for frames to be filtered (VIDEO_SURFACES_MAX is defined in misc.h)
-	std::function<void(AVFrame *)> m_frameOutput;   ///< function to output the frame
-	cQueue<cDrmBuffer> *m_pDrmBufferQueue;          ///< pointer to renderer's DRM buffer queue
-	int m_numFramesToFilter = 0;                    ///< number of frames to be filtered
+	cQueue<AVFrame> m_frames{VIDEO_FILTER_QUEUE_MAX}; ///< queue for frames to be filtered
+	std::function<void(AVFrame *)> m_frameOutput;     ///< function to output the frame
+	cQueue<cDrmBuffer> *m_pDrmBufferQueue;            ///< pointer to renderer's DRM buffer queue
+	int m_numFramesToFilter = 0;                      ///< number of frames to be filtered
 
 	void Action(void);
 	void SetFilterOutputPixFormat(AVPixelFormat);
