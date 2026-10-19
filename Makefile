@@ -153,6 +153,7 @@ OBJS = $(PLUGINENTRY).o \
 	jittertracker.o \
 	logger.o \
 	mediaplayer.o \
+	mediaresume.o \
 	menu.o \
 	osdprovider.o \
 	pes.o \
