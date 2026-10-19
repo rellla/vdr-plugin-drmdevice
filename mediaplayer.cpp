@@ -307,30 +307,45 @@ void cDrmDevicePlayer::SetEntry(int index)
 /**
  * Stop the current file and continue with the next entry of the playlist
  *
- * Without a playlist, the playback ends.
+ * Does nothing without a playlist.
  */
 void cDrmDevicePlayer::NextEntry(void)
 {
-	m_stopFile = true;
+	if (m_pCurrentEntry)
+		m_stopFile = true;
 }
 
 /**
  * Stop the current file and continue with the previous entry of the playlist
  *
- * The first entry is played again. Without a playlist, the playback ends.
+ * The first entry is played again. Does nothing without a playlist.
  */
 void cDrmDevicePlayer::PrevEntry(void)
 {
-	if (!m_pCurrentEntry) {
-		m_stopFile = true;
+	if (!m_pCurrentEntry)
 		return;
-	}
 
 	int index = 0;
 	for (cPlaylistEntry *entry = m_pFirstEntry; entry && entry != m_pCurrentEntry; entry = entry->GetNextEntry())
 		index++;
 
 	SetEntry(index > 0 ? index - 1 : 0);
+}
+
+/**
+ * Get the current file
+ *
+ * @param[out] title     title of the file
+ * @param[out] path      path of the file
+ * @return               number of the file, which changes with every new file (0, if none was played yet)
+ */
+int cDrmDevicePlayer::GetFile(std::string &title, std::string &path)
+{
+	std::lock_guard<std::mutex> lock(m_fileMutex);
+	title = m_fileTitle;
+	path = m_filePath;
+
+	return m_fileNumber;
 }
 
 /*****************************************************************************
@@ -427,6 +442,12 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 
 	if (videoIdx >= 0)
 		m_pDevice->SetVideoCodec(videoCodec->id, format->streams[videoIdx]->codecpar, PES_TIMEBASE);
+
+	std::lock_guard<std::mutex> lock(m_fileMutex);
+	std::string path = url;
+	m_fileNumber++;
+	m_filePath = path;
+	m_fileTitle = m_pCurrentEntry ? m_pCurrentEntry->OsdItemString() : path.substr(path.find_last_of('/') + 1);
 
 	return true;
 }
@@ -1081,6 +1102,27 @@ bool cDrmDevicePlayer::GetReplayMode(bool &play, bool &forward, int &speed)
  ****************************************************************************/
 
 /**
+ * Time in seconds, after which a replay mode display is hidden (like cReplayControl)
+ *
+ * @ingroup mediaplayer
+ */
+static constexpr int MODE_TIMEOUT = 3;
+
+/**
+ * Time in ms between the updates of the replay progress display (like cReplayControl)
+ *
+ * @ingroup mediaplayer
+ */
+static constexpr int PROGRESS_TIMEOUT = 100;
+
+/**
+ * Seconds to stay off the end of a file with the time search (like cReplayControl)
+ *
+ * @ingroup mediaplayer
+ */
+static constexpr int STAY_SECONDS_OFF_END = 10;
+
+/**
  * Create a new control interface and corresponding player
  *
  * @param url             file or playlist to be played
@@ -1094,95 +1136,410 @@ cDrmDeviceControl::cDrmDeviceControl(const char *url, cOutputDevice *device)
 
 cDrmDeviceControl::~cDrmDeviceControl()
 {
+	cDrmDeviceControl::Hide();
+	StopReplaying();
+
 	delete m_pPlayer;
 	m_pPlayer = NULL;
 	m_pControl = NULL;
 }
 
 /**
- * Close the replay OSD
+ * Report the end of the replay of the current file
  */
-void cDrmDeviceControl::Hide(void)
+void cDrmDeviceControl::StopReplaying(void)
 {
-	LOGDEBUG2(L_MEDIA, "mediaplayer: %s:", __FUNCTION__);
-	if (m_pOsd)
-		delete m_pOsd;
+	if (m_fileNumber)
+		cStatus::MsgReplaying(this, NULL, m_path.c_str(), false);
 
-	m_pOsd = NULL;
+	m_fileNumber = 0;
 }
 
 /**
- * Open the replay OSD
+ * Check, if the player started a new file
+ *
+ * Reports the replay of the new file and shows the replay display
+ * like cReplayControl does at the replay start.
  */
-void cDrmDeviceControl::ShowProgress(void)
+void cDrmDeviceControl::CheckNewFile(void)
 {
-	if (!m_pOsd) {
-		LOGDEBUG2(L_MEDIA, "mediaplayer: %s: get OSD", __FUNCTION__);
-		m_pOsd = Skins.Current()->DisplayReplay(false);
+	std::string title, path;
+	int fileNumber = m_pPlayer->GetFile(title, path);
+
+	if (fileNumber == m_fileNumber)
+		return;
+
+	StopReplaying();
+
+	m_fileNumber = fileNumber;
+	m_title = title;
+	m_path = path;
+	cStatus::MsgReplaying(this, m_title.c_str(), m_path.c_str(), true);
+
+	if (m_visible && !m_modeOnly)
+		m_shown = ShowProgress(true);
+	else if (Setup.ProgressDisplayTime)
+		ShowTimed(Setup.ProgressDisplayTime);
+}
+
+/**
+ * Show the replay display for the given time
+ *
+ * @param seconds     time in seconds, 0 shows the display until it is hidden
+ */
+void cDrmDeviceControl::ShowTimed(int seconds)
+{
+	if (m_modeOnly)
+		Hide();
+
+	if (!m_visible) {
+		m_shown = ShowProgress(true);
+		m_timeoutShow = (m_shown && seconds > 0) ? time(NULL) + seconds : 0;
+	} else if (m_timeoutShow && seconds > 0)
+		m_timeoutShow = time(NULL) + seconds;
+}
+
+/**
+ * Show the replay display
+ */
+void cDrmDeviceControl::Show(void)
+{
+	ShowTimed();
+}
+
+/**
+ * Hide the replay display
+ */
+void cDrmDeviceControl::Hide(void)
+{
+	if (m_visible) {
+		LOGDEBUG2(L_MEDIA, "mediaplayer: %s:", __FUNCTION__);
+		delete m_pDisplayReplay;
+		m_pDisplayReplay = nullptr;
+		SetNeedsFastResponse(false);
+		m_visible = false;
+		m_modeOnly = false;
+		m_lastPlay = m_lastForward = false;
+		m_lastSpeed = -2;               // an invalid value
+		m_timeSearchActive = false;
+		m_timeoutShow = 0;
+	}
+}
+
+/**
+ * Show the replay mode
+ *
+ * If the replay display isn't shown, only the mode is shown, if
+ * Setup.ShowReplayMode is set.
+ */
+void cDrmDeviceControl::ShowMode(void)
+{
+	if (m_visible || (Setup.ShowReplayMode && !cOsd::IsOpen())) {
+		bool play, forward;
+		int speed;
+		if (GetReplayMode(play, forward, speed) && (!m_visible || play != m_lastPlay || forward != m_lastForward || speed != m_lastSpeed)) {
+			bool normalPlay = (play && speed == -1);
+
+			if (!m_visible) {
+				if (normalPlay)
+					return;         // no need to do indicate ">" unless there was a different mode displayed before
+
+				m_visible = m_modeOnly = true;
+				m_pDisplayReplay = Skins.Current()->DisplayReplay(m_modeOnly);
+			}
+
+			if (m_modeOnly && !m_timeoutShow && normalPlay)
+				m_timeoutShow = time(NULL) + MODE_TIMEOUT;
+
+			m_pDisplayReplay->SetMode(play, forward, speed);
+			m_lastPlay = play;
+			m_lastForward = forward;
+			m_lastSpeed = speed;
+		}
+	}
+}
+
+/**
+ * Show or update the replay progress
+ *
+ * @param initial     true, if the display is shown the first time
+ * @retval true       the progress is shown
+ */
+bool cDrmDeviceControl::ShowProgress(bool initial)
+{
+	int current, total;
+
+	if (!(initial || m_updateTimer.TimedOut()))
+		return m_visible;
+
+	if (!GetIndex(current, total))
+		return false;
+
+	// e.g. a live stream has no duration
+	if (total <= 0)
+		total = std::max(current, 1);
+
+	if (!m_visible) {
+		m_pDisplayReplay = Skins.Current()->DisplayReplay(m_modeOnly);
+		SetNeedsFastResponse(true);
+		m_visible = true;
 	}
 
-	m_pOsd->SetTitle(m_pPlayer->GetCurrentPlaylistEntry() ? m_pPlayer->GetCurrentPlaylistEntry()->GetPath().c_str() : m_pPlayer->GetSource());
-	int current, total;
-	m_pPlayer->GetIndex(current, total);
-	m_pOsd->SetProgress(current, total);
-	m_pOsd->SetCurrent(IndexToHMSF(current, false, m_pPlayer->FramesPerSecond()));
-	m_pOsd->SetTotal(IndexToHMSF(total, false, m_pPlayer->FramesPerSecond()));
+	if (initial) {
+		m_pDisplayReplay->SetTitle(m_title.c_str());
+		m_lastCurrent = m_lastTotal = -1;
+	}
 
-	Skins.Flush();
+	if (current != m_lastCurrent || total != m_lastTotal) {
+		if (Setup.ShowRemainingTime || total != m_lastTotal) {
+			int index = total;
+			if (Setup.ShowRemainingTime)
+				index = current - index;
+			m_pDisplayReplay->SetTotal(IndexToHMSF(index, false, FramesPerSecond()));
+		}
+		m_pDisplayReplay->SetProgress(current, total);
+		m_pDisplayReplay->SetCurrent(IndexToHMSF(current, false, FramesPerSecond()));
+		m_pDisplayReplay->Flush();
+		m_lastCurrent = current;
+	}
+
+	m_lastTotal = total;
+	ShowMode();
+	m_updateTimer.Set(PROGRESS_TIMEOUT);
+
+	return true;
+}
+
+/**
+ * Show the entered time of the time search
+ */
+void cDrmDeviceControl::TimeSearchDisplay(void)
+{
+	char buf[64];
+	// TRANSLATORS: note the trailing blank!
+	strcpy(buf, tr("Jump: "));
+	int len = strlen(buf);
+	char h10 = '0' + (m_timeSearchTime >> 24);
+	char h1  = '0' + ((m_timeSearchTime & 0x00FF0000) >> 16);
+	char m10 = '0' + ((m_timeSearchTime & 0x0000FF00) >> 8);
+	char m1  = '0' + (m_timeSearchTime & 0x000000FF);
+	char ch10 = m_timeSearchPos > 3 ? h10 : '-';
+	char ch1  = m_timeSearchPos > 2 ? h1  : '-';
+	char cm10 = m_timeSearchPos > 1 ? m10 : '-';
+	char cm1  = m_timeSearchPos > 0 ? m1  : '-';
+	snprintf(buf + len, sizeof(buf) - len, "%c%c:%c%c", ch10, ch1, cm10, cm1);
+	m_pDisplayReplay->SetJump(buf);
+}
+
+/**
+ * Handle a key of the time search (like cReplayControl)
+ *
+ * The digits enter a time (hh:mm). Left/Right skip the time backward/forward,
+ * Play/Up go to the time and Pause/Down/Ok show the frame at the time.
+ *
+ * @param key     pressed key
+ */
+void cDrmDeviceControl::TimeSearchProcess(eKeys key)
+{
+	int seconds = (m_timeSearchTime >> 24) * 36000 + ((m_timeSearchTime & 0x00FF0000) >> 16) * 3600 +
+	              ((m_timeSearchTime & 0x0000FF00) >> 8) * 600 + (m_timeSearchTime & 0x000000FF) * 60;
+	int current = int(round(m_lastCurrent / FramesPerSecond()));
+	int total = int(round(m_lastTotal / FramesPerSecond()));
+
+	switch (key) {
+		case k0 ... k9:
+			if (m_timeSearchPos < 4) {
+				m_timeSearchTime <<= 8;
+				m_timeSearchTime |= key - k0;
+				m_timeSearchPos++;
+				TimeSearchDisplay();
+			}
+			break;
+		case kFastRew:
+		case kLeft:
+		case kFastFwd:
+		case kRight: {
+			int dir = ((key == kRight || key == kFastFwd) ? 1 : -1);
+			if (dir > 0)
+				seconds = std::min(total - current - STAY_SECONDS_OFF_END, seconds);
+			m_pPlayer->SkipSeconds(seconds * dir);
+			m_timeSearchActive = false;
+			}
+			break;
+		case kPlayPause:
+		case kPlay:
+		case kUp:
+		case kPause:
+		case kDown:
+		case kOk:
+			if (m_timeSearchPos > 0) {
+				seconds = std::min(total - STAY_SECONDS_OFF_END, seconds);
+				bool still = key == kDown || key == kPause || key == kOk;
+				m_pPlayer->Goto(seconds, still);
+			}
+			m_timeSearchActive = false;
+			break;
+		default:
+			if (!(key & k_Flags))   // ignore repeat/release keys
+				m_timeSearchActive = false;
+			break;
+	}
+
+	if (!m_timeSearchActive) {
+		if (m_timeSearchHide)
+			Hide();
+		else
+			m_pDisplayReplay->SetJump(NULL);
+		ShowMode();
+	}
+}
+
+/**
+ * Start the time search
+ */
+void cDrmDeviceControl::TimeSearch(void)
+{
+	if (!m_pPlayer->CanSeek())
+		return;
+
+	m_timeSearchTime = m_timeSearchPos = 0;
+	m_timeSearchHide = false;
+
+	if (m_modeOnly)
+		Hide();
+
+	if (!m_visible) {
+		Show();
+		if (m_visible)
+			m_timeSearchHide = true;
+		else
+			return;
+	}
+
+	m_timeoutShow = 0;
+	TimeSearchDisplay();
+	m_timeSearchActive = true;
 }
 
 /**
  * Handle a key event
  *
+ * The keys work like in VDR's cReplayControl.
+ *
  * @param key     pressed key
  */
 eOSState cDrmDeviceControl::ProcessKey(eKeys key)
 {
-	switch (key) {
-		case kNone:
-			if (m_pOsd)
-				ShowProgress();
-			if (m_closing) {
-				Hide();
-				return osStopReplay;
-			}
-			break;
-		case kOk:
-			if (m_pOsd)
-				Hide();
-			else
-				ShowProgress();
-			break;
+	if (m_closing || !m_pPlayer->IsActive()) {
+		Hide();
+		return osEnd;
+	}
+
+	CheckNewFile();
+
+	if (m_visible) {
+		if (m_timeoutShow && time(NULL) > m_timeoutShow) {
+			Hide();
+			ShowMode();
+			m_timeoutShow = 0;
+		} else if (m_modeOnly)
+			ShowMode();
+		else
+			m_shown = ShowProgress(!m_shown) || m_shown;
+	}
+
+	if (m_timeSearchActive && key != kNone) {
+		TimeSearchProcess(key);
+		return osContinue;
+	}
+
+	if (key == kPlayPause) {
+		bool play, forward;
+		int speed;
+		GetReplayMode(play, forward, speed);
+		if (speed >= 0)
+			key = play ? kPlay : kPause;
+		else
+			key = play ? kPause : kPlay;
+	}
+
+	bool doShowMode = true;
+	switch (int(key)) {
+		// positioning
 		case kPlay:
 		case kUp:
 			m_pPlayer->Play();
 			break;
-		case kGreen:
-			m_pPlayer->SkipSeconds(-60);
-			break;
-		case kYellow:
-			m_pPlayer->SkipSeconds(60);
-			break;
-		case kLeft:
-			m_pPlayer->SkipSeconds(-5);
-			break;
-		case kRight:
-			m_pPlayer->SkipSeconds(5);
-			break;
-		case kBlue:
-		case kBack:
-			Hide();
-			return osStopReplay;
 		case kPause:
 		case kDown:
 			m_pPlayer->Pause();
 			break;
-		case kNext:
-			m_pPlayer->NextEntry();
+		case kFastRew | k_Release:
+		case kLeft | k_Release:
+			if (Setup.MultiSpeedMode)
+				break;
+			[[fallthrough]];
+		case kFastRew:
+		case kLeft:
+			m_pPlayer->Backward();
 			break;
+		case kFastFwd | k_Release:
+		case kRight | k_Release:
+			if (Setup.MultiSpeedMode)
+				break;
+			[[fallthrough]];
+		case kFastFwd:
+		case kRight:
+			m_pPlayer->Forward();
+			break;
+		case kRed:
+			TimeSearch();
+			break;
+		case kGreen | k_Repeat:
+			m_pPlayer->SkipSeconds(-Setup.SkipSecondsRepeat);
+			break;
+		case kGreen:
+			m_pPlayer->SkipSeconds(-Setup.SkipSeconds);
+			break;
+		case kYellow | k_Repeat:
+			m_pPlayer->SkipSeconds(Setup.SkipSecondsRepeat);
+			break;
+		case kYellow:
+			m_pPlayer->SkipSeconds(Setup.SkipSeconds);
+			break;
+		case kStop:
+		case kBlue:
+			Hide();
+			return osEnd;
 		default:
-			break;
+			doShowMode = false;
+			switch (int(key)) {
+				// playlist
+				case kPrev:
+					m_pPlayer->PrevEntry();
+					break;
+				case kNext:
+					m_pPlayer->NextEntry();
+					break;
+				// menu control
+				case kOk:
+					if (m_visible && !m_modeOnly) {
+						Hide();
+						doShowMode = true;
+					} else
+						Show();
+					break;
+				case kBack:
+					Hide();
+					cDeviceMenu::OpenMediaMenu(m_pPlayer->GetSource());
+					return osEnd;
+				default:
+					return osUnknown;
+			}
 	}
+
+	if (doShowMode)
+		ShowMode();
 
 	return osContinue;
 }
