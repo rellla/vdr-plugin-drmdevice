@@ -16,9 +16,13 @@
 #include <atomic>
 #include <string>
 
-#include <vdr/player.h>
+extern "C" {
+#include <libavformat/avformat.h>
+}
 
-class cAudioStream;
+#include <vdr/player.h>
+#include <vdr/tools.h>
+
 class cOutputDevice;
 
 /**
@@ -56,6 +60,9 @@ private:
  * Player for the mediaplayer mode: reads a file or all files of a m3u
  * playlist with libavformat and sends the packets to the device.
  *
+ * The play modes, the trick speeds and the positioning work like in VDR's
+ * cDvbPlayer, so the replay behaves like the replay of a recording.
+ *
  * @ingroup mediaplayer
  */
 class cDrmDevicePlayer : public cPlayer, cThread {
@@ -63,17 +70,29 @@ public:
 	cDrmDevicePlayer(const char *, cOutputDevice *);
 	virtual ~cDrmDevicePlayer();
 
-	void SetEntry(int);
-	const char *GetSource(void) { return m_pSource; }   ///< get the played file or playlist
+	// positioning (like cDvbPlayer)
+	void Play(void);
+	void Pause(void);
+	void Forward(void);
+	void Backward(void);
+	void SkipSeconds(int);
+	void Goto(int, bool = false);
+	bool CanSeek(void) { return m_seekable; }                                 ///< true, if the current file is seekable
+	bool IsActive(void) { return cThread::Active(); }                         ///< true, if the player thread is running
 
-	void JumpSec(int seconds) { m_jumpSec = seconds; }                        ///< jump the given seconds forward/backward
-	void Pause(bool pause) { m_paused = pause; }                              ///< pause/resume the playback
-	bool IsPaused(void) { return m_paused; }                                  ///< true, if the playback is paused
-	void Stop(void) { m_stopped = true; }                                     ///< stop the current file (a playlist continues with the next one)
+	// cPlayer
+	virtual double FramesPerSecond(void) { return m_fps; }                    ///< get the frame rate of the current file
+	virtual bool GetIndex(int &, int &, bool = false);
+	virtual bool GetFrameNumber(int &, int &);
+	virtual bool GetReplayMode(bool &, bool &, int &);
+
+	// playlist
+	void SetEntry(int);
+	void NextEntry(void);
+	void PrevEntry(void);
+	const char *GetSource(void) { return m_pSource; }                         ///< get the played file or playlist
 	void ToggleRandomPlay(void) { m_random = !m_random; }                     ///< toggle random play of the playlist
 	bool IsRandomPlayActive(void) { return m_random; }                        ///< true, if random play is active
-	int GetCurrentTime(void) { return m_currentTime; }                        ///< get the current playback position in seconds
-	int GetDuration(void) { return m_duration; }                              ///< get the duration of the current file in seconds
 	cPlaylistEntry *GetFirstPlaylistEntry(void) { return m_pFirstEntry; }     ///< get the first playlist entry
 	cPlaylistEntry *GetCurrentPlaylistEntry(void) { return m_pCurrentEntry; } ///< get the currently played playlist entry
 
@@ -82,8 +101,34 @@ protected:
 	virtual void Action(void);
 
 private:
-	void Play(const char *);
+	/** play modes (like cDvbPlayer) */
+	enum ePlayModes { pmPlay, pmPause, pmSlow, pmFast, pmStill };
+	/** play directions (like cDvbPlayer) */
+	enum ePlayDirs { pdForward, pdBackward };
+
+	static constexpr int NORMAL_SPEED = 4;              ///< index of the '1' entry in SPEEDS
+	static constexpr int MAX_SPEEDS = 3;                ///< offset of the maximum speed from normal speed in either direction
+	static constexpr int SPEED_MULT = 12;               ///< speed multiplier
+	static constexpr int MAX_VIDEO_SLOWMOTION = 63;     ///< max. trick speed value sent to the device
+	static const int SPEEDS[];                          ///< trick speeds (like cDvbPlayer)
+
+	void PlayFile(const char *);
+	bool OpenFile(const char *);
+	void CloseFile(void);
 	void ReadPlaylist(const char *);
+
+	void TrickSpeed(int);
+	void Empty(void);
+	bool Feed(void);
+	bool FeedPacket(AVPacket *);
+	void ShowStillPicture(void);
+	bool Seek(int64_t, bool);
+	AVPacket *ReadPacket(void);
+	AVPacket *ReadTrickFrame(bool);
+	bool CheckBeginEnd(void);
+	bool DeviceBuffersEmpty(void);
+	int64_t GetPositionMs(void);
+	int64_t PtsToPositionMs(int64_t);
 
 	cPlaylistEntry *m_pFirstEntry = nullptr;            ///< first playlist entry
 	cPlaylistEntry *m_pCurrentEntry = nullptr;          ///< currently played playlist entry
@@ -91,14 +136,34 @@ private:
 	char *m_pSource;                                    ///< played file or playlist
 	int m_entries = 0;                                  ///< number of playlist entries
 	cOutputDevice *m_pDevice;                           ///< pointer to the device
-	cAudioStream *m_pAudio;                             ///< pointer to the audio stream
-	std::atomic<int> m_jumpSec = 0;                     ///< requested jump in seconds
-	std::atomic<bool> m_paused = false;                 ///< true, if paused
-	std::atomic<bool> m_stopped = false;                ///< true, if the current file shall be stopped
+	std::atomic<bool> m_stopFile = false;               ///< true, if the current file shall be stopped
 	std::atomic<bool> m_random = false;                 ///< true, if random play is active
 	bool m_noModify = false;                            ///< true, if the next entry was already selected (don't advance)
-	int m_currentTime = 0;                              ///< current playback position in seconds
-	int m_duration = 0;                                 ///< duration of the current file in seconds
+
+	// current file (protected by the thread lock)
+	AVFormatContext *m_pFormat = nullptr;               ///< format context of the current file
+	AVPacket *m_pPacket = nullptr;                      ///< packet, which wasn't accepted by the device yet
+	int m_audioIdx = -1;                                ///< index of the audio stream (-1, if none)
+	int m_videoIdx = -1;                                ///< index of the video stream (-1, if none)
+	int64_t m_startTime = 0;                            ///< start time of the file (AV_TIME_BASE units)
+	std::atomic<int64_t> m_durationMs = 0;              ///< duration of the file in ms (0, if unknown)
+	std::atomic<double> m_fps = DEFAULTFRAMESPERSECOND; ///< frame rate of the file
+	std::atomic<bool> m_seekable = false;               ///< true, if the file is seekable
+
+	// replay state (like cDvbPlayer)
+	ePlayModes m_playMode = pmPlay;                     ///< current play mode
+	ePlayDirs m_playDir = pdForward;                    ///< current play direction
+	int m_trickSpeed = NORMAL_SPEED;                    ///< index into SPEEDS
+
+	int64_t m_seekMs = -1;                              ///< position to read from next (-1, if the reading continues)
+	bool m_stillPending = false;                        ///< true, if a still picture shall be shown at m_seekMs
+	int64_t m_trickMs = 0;                              ///< position of the last frame sent in trick mode
+	bool m_eof = false;                                 ///< true, if the end of the file was read
+	bool m_bof = false;                                 ///< true, if the begin of the file was reached in backward trick mode
+	cTimeMs m_stuckTimer;                               ///< time since the position doesn't change at the begin/end of the file
+	int64_t m_stuckPositionMs = -1;                     ///< position at the begin/end of the file, which is checked for being stuck
+	std::atomic<int64_t> m_positionMs = 0;              ///< last known playback position in ms
+	std::atomic<int64_t> m_staleStc = AV_NOPTS_VALUE;   ///< stc after an Empty(), which doesn't belong to the new position
 };
 
 /**
@@ -126,7 +191,6 @@ private:
 	static cDrmDeviceControl *m_pControl;               ///< the current control
 	static cDrmDevicePlayer *m_pPlayer;                 ///< the current player
 	cSkinDisplayReplay *m_pOsd = nullptr;               ///< replay osd
-	cOutputDevice *m_pDevice;                           ///< pointer to the device
 	bool m_closing = false;                             ///< true, if the control shall be closed
 };
 

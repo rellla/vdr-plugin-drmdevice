@@ -300,7 +300,7 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 			break;
 		case kGreen:
 			if (cDrmDeviceControl::Control()) {
-				cDrmDeviceControl::Control()->Player()->JumpSec(-60);
+				cDrmDeviceControl::Control()->Player()->SkipSeconds(-60);
 			} else if (item) {
 				MakePlayList(item->Text(), "w");
 				Interface->Confirm(tr("New Playlist"), 1, true);
@@ -312,7 +312,7 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 			break;
 		case kYellow:
 			if (cDrmDeviceControl::Control()) {
-				cDrmDeviceControl::Control()->Player()->JumpSec(60);
+				cDrmDeviceControl::Control()->Player()->SkipSeconds(60);
 			} else if (item) {
 				MakePlayList(item->Text(), "a");
 				Interface->Confirm(tr("Added to Playlist"), 1, true);
@@ -329,7 +329,7 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 			break;
 		case kNext:
 			if (cDrmDeviceControl::Control())
-				cDrmDeviceControl::Control()->Player()->Stop();
+				cDrmDeviceControl::Control()->Player()->NextEntry();
 			break;
 		default:
 			break;
