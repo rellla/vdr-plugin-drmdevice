@@ -498,17 +498,29 @@ Playback can be started with svdrp or via the main menu. If the mediaplayer is c
 the main menu, you can either choose a previously created playlist, create a new playlist or
 simply play a single file.
 
-In replay mode, you can control playback with the following keys:
+The replay works like the replay of a VDR recording, the keys and the replay display
+behave like in VDR. The settings "Multi speed mode", "Show replay mode", "Show remaining time",
+"Progress display time" and the skip distances with the Green/Yellow keys of VDR's replay setup
+are used. In replay mode, you can control playback with the following keys:
 
-	OK:          Show/ Hide replay menu
-	Play/Up:     Play if paused
-	Pause/Down:  Pause if playing, play again if paused
-	Left:        Jump 5s backwards
-	Right:       Jump 5s forward
-	Green:       Jump 60s backwards
-	Yellow:      Jump 60s forward
-	Blue/Back:   Stop replay and end player
-	Next:        Continue with next file in playlist if available
+	Ok:            Show/ Hide replay display
+	Play/Up:       Play
+	Pause/Down:    Pause, play again if paused
+	PlayPause:     Toggle between play and pause
+	FastRew/Left:  Fast backward, slow backward if paused
+	FastFwd/Right: Fast forward, slow forward if paused
+	Red:           Jump to a time (enter hh:mm with the digit keys, then
+	               Play/Up: play, Pause/Down/Ok: show the frame,
+	               Left/Right: skip the time backward/ forward)
+	Green:         Skip backward (skip distance, the repeat distance if held)
+	Yellow:        Skip forward (skip distance, the repeat distance if held)
+	Stop/Blue:     Stop replay and end player
+	Back:          Stop replay and open the file menu
+	Prev/Next:     Previous/ next file in playlist
+
+The fast/slow modes and the positioning need a seekable file. The replay of a local file
+continues at the position, where it was stopped (backed up by 10s). The positions of the last
+100 files are stored in the file "resume" in the plugin's cache directory.
 
 
 Hints for Raspberry Pi 4/5
