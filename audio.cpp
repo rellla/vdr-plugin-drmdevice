@@ -117,17 +117,23 @@ static bool LayoutsMatch(const std::vector<std::string> &ff, const std::vector<s
 }
 
 /**
- * Check, if the channel layout has channels named "NA" (N/A, silent)
+ * Check, if every channel of the layout is a channel position FFmpeg knows
  *
- * @param channelLayout    channel layout
+ * @param channelLayout    channel layout (channel names)
  *
- * @return true if the channel layout doesn't contain "NA" (N/A, silent)
+ * @return true if all channel names are known FFmpeg positions
  *
  * @ingroup audio
  */
 static bool LayoutIsValid(const std::vector<std::string> &channelLayout)
 {
-	return std::find(channelLayout.begin(), channelLayout.end(), "NA") == channelLayout.end();
+	for (const std::string &name : channelLayout) {
+		AVChannel channel = av_channel_from_string(name.c_str());
+		if (channel < 0 || channel >= AV_CHAN_UNUSED)
+			return false;
+	}
+
+	return true;
 }
 
 /**
