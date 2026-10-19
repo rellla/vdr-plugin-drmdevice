@@ -731,7 +731,7 @@ bool cVideoRender::DisplayFrame(void)
 	                               IsStillpicture() ||
 	                               m_pDevice->IsDraining() ||
 	                               m_schedulePlaybackStartAtPtsMs != AV_NOPTS_VALUE;
-	if (m_pDevice->VideoStream()->GetAvPacketsFilled() == 0 && !skipBufferUnderrunCheck)
+	if (!skipBufferUnderrunCheck && m_pDevice->VideoStream()->BuffersEmpty())
 		m_eventQueue.push_back(BufferUnderrunEvent{VIDEO});
 
 	cDrmBuffer *drmBuffer = nullptr;
