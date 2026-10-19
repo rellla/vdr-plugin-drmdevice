@@ -27,6 +27,8 @@
 #include "config.h"
 #include "logger.h"
 
+struct AVPacket;
+
 /**
  * @addtogroup device
  * @{
@@ -79,10 +81,11 @@ struct TrickSpeedEvent {
 	bool active;           ///< true, if trick speed is active (speed != 0)
 	bool forward;          ///< true, if playing forward
 };
-/** Display a still picture (VDR's StillPicture()) */
+/** Display a still picture (VDR's StillPicture() or the mediaplayer) */
 struct StillPictureEvent {
-	const uchar *data;     ///< pes data of one or more frames (owned by VDR)
-	int size;              ///< size of the data
+	const uchar *data;       ///< pes data of one or more frames (owned by VDR)
+	int size;                ///< size of the data
+	AVPacket *pkt = nullptr; ///< mediaplayer packet of one frame instead of pes data (owned by the event handler)
 };
 /** Release the hardware (detach or an external player takes over) */
 struct DetachEvent {};

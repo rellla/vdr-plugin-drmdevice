@@ -1315,6 +1315,22 @@ void cOutputDevice::SetVideoCodec(enum AVCodecID codecId, AVCodecParameters * pa
 }
 
 /**
+ * Set the streams of the media file, which is played next
+ *
+ * The mediaplayer knows from the file, if it contains audio and video,
+ * so the device doesn't need to detect an audio-only or video-only playback
+ * from the received data.
+ *
+ * @param audio      true, if the file has an audio stream
+ * @param video      true, if the file has a video stream
+ */
+void cOutputDevice::SetMediaStreams(bool audio, bool video)
+{
+	m_receivedAudio = audio;
+	m_receivedVideo = video;
+}
+
+/**
  * Play an audio packet
  *
  * @param pkt        AVPacket to play
@@ -1326,6 +1342,15 @@ int cOutputDevice::PlayAudioPkts(AVPacket * pkt)
 {
 	if (m_pAudio->LazyInit())
 		LOGFATAL("%s: audio init failed, abort!", __FUNCTION__);
+
+	// audio-only trickspeed, see PlayAudio()
+	bool slowForward = m_pAudio->IsForwardTrickSpeed() && m_pAudio->IsSlowTrickSpeed();
+	if (m_playbackMode == AUDIO_ONLY && m_pStateMachine->GetState() == State::TRICK_SPEED && !slowForward) {
+		if (pkt->pts != AV_NOPTS_VALUE)
+			m_pAudio->AdvanceTrickSpeedPts(pkt->pts);
+
+		return 1;
+	}
 
 	if (m_pAudio->IsBufferFull())
 		return 0;
@@ -1353,6 +1378,24 @@ int cOutputDevice::PlayVideoPkts(AVPacket * pkt)
 	m_pVideoStream->PushAvPacket(pkt);
 
 	return 1;
+}
+
+/**
+ * Display a video packet as a still picture
+ *
+ * The mediaplayer equivalent to StillPicture(). The device must have been
+ * cleared before, the packet must contain an I-frame.
+ *
+ * @param pkt        AVPacket to display, the device takes the ownership
+ */
+void cOutputDevice::StillPicturePkt(AVPacket * pkt)
+{
+	if (IsDetached()) {
+		av_packet_free(&pkt);
+		return;
+	}
+
+	TriggerEvent(StillPictureEvent{nullptr, 0, pkt});
 }
 
 /*********************************************************************
@@ -1670,13 +1713,15 @@ void cOutputDevice::FlushAudio(void)
 }
 
 /**
+ * Display a still picture
+ *
  * The still picture data received from VDR can contain multiple PES packets.
  * This sends each PES packet's raw data separately to PlayVideo(), and does a flush to display the frame immediately.
+ * A still picture of the mediaplayer is a single packet, which is sent to the decoder directly.
  *
- * @param data       pes data of one or more frames
- * @param size       length of data area
+ * @param still      still picture event with the pes data or the mediaplayer packet
  */
-void cOutputDevice::HandleStillPicture(const uchar *data, int size)
+void cOutputDevice::HandleStillPicture(const StillPictureEvent &still)
 {
 	m_pRender->SetPlaybackPaused(false);
 	m_pVideoStream->SetDeinterlacerDeactivated(true);
@@ -1684,26 +1729,33 @@ void cOutputDevice::HandleStillPicture(const uchar *data, int size)
 	// skip BufferUnderrunEvent{VIDEO} in renderer
 	m_pRender->SetStillpicture(true);
 
-	const uchar *currentPacketStart = data;
-	while (currentPacketStart < data + size) {
-		cPesVideo pesPacket((const uint8_t*)currentPacketStart, size - (currentPacketStart - data));
+	if (still.pkt) {
+		m_pVideoStream->PushAvPacket(still.pkt);
+	} else {
+		const uchar *data = still.data;
+		int size = still.size;
+		const uchar *currentPacketStart = data;
+		while (currentPacketStart < data + size) {
+			cPesVideo pesPacket((const uint8_t*)currentPacketStart, size - (currentPacketStart - data));
 
-		if (pesPacket.IsValid()) {
-			// The decoder is halted while the event is handled, so the queue can't be drained here.
-			// VDR clears the device before a still picture, so this should never happen.
-			if (!PlayVideoInternal(m_pVideoStream, &m_videoReassemblyBuffer, currentPacketStart, pesPacket.GetPacketLength(), false, true)) {
-				LOGWARNING("device: %s: packet queue full, still picture is incomplete", __FUNCTION__);
+			if (pesPacket.IsValid()) {
+				// The decoder is halted while the event is handled, so the queue can't be drained here.
+				// VDR clears the device before a still picture, so this should never happen.
+				if (!PlayVideoInternal(m_pVideoStream, &m_videoReassemblyBuffer, currentPacketStart, pesPacket.GetPacketLength(), false, true)) {
+					LOGWARNING("device: %s: packet queue full, still picture is incomplete", __FUNCTION__);
+					break;
+				}
+			} else {
+				LOGWARNING("device: %s: invalid PES packet", __FUNCTION__);
 				break;
 			}
-		} else {
-			LOGWARNING("device: %s: invalid PES packet", __FUNCTION__);
-			break;
+
+			currentPacketStart += pesPacket.GetPacketLength();
 		}
 
-		currentPacketStart += pesPacket.GetPacketLength();
+		m_pVideoStream->PushAvPacket(m_videoReassemblyBuffer.PopAvPacket());
 	}
 
-	m_pVideoStream->PushAvPacket(m_videoReassemblyBuffer.PopAvPacket());
 	m_pVideoStream->ResetInputPts(); // stillpicture shouldn't trigger having video data
 	m_pVideoStream->Drain();
 }
