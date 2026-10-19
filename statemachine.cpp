@@ -130,7 +130,7 @@ void cStateMachine::OnEventReceived(const Event& event)
 				[&invalid](const StopEvent&) { invalid(); },
 				[&invalid](const TrickSpeedEvent&) { invalid(); },
 				[this](const StillPictureEvent& s) {
-					m_pDevice->HandleStillPicture(s.data, s.size);
+					m_pDevice->HandleStillPicture(s);
 				},
 				[this, &needsResume](const DetachEvent&) {
 					ChangeState(DETACHED);
@@ -160,7 +160,7 @@ void cStateMachine::OnEventReceived(const Event& event)
 					ChangeState(TRICK_SPEED);
 				},
 				[this](const StillPictureEvent& s) {
-					m_pDevice->HandleStillPicture(s.data, s.size);
+					m_pDevice->HandleStillPicture(s);
 				},
 				[this, &needsResume](const DetachEvent&) {
 					ChangeState(DETACHED);
@@ -198,7 +198,7 @@ void cStateMachine::OnEventReceived(const Event& event)
 					ChangeState(TRICK_SPEED);
 				},
 				[this](const StillPictureEvent& s) {
-					m_pDevice->HandleStillPicture(s.data, s.size);
+					m_pDevice->HandleStillPicture(s);
 				},
 				[this, &needsResume](const DetachEvent&) {
 					ChangeState(DETACHED);
@@ -238,7 +238,7 @@ void cStateMachine::OnEventReceived(const Event& event)
 					m_pDevice->ResumePlayback();
 				},
 				[this](const StillPictureEvent& s) {
-					m_pDevice->HandleStillPicture(s.data, s.size);
+					m_pDevice->HandleStillPicture(s);
 				},
 				[this, &needsResume](const DetachEvent&) {
 					ChangeState(DETACHED);

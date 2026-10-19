@@ -190,8 +190,10 @@ public:
 	// Mediaplayer
 	void SetAudioCodec(enum AVCodecID, AVCodecParameters *, AVRational);
 	void SetVideoCodec(enum AVCodecID, AVCodecParameters *, AVRational);
+	void SetMediaStreams(bool, bool);
 	int PlayAudioPkts(AVPacket *);
 	int PlayVideoPkts(AVPacket *);
+	void StillPicturePkt(AVPacket *);
 
 	// Detach/ attach
 	void Detach(void);
@@ -229,7 +231,7 @@ public:
 
 	void LeaveState(State);
 	void EnterState(State);
-	void HandleStillPicture(const uchar *data, int size);
+	void HandleStillPicture(const StillPictureEvent &);
 	void HandleDisplayModeChange(const sDrmMode &);
 	void HaltVideoThreads(void);
 	void ResumeVideoThreads(void);
