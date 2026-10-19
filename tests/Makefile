@@ -45,6 +45,7 @@ SOURCES_UNDER_TEST = \
 	filllevel.cpp \
 	h264parser.cpp \
 	logger.cpp \
+	mediaresume.cpp \
 	pes.cpp \
 	pidcontroller.cpp \
 	ringbuffer.cpp

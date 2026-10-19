@@ -27,12 +27,14 @@ extern "C" {
 
 #include <vdr/config.h>
 #include <vdr/player.h>
+#include <vdr/plugin.h>
 #include <vdr/remux.h>
 
 #include "audio.h"
 #include "device.h"
 #include "logger.h"
 #include "mediaplayer.h"
+#include "mediaresume.h"
 #include "menu.h"
 #include "misc.h"
 
@@ -154,6 +156,13 @@ static constexpr int64_t TRICK_STEP_MS = 400;
  * @ingroup mediaplayer
  */
 static constexpr int MAX_STUCK_AT_EOF_MS = 3000;
+
+/**
+ * Number of seconds to back up when resuming an interrupted replay (like cDvbPlayer)
+ *
+ * @ingroup mediaplayer
+ */
+static constexpr int64_t RESUME_BACKUP_MS = 10000;
 
 /**
  * Create a new player for a file or playlist
@@ -484,18 +493,42 @@ void cDrmDevicePlayer::PlayFile(const char *url)
 	if (!OpenFile(url))
 		return;
 
+	// resume the replay of local files (like cDvbPlayer)
+	bool canResume = m_seekable && m_durationMs > 0 && url[0] == '/';
+	cMediaResume resume(std::string(cPlugin::CacheDirectory(PLUGIN_NAME_I18N)) + "/resume");
+
+	if (canResume) {
+		int64_t positionMs = resume.Get(url);
+		if (positionMs > 0 && positionMs < m_durationMs) {
+			LOCK_THREAD;
+			m_seekMs = m_positionMs = positionMs;
+			LOGINFO("mediaplayer: resuming replay at %s", *IndexToHMSF(positionMs / 1000, false, 1));
+		}
+	}
+
+	bool ended = false;
 	while (Running() && !m_stopFile) {
 		bool sleep;
 		{
 			LOCK_THREAD;
 			sleep = !Feed();
 
-			if (CheckBeginEnd())
+			if (CheckBeginEnd()) {
+				ended = true;
 				break;
+			}
 		}
 
 		if (sleep)
 			cCondWait::SleepMs(m_playMode == pmPause || m_playMode == pmStill ? 10 : 3);
+	}
+
+	// a file, which was played to the end, starts at the beginning next time
+	if (canResume) {
+		if (ended)
+			resume.Delete(url);
+		else
+			resume.Store(url, GetPositionMs() - RESUME_BACKUP_MS);
 	}
 
 	CloseFile();
