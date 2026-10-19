@@ -16,12 +16,16 @@
 #include <vdr/interface.h>
 #include <vdr/osdbase.h>
 #include <vdr/plugin.h>
+#include <vdr/remote.h>
 #include <vdr/videodir.h>
 
 #include "device.h"
 #include "logger.h"
 #include "mediaplayer.h"
 #include "menu.h"
+
+bool cDeviceMenu::s_openMediaMenu = false;               ///< open the file menu of the stopped mediaplayer
+std::string cDeviceMenu::s_mediaSource;                  ///< file or playlist of the stopped mediaplayer
 
 /**
  * Build main or playlist menu
@@ -37,6 +41,9 @@ cDeviceMenu::cDeviceMenu(const char *title, cOutputDevice *device,
 	if (cDrmDeviceControl::Control() && cDrmDeviceControl::Control()->Player()->GetFirstPlaylistEntry()) {
 		LOGDEBUG2(L_MEDIA, "mediaplayer: %s: pointer to cDrmDeviceControl exist.", __FUNCTION__);
 		PlayListMenu();		// Test if PL!!!
+	} else if (s_openMediaMenu) {
+		s_openMediaMenu = false;
+		MediaMenu(s_mediaSource);
 	} else {
 		MainMenu();
 	}
@@ -67,6 +74,42 @@ static inline cOsdItem *SeparatorName(const char *label)
 static inline cOsdItem *SeparatorSpace(void)
 {
 	return new cOsdItem(" ", osUnknown, false);
+}
+
+/**
+ * Open the plugin menu with the file of the stopped mediaplayer
+ *
+ * Used by the mediaplayer's Back key, which stops the replay and returns
+ * to the mediaplayer's file menu (like VDR's replay returns to the
+ * recordings menu).
+ *
+ * @param source     played file or playlist
+ */
+void cDeviceMenu::OpenMediaMenu(const char *source)
+{
+	s_mediaSource = source ? source : "";
+	s_openMediaMenu = true;
+	cRemote::CallPlugin(PLUGIN_NAME_I18N);
+}
+
+/**
+ * Create the file menu with the given file selected
+ *
+ * Falls back to the main menu, if the file isn't a local file (e.g. an url).
+ *
+ * @param source     file or playlist
+ */
+void cDeviceMenu::MediaMenu(const std::string &source)
+{
+	size_t slash = source.find_last_of('/');
+	if (source.empty() || source[0] != '/' || slash == std::string::npos) {
+		MainMenu();
+		return;
+	}
+
+	m_lastItem = source.substr(slash + 1);
+	m_path = source.substr(0, slash);
+	FindFileMenu(m_path, NULL);
 }
 
 /**
@@ -442,7 +485,7 @@ void cDeviceMenu::FindFileMenu(const std::string &searchPath, FILE *playlist)
 							fprintf(playlist, "%s/%s\n", searchPath.c_str(),
 								dirList[i]->d_name);
 					} else {
-						Add(new cOsdItem(dirList[i]->d_name));
+						Add(new cOsdItem(dirList[i]->d_name), m_lastItem == dirList[i]->d_name);
 					}
 				}
 			}

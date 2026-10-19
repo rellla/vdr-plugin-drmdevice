@@ -16,6 +16,10 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#. TRANSLATORS: note the trailing blank!
+msgid "Jump: "
+msgstr "Springen: "
+
 msgid " Toggle"
 msgstr " Ein/Aus"
 

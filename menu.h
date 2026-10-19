@@ -52,6 +52,7 @@ public:
 
 	// mediaplayer
 	void PlayListMenu(void);
+	static void OpenMediaMenu(const char *);
 	virtual eOSState ProcessKey(eKeys);
 
 private:
@@ -62,6 +63,7 @@ private:
 
 	// mediaplayer
 	void MainMenu(void);
+	void MediaMenu(const std::string &);
 	void SelectPlaylistMenu(void);
 	void FindFileMenu(const std::string &, FILE *);
 	void MakePlayList(const char *, const char *);
@@ -70,6 +72,8 @@ private:
 	std::string m_path;                                 ///< current directory of the file menu
 	std::string m_lastItem;                             ///< last selected item (to select it again)
 	std::string m_playlist;                             ///< name of the current playlist
+	static bool s_openMediaMenu;                        ///< true, if the next menu shall show the file of the stopped mediaplayer
+	static std::string s_mediaSource;                   ///< file or playlist of the stopped mediaplayer
 };
 
 #endif

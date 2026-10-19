@@ -14,6 +14,8 @@
 #define __DRMDEVICE_MEDIAPLAYER_H
 
 #include <atomic>
+#include <ctime>
+#include <mutex>
 #include <string>
 
 extern "C" {
@@ -95,6 +97,7 @@ public:
 	bool IsRandomPlayActive(void) { return m_random; }                        ///< true, if random play is active
 	cPlaylistEntry *GetFirstPlaylistEntry(void) { return m_pFirstEntry; }     ///< get the first playlist entry
 	cPlaylistEntry *GetCurrentPlaylistEntry(void) { return m_pCurrentEntry; } ///< get the currently played playlist entry
+	int GetFile(std::string &, std::string &);
 
 protected:
 	virtual void Activate(bool On);
@@ -139,6 +142,10 @@ private:
 	std::atomic<bool> m_stopFile = false;               ///< true, if the current file shall be stopped
 	std::atomic<bool> m_random = false;                 ///< true, if random play is active
 	bool m_noModify = false;                            ///< true, if the next entry was already selected (don't advance)
+	std::mutex m_fileMutex;                             ///< mutex to protect the file information below
+	int m_fileNumber = 0;                               ///< number of the played files (incremented with every new file)
+	std::string m_fileTitle;                            ///< title of the current file
+	std::string m_filePath;                             ///< path of the current file
 
 	// current file (protected by the thread lock)
 	AVFormatContext *m_pFormat = nullptr;               ///< format context of the current file
@@ -179,6 +186,7 @@ public:
 	cDrmDeviceControl(const char *, cOutputDevice *);
 	virtual ~cDrmDeviceControl();
 
+	virtual void Show(void);
 	virtual void Hide(void);
 	virtual eOSState ProcessKey(eKeys);
 	static cDrmDeviceControl *Control() { return m_pControl; } ///< get the current control (nullptr, if none)
@@ -186,12 +194,39 @@ public:
 	void Close(void) { m_closing = true; }                     ///< close the control (end of playback)
 
 private:
-	void ShowProgress();
+	void ShowTimed(int = 0);
+	void ShowMode(void);
+	bool ShowProgress(bool);
+	void TimeSearchDisplay(void);
+	void TimeSearchProcess(eKeys);
+	void TimeSearch(void);
+	void CheckNewFile(void);
+	void StopReplaying(void);
 
 	static cDrmDeviceControl *m_pControl;               ///< the current control
 	static cDrmDevicePlayer *m_pPlayer;                 ///< the current player
-	cSkinDisplayReplay *m_pOsd = nullptr;               ///< replay osd
-	bool m_closing = false;                             ///< true, if the control shall be closed
+	cSkinDisplayReplay *m_pDisplayReplay = nullptr;     ///< replay display
+	std::atomic<bool> m_closing = false;                ///< true, if the control shall be closed
+
+	// replay display (like cReplayControl)
+	bool m_visible = false;                             ///< true, if the replay display is shown
+	bool m_modeOnly = false;                            ///< true, if only the replay mode is shown
+	bool m_shown = false;                               ///< true, if the progress was shown
+	int m_lastCurrent = -1;                             ///< last shown position (frame index)
+	int m_lastTotal = -1;                               ///< last shown total length (frame index)
+	bool m_lastPlay = false;                            ///< last shown play mode
+	bool m_lastForward = false;                         ///< last shown direction
+	int m_lastSpeed = -2;                               ///< last shown speed (-2 = invalid)
+	time_t m_timeoutShow = 0;                           ///< time, when the replay display is hidden (0 = never)
+	cTimeMs m_updateTimer;                              ///< timer for the progress updates
+	bool m_timeSearchActive = false;                    ///< true, if the time search is active
+	bool m_timeSearchHide = false;                      ///< true, if the replay display is hidden after the time search
+	int m_timeSearchTime = 0;                           ///< entered digits of the time search
+	int m_timeSearchPos = 0;                            ///< number of entered digits of the time search
+
+	int m_fileNumber = 0;                               ///< number of the file, which is shown
+	std::string m_title;                                ///< title of the current file
+	std::string m_path;                                 ///< path of the current file
 };
 
 #endif
