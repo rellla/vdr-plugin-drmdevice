@@ -137,7 +137,7 @@ void cStateMachine::OnEventReceived(const Event& event)
 					needsResume = false;
 				},
 				[&invalid](const AttachEvent&) { invalid(); },
-				[&invalid](const BufferUnderrunEvent&) { invalid(); },
+				[](const BufferUnderrunEvent&) { /* ignore: stale event from the render/ audio thread, queued before the stop */ },
 				[&invalid](const BufferingThresholdReachedEvent&) { invalid(); },
 				[&invalid](const ScheduleResyncAtPtsMsEvent&) { invalid(); },
 				[&invalid](const ResyncEvent&) { invalid(); },
@@ -167,7 +167,7 @@ void cStateMachine::OnEventReceived(const Event& event)
 					needsResume = false;
 				},
 				[&invalid](const AttachEvent&) { invalid(); },
-				[&invalid](const BufferUnderrunEvent&) { invalid(); },
+				[](const BufferUnderrunEvent&) { /* ignore: already buffering */ },
 				[this](const BufferingThresholdReachedEvent&) {
 					if (m_pDevice->SchedulePlaybackStart())
 						ChangeState(PLAY);
