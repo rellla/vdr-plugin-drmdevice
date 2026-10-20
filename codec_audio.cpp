@@ -232,6 +232,7 @@ void cAudioDecoder::CloseSpdifMuxer(void)
 	}
 
 	m_spdifOutputBuf.clear();
+	m_burstPts = AV_NOPTS_VALUE;
 }
 
 /**
@@ -389,12 +390,19 @@ int cAudioDecoder::Passthrough(const AVPacket *avpkt)
 
 	m_pAudio->SetTimebase(m_pAudioCtx->pkt_timebase);
 
+	// The muxer may collect several packets for one burst (e.g. TrueHD), the burst starts with the first one
+	if (m_burstPts == AV_NOPTS_VALUE)
+		m_burstPts = avpkt->pts;
+
 	const auto &burst = BuildIEC61937(avpkt);
 
 	if (burst.empty())
 		return 0;
 
-	m_pAudio->EnqueueSpdif(reinterpret_cast<const uint16_t *>(burst.data()), burst.size(), avpkt->pts);
+	int64_t pts = m_burstPts;
+	m_burstPts = AV_NOPTS_VALUE;
+
+	m_pAudio->EnqueueSpdif(reinterpret_cast<const uint16_t *>(burst.data()), burst.size(), pts);
 	return 1;
 }
 
@@ -464,6 +472,9 @@ void cAudioDecoder::FlushBuffers(void)
 	LOGDEBUG2(L_CODEC, "audiocodec: %s", __FUNCTION__);
 	if (m_pAudioCtx)
 		avcodec_flush_buffers(m_pAudioCtx);
+
+	// the muxer may hold data of a burst, which isn't complete yet (e.g. TrueHD)
+	CloseSpdifMuxer();
 
 	m_lastPts = AV_NOPTS_VALUE;
 	m_codecId = AV_CODEC_ID_NONE;

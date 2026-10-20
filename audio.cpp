@@ -441,6 +441,12 @@ void cAudioStream::DropSamplesOlderThanPtsMs(int64_t ptsMs)
 
 	dropBytes = std::min(dropBytes, (int)m_pRingbuffer.UsedBytes());
 
+	// Drop a bitstream in complete bursts: the bursts keep their period and the receiver keeps the sync
+	if (m_alsa.IsPassthroughActive() && m_spdifBurstSize > 0) {
+		dropBytes -= dropBytes % m_spdifBurstSize;
+		dropFrames = m_alsa.BytesToFrames(dropBytes);
+	}
+
 	if (dropBytes > 0) {
 		LOGDEBUG2(L_AV_SYNC, "audio: %s: dropping %" PRId64 "ms audio samples from ringbuffer (output PTS %s -> %s)",
 			__FUNCTION__,

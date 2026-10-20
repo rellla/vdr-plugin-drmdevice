@@ -89,6 +89,7 @@ private:
 	std::array<uint8_t, 32768> m_spdifIoBuffer{}; ///< spdif I/O buffer
 	AVFormatContext *m_spdifFmtCtx = nullptr;   ///< spdif muxer context
 	std::vector<uint8_t> m_spdifOutputBuf;      ///< spdif muxer output
+	int64_t m_burstPts = AV_NOPTS_VALUE;        ///< pts of the first packet of the next spdif burst
 
 	constexpr static int AUDIO_PASSTHROUGH_NUM_CHANNELS = 2; ///< fixed passthrough channel number
 	constexpr static int AUDIO_PASSTHROUGH_RATE_HZ = 48000;  ///< passthrough sample rate, if the rate of the stream is unknown
