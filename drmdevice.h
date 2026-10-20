@@ -95,6 +95,7 @@ public:
 	int InitGbm(void);
 	void ExitGbm(void);
 	int InitEGL(void);
+	void ExitEGL(void);
 #endif
 	int Fd(void) { return m_fdDrm; }                    ///< get the drm file descriptor
 	void Close(void);
