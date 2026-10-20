@@ -91,7 +91,7 @@ private:
 	std::vector<uint8_t> m_spdifOutputBuf;      ///< spdif muxer output
 
 	constexpr static int AUDIO_PASSTHROUGH_NUM_CHANNELS = 2; ///< fixed passthrough channel number
-	constexpr static int AUDIO_PASSTHROUGH_RATE_HZ = 48000;  ///< fixed passthrough sample rate
+	constexpr static int AUDIO_PASSTHROUGH_RATE_HZ = 48000;  ///< passthrough sample rate, if the rate of the stream is unknown
 
 	bool OpenSpdifMuxer(AVCodecID, int);
 	void CloseSpdifMuxer(void);
