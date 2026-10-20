@@ -35,7 +35,7 @@ extern "C" {
  *
  * @param mask    passthrough bitmask
  *
- * @return a string like " (passthrough mask: AC3 E-AC-3 DTS)"
+ * @return a string like " (passthrough mask: AC3 E-AC-3 DTS TrueHD)"
  */
 static std::string GetPassthroughMaskString(int mask)
 {
@@ -43,9 +43,10 @@ static std::string GetPassthroughMaskString(int mask)
 
 	if (mask) {
 		passthrough += " (passthrough mask:";
-		if (mask & CODEC_AC3)  passthrough += " AC3";
-		if (mask & CODEC_EAC3) passthrough += " E-AC-3";
-		if (mask & CODEC_DTS)  passthrough += " DTS";
+		if (mask & CODEC_AC3)    passthrough += " AC3";
+		if (mask & CODEC_EAC3)   passthrough += " E-AC-3";
+		if (mask & CODEC_DTS)    passthrough += " DTS";
+		if (mask & CODEC_TRUEHD) passthrough += " TrueHD";
 		passthrough += ")";
 	}
 
@@ -59,7 +60,7 @@ static std::string GetPassthroughMaskString(int mask)
  */
 cAudioDecoder::cAudioDecoder(cAudioStream *audio)
 	: m_pAudio(audio),
-	  m_passthroughMask(m_pAudio->GetPassthroughMask() & (CODEC_AC3 | CODEC_EAC3 | CODEC_DTS))
+	  m_passthroughMask(m_pAudio->GetPassthroughMask() & CODEC_PASSTHROUGH_ALL)
 {
 	if (!(m_pFrame = av_frame_alloc()))
 		LOGFATAL("audiocodec: %s: can't allocate audio decoder frame buffer", __FUNCTION__);
@@ -279,7 +280,7 @@ const std::vector<uint8_t> &cAudioDecoder::BuildIEC61937(const AVPacket *avpkt)
  *
  * To enable passthrough, the current codec must be enabled in the setup
  *
- * Currently supported: AC3, E-AC-3, DTS
+ * Currently supported: AC3, E-AC-3, DTS, TrueHD
  *
  * @return             true, if the data should be passed through
  */
@@ -288,9 +289,10 @@ bool cAudioDecoder::ShouldTryPassthrough(void)
 	if (m_passthroughFailed)
 		return false;
 
-	return (m_passthroughMask & CODEC_AC3  && m_pAudioCtx->codec_id == AV_CODEC_ID_AC3) ||
-	       (m_passthroughMask & CODEC_EAC3 && m_pAudioCtx->codec_id == AV_CODEC_ID_EAC3) ||
-	       (m_passthroughMask & CODEC_DTS  && m_pAudioCtx->codec_id == AV_CODEC_ID_DTS);
+	return (m_passthroughMask & CODEC_AC3    && m_pAudioCtx->codec_id == AV_CODEC_ID_AC3) ||
+	       (m_passthroughMask & CODEC_EAC3   && m_pAudioCtx->codec_id == AV_CODEC_ID_EAC3) ||
+	       (m_passthroughMask & CODEC_DTS    && m_pAudioCtx->codec_id == AV_CODEC_ID_DTS) ||
+	       (m_passthroughMask & CODEC_TRUEHD && m_pAudioCtx->codec_id == AV_CODEC_ID_TRUEHD);
 }
 
 /**
@@ -320,6 +322,13 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 		// E-AC-3 needs four times the sample rate (IEC 61937-3), there is no fallback
 		if (m_pAudioCtx->codec_id == AV_CODEC_ID_EAC3)
 			m_currentHwSampleRate *= 4;
+
+		// TrueHD is sent as high bitrate bitstream with 8 channels and 192kHz,
+		// or 176.4kHz for the 44.1kHz rate family (IEC 61937-9)
+		if (m_pAudioCtx->codec_id == AV_CODEC_ID_TRUEHD) {
+			m_currentHwSampleRate = m_currentHwSampleRate % 44100 ? 192000 : 176400;
+			m_currentHwNumChannels = AUDIO_HBR_NUM_CHANNELS;
+		}
 	}
 
 	int err = 0;
@@ -483,10 +492,10 @@ void cAudioDecoder::FlushBuffers(void)
 /**
  * Set audio pass-through mask
  *
- * @param mask         codec mask to enable (AC-3, E-AC-3, DTS)
+ * @param mask         codec mask to enable (AC-3, E-AC-3, DTS, TrueHD)
  */
 void cAudioDecoder::SetPassthroughMask(int mask)
 {
-	m_passthroughMask = mask & (CODEC_AC3 | CODEC_EAC3 | CODEC_DTS);
+	m_passthroughMask = mask & CODEC_PASSTHROUGH_ALL;
 	m_passthroughFailed = false; // try again with the new settings
 }

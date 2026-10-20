@@ -104,7 +104,7 @@ private:
 
 	bool ShouldAppendAES(void) { return m_appendAES && m_passthroughMask; }  ///< true, if AES shall be appended to the device name
 	char *OpenDevice(const char *);
-	std::string BuildDeviceString(const char *, bool, int);
+	std::string BuildDeviceString(const char *, bool, int, int);
 	bool ReopenDevice(const std::string &);
 	char *FindDevice(const char *, const char *);
 	bool InitDevice(void);

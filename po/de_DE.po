@@ -113,6 +113,9 @@ msgstr "  Aktiviere E-AC-3 Passthrough"
 msgid "  DTS passthrough"
 msgstr "  Aktiviere DTS Passthrough"
 
+msgid "  TrueHD passthrough"
+msgstr "  Aktiviere TrueHD Passthrough"
+
 msgid "  Enable automatic AES"
 msgstr "  Aktiviere automatische AES Parameter"
 
