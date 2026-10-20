@@ -96,16 +96,17 @@ static inline bool isInterlacedFrame(AVFrame *frame)
 #undef av_err2str
 /**
  * Workaround for av_err2str() not working with C++
+ *
+ * The string stays valid for the next two calls of the same thread, so up to
+ * three strings can be used in one log message. Each thread has its own buffers.
  */
 static inline const char* av_err2string(int errnum)
 {
-	static char str[3][AV_ERROR_MAX_STRING_SIZE];
-	char buf[AV_ERROR_MAX_STRING_SIZE];
-	static int idx = 0;
+	thread_local char str[3][AV_ERROR_MAX_STRING_SIZE];
+	thread_local int idx = 0;
 
 	idx = (idx + 1) % 3;
-	av_make_error_string(buf, AV_ERROR_MAX_STRING_SIZE, errnum);
-	snprintf(str[idx], sizeof(str[idx]), "%s", buf);
+	av_make_error_string(str[idx], AV_ERROR_MAX_STRING_SIZE, errnum);
 
 	return str[idx];
 }
@@ -120,6 +121,9 @@ static inline const char* av_err2string(int errnum)
 /**
  * Nice time-stamp string.
  *
+ * The string stays valid for the next two calls of the same thread, so up to
+ * three timestamps can be used in one log message. Each thread has its own buffers.
+ *
  * @param ts       time stamp
  * @param divisor  optional divisor for the given timestamp int (must be > 0)
  *
@@ -127,8 +131,8 @@ static inline const char* av_err2string(int errnum)
  */
 static inline const char *Timestamp2String(int64_t ts, uint8_t divisor)
 {
-	static char buf[3][20];
-	static int idx = 0;
+	thread_local char buf[3][20];
+	thread_local int idx = 0;
 
 	if (ts == (int64_t) AV_NOPTS_VALUE) {
 		return "--:--:--.---";
