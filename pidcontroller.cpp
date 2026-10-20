@@ -74,13 +74,15 @@ double cPidController::Update(double currentValue, double dt)
 	previousError = error;
 	firstRun = false;
 
+	// Limit the output. The controller is not reset at the limit: this would drop the
+	// integral term, the correction would jump back and forth between the limit and zero.
+	bool atLimit = std::abs(output) >= maxOutput;
+	if (atLimit && !outputSaturated)
+		LOGWARNING("pidcontroller: max output value reached");
+	outputSaturated = atLimit;
+
 	output = std::min(output, maxOutput);
 	output = std::max(output, -maxOutput);
-
-	if (std::abs(output) >= maxOutput) {
-		LOGWARNING("pidcontroller: max output value exceeded. Resetting.");
-		Reset();
-	}
 #ifdef PID_CONTROLLER_TUNING_AID_ADDRESS
 	SendTuningAidData(pTerm, iTerm, dTerm, currentValue, output, targetValue);
 #endif
@@ -98,6 +100,7 @@ void cPidController::Reset(void)
 	iTerm = 0;
 	dTerm = 0;
 	integralSum = 0.0;
+	outputSaturated = false;
 	previousError = 0.0;
 }
 
