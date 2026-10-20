@@ -1,0 +1,389 @@
+/**
+ * @file test_audiostreams.cpp
+ * Unit tests with real audio streams: PES reassembly and spdif passthrough
+ *
+ * The streams in tests/data were encoded with FFmpeg (a 440Hz sine), see the
+ * README.md there.
+ *
+ * @license{AGPL-3.0-or-later}
+ */
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <vector>
+
+#include <alsa/asoundlib.h>
+
+extern "C" {
+#include <libavcodec/avcodec.h>
+}
+
+#include "../pes.h"
+#include "../spdif.h"
+
+#ifndef TEST_DATA_DIR
+#define TEST_DATA_DIR "data"
+#endif
+
+namespace {
+
+/** IEC 61937 data types (Pc) */
+enum {
+    PC_AC3 = 0x01,
+    PC_DTS1 = 0x0B,
+    PC_DTSHD = 0x11,
+    PC_EAC3 = 0x15,
+    PC_TRUEHD = 0x16,
+};
+
+std::vector<uint8_t> ReadFile(const std::string &name)
+{
+    std::ifstream file(std::string(TEST_DATA_DIR) + "/" + name, std::ios::binary);
+    REQUIRE(file.good());
+    return std::vector<uint8_t>(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+}
+
+AVPacket *MakePacket(const uint8_t *data, int size, int64_t pts)
+{
+    AVPacket *pkt = av_packet_alloc();
+    REQUIRE(av_new_packet(pkt, size) == 0);
+    memcpy(pkt->data, data, size);
+    pkt->pts = pts;
+    return pkt;
+}
+
+/**
+ * Feed an elementary stream like VDR's PES packets into the reassembly buffer
+ *
+ * The stream is pushed in TS payload sized chunks, every 10th chunk carries a pts.
+ *
+ * @param data          the stream
+ * @param[out] packets  the reassembled frames
+ * @return              number of bytes left in the buffer
+ */
+size_t Reassemble(const std::vector<uint8_t> &data, std::vector<AVPacket *> &packets)
+{
+    cReassemblyBufferAudio buffer;
+    constexpr size_t CHUNK_SIZE = 184;
+
+    for (size_t pos = 0; pos < data.size(); pos += CHUNK_SIZE) {
+        size_t chunk = std::min(CHUNK_SIZE, data.size() - pos);
+        int64_t pts = (pos / CHUNK_SIZE) % 10 ? AV_NOPTS_VALUE : (int64_t)pos;
+        buffer.Push(&data[pos], chunk, pts);
+
+        while (AVPacket *pkt = buffer.PopAvPacket())
+            packets.push_back(pkt);
+    }
+
+    return buffer.GetSize();
+}
+
+/**
+ * Check the reassembly of a stream
+ *
+ * All frames except the last one (it has no following sync word) are popped, each
+ * frame starts with the sync word of the codec. If FFmpeg has a decoder for the codec,
+ * each frame must be decodable.
+ *
+ * @param file           stream file
+ * @param codec          codec of the stream
+ * @param frameSize      size of all frames (0: variable)
+ */
+void CheckReassembly(const std::string &file, AVCodecID codec, int frameSize)
+{
+    std::vector<uint8_t> data = ReadFile(file);
+    std::vector<AVPacket *> packets;
+    cReassemblyBufferAudio detector;
+
+    size_t left = Reassemble(data, packets);
+
+    REQUIRE(packets.size() >= 5);
+
+    size_t popped = 0;
+    for (AVPacket *pkt : packets) {
+        REQUIRE(detector.DetectCodecFromSyncWord(pkt->data, pkt->size) == codec);
+        if (frameSize)
+            REQUIRE(pkt->size == frameSize);
+        popped += pkt->size;
+    }
+
+    // nothing is lost, only the last frame stays in the buffer
+    REQUIRE(popped + left == data.size());
+    REQUIRE((int)left == detector.GetFrameSizeForCodec(codec, &data[popped]));
+
+    // the first frame has the pts of its PES packet
+    REQUIRE(packets[0]->pts == 0);
+
+    const AVCodec *decoder = avcodec_find_decoder(codec);
+    if (decoder) {
+        AVCodecContext *ctx = avcodec_alloc_context3(decoder);
+        REQUIRE(avcodec_open2(ctx, decoder, nullptr) == 0);
+        AVFrame *frame = av_frame_alloc();
+        int decoded = 0;
+
+        for (AVPacket *pkt : packets) {
+            REQUIRE(avcodec_send_packet(ctx, pkt) == 0);
+            while (avcodec_receive_frame(ctx, frame) == 0)
+                decoded++;
+        }
+
+        // decoders may delay the first frame
+        REQUIRE(decoded >= (int)packets.size() - 2);
+
+        av_frame_free(&frame);
+        avcodec_free_context(&ctx);
+    }
+
+    for (AVPacket *pkt : packets)
+        av_packet_free(&pkt);
+}
+
+/** a burst of the spdif muxer with its pts */
+struct sBurst {
+    std::vector<uint8_t> data;
+    int64_t pts;
+};
+
+/**
+ * Pass packets through the spdif muxer
+ *
+ * The pts of a packet is its index.
+ */
+std::vector<sBurst> Mux(cSpdifMuxer &muxer, const std::vector<std::pair<const uint8_t *, int>> &frames)
+{
+    std::vector<sBurst> bursts;
+
+    for (size_t i = 0; i < frames.size(); i++) {
+        AVPacket *pkt = MakePacket(frames[i].first, frames[i].second, i);
+        int64_t pts = AV_NOPTS_VALUE;
+        const std::vector<uint8_t> &burst = muxer.Mux(pkt, &pts);
+        if (!burst.empty())
+            bursts.push_back({burst, pts});
+        av_packet_free(&pkt);
+    }
+
+    return bursts;
+}
+
+/** frames of an elementary stream, split by the reassembly buffer */
+std::vector<std::pair<const uint8_t *, int>> SplitFrames(const std::vector<uint8_t> &data, AVCodecID codec)
+{
+    std::vector<std::pair<const uint8_t *, int>> frames;
+    cReassemblyBufferAudio buffer;
+
+    for (size_t pos = 0; pos < data.size();) {
+        int size = buffer.GetCompleteFrameSize(codec, &data[pos], data.size() - pos);
+        if (!size)                          // the size of the last frame is unknown (DTS)
+            size = data.size() - pos;
+        frames.push_back({&data[pos], size});
+        pos += size;
+    }
+
+    return frames;
+}
+
+/** TrueHD access units of a raw TrueHD stream */
+std::vector<std::pair<const uint8_t *, int>> SplitTrueHD(const std::vector<uint8_t> &data)
+{
+    std::vector<std::pair<const uint8_t *, int>> units;
+
+    // the access unit length is in 16 bit words
+    for (size_t pos = 0; pos + 2 <= data.size();) {
+        int size = (((data[pos] & 0x0F) << 8) | data[pos + 1]) * 2;
+        REQUIRE(size > 0);
+        REQUIRE(pos + size <= data.size());
+        units.push_back({&data[pos], size});
+        pos += size;
+    }
+
+    return units;
+}
+
+/**
+ * Check the bursts of a stream
+ *
+ * @param bursts          the bursts
+ * @param dataType        IEC 61937 data type (Pc)
+ * @param burstSize       size of a burst in bytes
+ * @param packetsPerBurst number of packets in one burst
+ */
+void CheckBursts(const std::vector<sBurst> &bursts, int dataType, size_t burstSize, int packetsPerBurst)
+{
+    REQUIRE(bursts.size() >= 2);
+
+    for (size_t i = 0; i < bursts.size(); i++) {
+        const std::vector<uint8_t> &burst = bursts[i].data;
+        REQUIRE(burst.size() == burstSize);
+
+        // preamble Pa, Pb and the data type Pc (little endian words)
+        REQUIRE(burst[0] == 0x72);
+        REQUIRE(burst[1] == 0xF8);
+        REQUIRE(burst[2] == 0x1F);
+        REQUIRE(burst[3] == 0x4E);
+        REQUIRE((burst[4] & 0x7F) == dataType);
+
+        // a burst has the pts of its first packet
+        REQUIRE(bursts[i].pts == (int64_t)i * packetsPerBurst);
+    }
+}
+
+/**
+ * Check, that a burst lasts as long as its audio
+ *
+ * @param format          output format
+ * @param burstSize       size of a burst in bytes
+ * @param samples         samples of the audio in a burst
+ * @param sampleRate      sample rate of the audio
+ */
+void CheckBurstDuration(const sPassthroughFormat &format, size_t burstSize, int samples, int sampleRate)
+{
+    int64_t outputFrames = burstSize / (format.channels * 2);
+    // outputFrames / format.sampleRate == samples / sampleRate
+    REQUIRE(outputFrames * sampleRate == (int64_t)samples * format.sampleRate);
+}
+
+} // namespace
+
+TEST_CASE("Audio streams - PES reassembly", "[audiostreams][reassembly]") {
+    SECTION("MP2")       { CheckReassembly("mp2_48k.mp2", AV_CODEC_ID_MP2, 576); }
+    SECTION("AAC ADTS")  { CheckReassembly("aac_adts_48k.aac", AV_CODEC_ID_AAC, 0); }
+    SECTION("AAC LATM")  { CheckReassembly("aac_latm_48k.latm", AV_CODEC_ID_AAC_LATM, 0); }
+    SECTION("AC-3")      { CheckReassembly("ac3_48k.ac3", AV_CODEC_ID_AC3, 1792); }
+    SECTION("E-AC-3")    { CheckReassembly("eac3_48k.eac3", AV_CODEC_ID_EAC3, 1536); }
+    SECTION("DTS 48kHz") { CheckReassembly("dts_48k.dts", AV_CODEC_ID_DTS, 1024); }
+    SECTION("DTS 44.1kHz") { CheckReassembly("dts_44k.dts", AV_CODEC_ID_DTS, 0); }
+}
+
+TEST_CASE("Audio streams - spdif passthrough", "[audiostreams][spdif]") {
+    cSpdifMuxer muxer;
+
+    SECTION("AC-3") {
+        std::vector<uint8_t> data = ReadFile("ac3_48k.ac3");
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_AC3, 48000, 0, false);
+        REQUIRE(muxer.Open(AV_CODEC_ID_AC3, format.sampleRate));
+
+        std::vector<sBurst> bursts = Mux(muxer, SplitFrames(data, AV_CODEC_ID_AC3));
+        CheckBursts(bursts, PC_AC3, 6144, 1);
+        CheckBurstDuration(format, 6144, 1536, 48000);
+    }
+
+    SECTION("E-AC-3") {
+        std::vector<uint8_t> data = ReadFile("eac3_48k.eac3");
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_EAC3, 48000, 0, false);
+        REQUIRE(format.sampleRate == 192000);
+        REQUIRE(muxer.Open(AV_CODEC_ID_EAC3, format.sampleRate));
+
+        std::vector<sBurst> bursts = Mux(muxer, SplitFrames(data, AV_CODEC_ID_EAC3));
+        CheckBursts(bursts, PC_EAC3, 24576, 1);
+        CheckBurstDuration(format, 24576, 1536, 48000);
+    }
+
+    SECTION("DTS 48kHz") {
+        std::vector<uint8_t> data = ReadFile("dts_48k.dts");
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_DTS, 48000, 0, false);
+        REQUIRE(muxer.Open(AV_CODEC_ID_DTS, format.sampleRate));
+
+        std::vector<sBurst> bursts = Mux(muxer, SplitFrames(data, AV_CODEC_ID_DTS));
+        CheckBursts(bursts, PC_DTS1, 2048, 1);
+        CheckBurstDuration(format, 2048, 512, 48000);
+    }
+
+    SECTION("DTS 44.1kHz is sent with 44.1kHz") {
+        std::vector<uint8_t> data = ReadFile("dts_44k.dts");
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_DTS, 44100, 0, false);
+        REQUIRE(format.sampleRate == 44100);
+        REQUIRE(muxer.Open(AV_CODEC_ID_DTS, format.sampleRate));
+
+        std::vector<sBurst> bursts = Mux(muxer, SplitFrames(data, AV_CODEC_ID_DTS));
+        CheckBursts(bursts, PC_DTS1, 2048, 1);
+        CheckBurstDuration(format, 2048, 512, 44100);
+    }
+
+    SECTION("TrueHD") {
+        std::vector<uint8_t> data = ReadFile("truehd_48k.thd");
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_TRUEHD, 48000, 0, false);
+        REQUIRE(format.sampleRate == 192000);
+        REQUIRE(format.channels == 8);
+        REQUIRE(muxer.Open(AV_CODEC_ID_TRUEHD, format.sampleRate));
+
+        // a MAT frame holds 24 access units of 40 samples (20ms)
+        std::vector<sBurst> bursts = Mux(muxer, SplitTrueHD(data));
+        CheckBursts(bursts, PC_TRUEHD, 61440, 24);
+        CheckBurstDuration(format, 61440, 24 * 40, 48000);
+    }
+
+    SECTION("Closing drops the data of an incomplete burst") {
+        std::vector<uint8_t> data = ReadFile("truehd_48k.thd");
+        std::vector<std::pair<const uint8_t *, int>> units = SplitTrueHD(data);
+        REQUIRE(muxer.Open(AV_CODEC_ID_TRUEHD, 192000));
+
+        // half a MAT frame
+        units.resize(12);
+        REQUIRE(Mux(muxer, units).empty());
+
+        // after a reopen the next burst starts from scratch with the next packet
+        REQUIRE(muxer.Open(AV_CODEC_ID_TRUEHD, 192000));
+        units = SplitTrueHD(data);
+        std::vector<sBurst> bursts = Mux(muxer, units);
+        CheckBursts(bursts, PC_TRUEHD, 61440, 24);
+    }
+
+    SECTION("A closed muxer returns nothing") {
+        std::vector<uint8_t> data = ReadFile("ac3_48k.ac3");
+        AVPacket *pkt = MakePacket(data.data(), 1792, 0);
+        int64_t pts = AV_NOPTS_VALUE;
+        REQUIRE(muxer.Mux(pkt, &pts).empty());
+        av_packet_free(&pkt);
+    }
+}
+
+TEST_CASE("Passthrough format", "[spdif]") {
+    SECTION("AC-3 and DTS use the rate of the stream") {
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_AC3, 44100, 0, false);
+        REQUIRE(format.sampleRate == 44100);
+        REQUIRE(format.channels == 2);
+        REQUIRE(format.dtshdRate == 0);
+        REQUIRE(GetPassthroughFormat(AV_CODEC_ID_DTS, 48000, 0, false).sampleRate == 48000);
+    }
+
+    SECTION("An unknown rate is 48kHz") {
+        REQUIRE(GetPassthroughFormat(AV_CODEC_ID_AC3, 0, 0, false).sampleRate == 48000);
+        REQUIRE(GetPassthroughFormat(AV_CODEC_ID_EAC3, 0, 0, false).sampleRate == 192000);
+    }
+
+    SECTION("E-AC-3 uses four times the rate") {
+        REQUIRE(GetPassthroughFormat(AV_CODEC_ID_EAC3, 48000, 0, false).sampleRate == 192000);
+        REQUIRE(GetPassthroughFormat(AV_CODEC_ID_EAC3, 44100, 0, false).sampleRate == 176400);
+    }
+
+    SECTION("TrueHD is a high bitrate bitstream") {
+        for (int rate : {48000, 96000, 192000}) {
+            sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_TRUEHD, rate, 0, false);
+            REQUIRE(format.sampleRate == 192000);
+            REQUIRE(format.channels == 8);
+        }
+        for (int rate : {44100, 88200, 176400})
+            REQUIRE(GetPassthroughFormat(AV_CODEC_ID_TRUEHD, rate, 0, false).sampleRate == 176400);
+    }
+}
+
+TEST_CASE("IEC 60958 sample rate code", "[spdif]") {
+    REQUIRE(GetIEC958SampleRateCode(48000, 2, false) == IEC958_AES3_CON_FS_48000);
+    REQUIRE(GetIEC958SampleRateCode(48000, 2, true) == IEC958_AES3_CON_FS_48000);
+    REQUIRE(GetIEC958SampleRateCode(44100, 2, true) == IEC958_AES3_CON_FS_44100);
+    REQUIRE(GetIEC958SampleRateCode(192000, 2, true) == IEC958_AES3_CON_FS_192000);
+    REQUIRE(GetIEC958SampleRateCode(176400, 2, true) == IEC958_AES3_CON_FS_176400);
+    REQUIRE(GetIEC958SampleRateCode(22050, 2, false) == IEC958_AES3_CON_FS_NOTID);
+
+    SECTION("A high bitrate bitstream is sent with 768kHz") {
+        REQUIRE(GetIEC958SampleRateCode(192000, 8, true) == IEC958_AES3_CON_FS_768000);
+        REQUIRE(GetIEC958SampleRateCode(176400, 8, true) == IEC958_AES3_CON_FS_NOTID);
+    }
+
+    SECTION("8 channel PCM uses its sample rate") {
+        REQUIRE(GetIEC958SampleRateCode(192000, 8, false) == IEC958_AES3_CON_FS_192000);
+    }
+}
