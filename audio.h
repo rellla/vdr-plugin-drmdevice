@@ -148,6 +148,7 @@ private:
 	int m_spdifBurstSize = 0;               ///< size of the current spdif burst
 	std::vector<uint16_t> m_pauseBurst;     ///< holds the burst data itself
 	std::vector<uint8_t> m_amplifyBuffer;   ///< soft volume is applied to a copy of the ringbuffer data
+	int m_spdifReadPhase = 0;               ///< position of the next ringbuffer byte in its spdif burst
 	int m_hwBaseline = 0;                   ///< saves the hw delay (pause bursts) once a real audio frame to correctly do the AV-Sync
 	bool m_firstRealAudioReceived = false;  ///< false, as long as no real audio was sent - used to trigger the baseline set
 
@@ -155,6 +156,8 @@ private:
 	void EnqueueFrame(AVFrame *);
 	bool SendAudio(int);
 	bool SendPause(void);
+	void FillPause(uint8_t *, int);
+	void AdvanceSpdifReadPhase(int);
 	void RebuildPauseBurst(int);
 	void Stop(void);
 	void FlushAlsaBuffers(void);
