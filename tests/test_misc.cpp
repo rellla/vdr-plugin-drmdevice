@@ -107,3 +107,24 @@ TEST_CASE("misc - The string buffers are per thread", "[misc]") {
 	}
 #endif
 }
+
+TEST_CASE("misc - Alpha blending", "[misc]") {
+	SECTION("Unmultiply a premultiplied color") {
+		REQUIRE(UnmultiplyAlpha(0x80, 0xFF) == 0x80);
+		REQUIRE(UnmultiplyAlpha(0x40, 0x80) == 0x7F);
+		REQUIRE(UnmultiplyAlpha(0x80, 0x80) == 0xFF);
+		REQUIRE(UnmultiplyAlpha(0x00, 0x01) == 0x00);
+	}
+
+	SECTION("An incorrectly premultiplied color doesn't overflow") {
+		REQUIRE(UnmultiplyAlpha(0xFF, 0x80) == 0xFF);
+		REQUIRE(UnmultiplyAlpha(0x02, 0x01) == 0xFF);
+	}
+
+	SECTION("Blend") {
+		REQUIRE(BlendColor(0x00, 0xFF, 0xFF) == 0xFF);
+		REQUIRE(BlendColor(0xFF, 0x00, 0x00) == 0xFF);
+		REQUIRE(BlendColor(0x00, 0xFF, 0x80) == 0x80);
+		REQUIRE(BlendColor(0xFF, 0xFF, 0x80) == 0xFF);
+	}
+}

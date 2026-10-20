@@ -61,6 +61,7 @@ extern "C" {
 #include "drmbuffer.h"
 #include "grab.h"
 #include "logger.h"
+#include "misc.h"
 #include "videorender.h"
 
 /**
@@ -73,10 +74,6 @@ extern "C" {
  ***************************************************************************************/
 #define OPAQUE      0xff    ///< alpha value of an opaque pixel
 #define TRANSPARENT 0x00    ///< alpha value of a transparent pixel
-/** Convert a color component with premultiplied alpha back to straight alpha */
-#define UNMULTIPLY(color, alpha) ((0xff * color) / alpha)
-/** Blend a front color component with the given alpha over a back color component */
-#define BLEND(back, front, alpha) ((front * alpha) + (back * (255 - alpha))) / 255
 
 // --- Begin Raspberry Pi BSD-licensed code ---
 
@@ -330,13 +327,13 @@ static void AlphaBlend(uint8_t *result, uint8_t *front, uint8_t *back, const uns
 		const uint8_t backG = back[1];
 		const uint8_t backB = back[2];
 
-		const uint8_t frontR = UNMULTIPLY(front[0], frontAlpha);
-		const uint8_t frontG = UNMULTIPLY(front[1], frontAlpha);
-		const uint8_t frontB = UNMULTIPLY(front[2], frontAlpha);
+		const uint8_t frontR = UnmultiplyAlpha(front[0], frontAlpha);
+		const uint8_t frontG = UnmultiplyAlpha(front[1], frontAlpha);
+		const uint8_t frontB = UnmultiplyAlpha(front[2], frontAlpha);
 
-		const uint8_t R = BLEND(backR, frontR, frontAlpha);
-		const uint8_t G = BLEND(backG, frontG, frontAlpha);
-		const uint8_t B = BLEND(backB, frontB, frontAlpha);
+		const uint8_t R = BlendColor(backR, frontR, frontAlpha);
+		const uint8_t G = BlendColor(backG, frontG, frontAlpha);
+		const uint8_t B = BlendColor(backB, frontB, frontAlpha);
 
 		result[0] = R;
 		result[1] = G;

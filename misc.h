@@ -13,6 +13,7 @@
 #ifndef __DRMDEVICE_MISC_H
 #define __DRMDEVICE_MISC_H
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdint>
 
@@ -146,6 +147,37 @@ static inline const char *Timestamp2String(int64_t ts, uint8_t divisor)
 		(int)((ts / (1000)) % 60), (int)(ts % 1000));
 
 	return buf[idx];
+}
+
+/**
+ * Convert a color component with premultiplied alpha back to straight alpha
+ *
+ * A color component can't be greater than its alpha in a correctly premultiplied
+ * pixel. The result is limited to 255, otherwise it would overflow for an
+ * incorrectly premultiplied pixel.
+ *
+ * @param color    premultiplied color component
+ * @param alpha    alpha value (> 0)
+ *
+ * @return         color component with straight alpha
+ */
+static inline uint8_t UnmultiplyAlpha(uint8_t color, uint8_t alpha)
+{
+	return std::min(0xFF, 0xFF * color / alpha);
+}
+
+/**
+ * Blend a front color component with the given alpha over a back color component
+ *
+ * @param back     back color component
+ * @param front    front color component (straight alpha)
+ * @param alpha    alpha value of the front
+ *
+ * @return         blended color component
+ */
+static inline uint8_t BlendColor(uint8_t back, uint8_t front, uint8_t alpha)
+{
+	return (front * alpha + back * (0xFF - alpha)) / 0xFF;
 }
 
 /** Input PTS is in PTSTICKS */
