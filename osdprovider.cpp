@@ -184,6 +184,10 @@ void cDeviceOsdProvider::UnlockOpenGlThread(void) {
  */
 int cDeviceOsdProvider::StoreImageData(const cImage &Image)
 {
+	// there is no renderer to start the OpenGL thread, if the device is detached
+	if (m_pDevice->IsDetached())
+		return 0;
+
 	if (StartOpenGlThread()) {
 		int imgHandle = m_pOglThread->StoreImage(Image);
 		return imgHandle;
@@ -203,7 +207,8 @@ const cImage *cDeviceOsdProvider::GetImageData(int ImageHandle) {
  */
 void cDeviceOsdProvider::DropImageData(int imgHandle)
 {
-	if (StartOpenGlThread())
+	// the images of a stopped OpenGL thread are already deleted
+	if (m_pOglThread)
 		m_pOglThread->DropImageData(imgHandle);
 }
 #endif

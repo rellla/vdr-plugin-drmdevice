@@ -770,6 +770,7 @@ private:
 	void DeleteVertexBuffers(void);
 	void Cleanup(void);
 	void CleanupImageCache(void);
+	void CleanupCommands(void);
 	int GetFreeSlot(void);
 	void ClearSlot(int slot);
 	void eglAcquireContext(void);

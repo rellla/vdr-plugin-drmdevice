@@ -1734,24 +1734,58 @@ cOglThread::cOglThread(cCondWait *startWait, int maxCacheSize, cOutputDevice *de
 	Start();
 }
 
+/**
+ * Delete the textures of all cached images
+ *
+ * Must be called by the OpenGL thread with the current context.
+ */
 void cOglThread::CleanupImageCache(void)
 {
 	for (int i = 0; i < OGL_MAX_OSDIMAGES; i++) {
 		if (m_imageCache[i].used) {
-			DropImageData(i);
+			if (m_imageCache[i].texture != GL_NONE)
+				GL_CHECK(glDeleteTextures(1, &m_imageCache[i].texture));
+			ClearSlot(-i - 1);
 		}
 	}
+	m_memCached = 0;
+}
+
+/**
+ * Process the commands, which are left in the queue at the end of the thread
+ *
+ * The commands without locking are executed: they only use OpenGL and someone may wait
+ * for them (e.g. DropImageData()). The commands with locking against a state change
+ * draw to the output and are dropped: the device is detached or the osd changes.
+ *
+ * Must be called by the OpenGL thread with the current context.
+ */
+void cOglThread::CleanupCommands(void)
+{
+	Lock();
+	while (!m_commands.empty()) {
+		cOglCmd *cmd = m_commands.front();
+		m_commands.pop();
+		Unlock();
+
+		if (!cmd->NeedsLockingAgainstStateChange())
+			cmd->Execute();
+		delete cmd;
+
+		Lock();
+	}
+	Unlock();
+
+	m_stalled = false;
 }
 
 void cOglThread::RequestStop(void)
 {
-	CleanupImageCache();
 	Cancel(-1);
 }
 
 void cOglThread::Stop(void)
 {
-	CleanupImageCache();
 	Cancel(2);
 	m_stalled = false;
 }
@@ -1872,11 +1906,24 @@ void cOglThread::DropImageData(int imageHandle)
 	sOglImage *imageRef = GetImageRef(imageHandle);
 	if (!imageRef)
 		return;
+
+	// nobody would execute the command, the texture was deleted at the end of the thread
+	if (!Active()) {
+		ClearSlot(imageHandle);
+		return;
+	}
+
 	int imgSize = imageRef->width * imageRef->height * sizeof(tColor);
 	m_memCached -= imgSize;
 	cCondWait dropWait;
 	DoCmd(new cOglCmdDropImage(imageRef, &dropWait));
-	dropWait.Wait();
+	// the thread may end meanwhile (e.g. a detach by SVDRP), then nobody executes the command
+	while (!dropWait.Wait(100)) {
+		if (!Active()) {
+			LOGWARNING("openglosd: %s: the OpenGL thread stopped, image %d isn't dropped by it", __FUNCTION__, imageHandle);
+			break;
+		}
+	}
 	ClearSlot(imageHandle);
 }
 
@@ -1963,6 +2010,8 @@ void cOglThread::Action(void)
 
 	// the OpenGL objects can only be deleted with the current context, then release it,
 	// so the renderer can destroy the EGL context and surface
+	CleanupCommands();
+	CleanupImageCache();
 	Cleanup();
 	eglReleaseContext();
 
@@ -1979,19 +2028,30 @@ void cOglThread::eglAcquireContext(void)
  */
 void cOglThread::eglReleaseContext(void)
 {
+	if (!m_pRender)
+		return;
+
 	EGL_CHECK(eglMakeCurrent(m_pRender->EglDisplay(), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
 }
 
 /**
- * @todo: InitOpenGL has no "return false", but cOglThread::Action() checks
- *        against the return value.
+ * Wait for the EGL context of the renderer and make it current
+ *
+ * @retval true     the context is current
+ * @retval false    there is no renderer (detached) or the thread was stopped meanwhile
  */
 bool cOglThread::InitOpenGL(void)
 {
 	LOGDEBUG2(L_OPENGL, "openglosd: %s: Init OpenGL context", __FUNCTION__);
 
+	// there is no renderer, if the device is detached
+	if (!m_pRender)
+		return false;
+
 	// Wait for the EGL context to be created
-	while(!m_pRender || !m_pRender->GlInitiated()) {
+	while (!m_pRender->GlInitiated()) {
+		if (!Running())
+			return false;
 		LOGDEBUG2(L_OPENGL, "openglosd: %s: wait for EGL context", __FUNCTION__);
 		usleep(20000);
 	}
