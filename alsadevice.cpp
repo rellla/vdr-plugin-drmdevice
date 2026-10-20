@@ -21,6 +21,7 @@
 #include "alsadevice.h"
 #include "config.h"
 #include "logger.h"
+#include "spdif.h"
 
 /**
  * Empty log callback
@@ -136,20 +137,7 @@ std::string cAlsaDevice::BuildDeviceString(const char *device, bool passthrough,
 	if (!ShouldAppendAES() || !strcmp(device, "null"))
 		return device;
 
-	int aes3;
-	switch (sampleRate) {
-		case 32000:  aes3 = IEC958_AES3_CON_FS_32000;  break;
-		case 44100:  aes3 = IEC958_AES3_CON_FS_44100;  break;
-		case 48000:  aes3 = IEC958_AES3_CON_FS_48000;  break;
-		case 88200:  aes3 = IEC958_AES3_CON_FS_88200;  break;
-		case 96000:  aes3 = IEC958_AES3_CON_FS_96000;  break;
-		case 176400: aes3 = IEC958_AES3_CON_FS_176400; break;
-		case 192000: aes3 = IEC958_AES3_CON_FS_192000; break;
-		default:     aes3 = IEC958_AES3_CON_FS_NOTID;  break;
-	}
-
-	if (passthrough && channels == 8)
-		aes3 = sampleRate == 192000 ? IEC958_AES3_CON_FS_768000 : IEC958_AES3_CON_FS_NOTID;
+	int aes3 = GetIEC958SampleRateCode(sampleRate, channels, passthrough);
 
 	char aes[80];
 	snprintf(aes, sizeof(aes), "%sAES0=%d,AES1=%d,AES2=0,AES3=%d",

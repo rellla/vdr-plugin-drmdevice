@@ -21,7 +21,7 @@ CXXFLAGS ?= -g -O1
 
 override CXXFLAGS += -std=c++17 -W -Wall -Wextra -Werror=format -I.. -isystem $(VDRINCDIR) -D_GNU_SOURCE
 override CXXFLAGS += $(shell pkg-config --cflags libavcodec libavformat libavutil catch2-with-main)
-LIBS = $(shell pkg-config --libs libavcodec libavutil catch2-with-main)
+LIBS = $(shell pkg-config --libs libavformat libavcodec libavutil catch2-with-main)
 
 ifeq ($(BUILD),sanitize)
 SANITIZE_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all
@@ -48,7 +48,8 @@ SOURCES_UNDER_TEST = \
 	mediaresume.cpp \
 	pes.cpp \
 	pidcontroller.cpp \
-	ringbuffer.cpp
+	ringbuffer.cpp \
+	spdif.cpp
 
 OBJDIR = obj/$(BUILD)
 OBJS = $(addprefix $(OBJDIR)/, $(TEST_SOURCES:.cpp=.o) $(SOURCES_UNDER_TEST:.cpp=.o))
