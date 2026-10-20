@@ -18,6 +18,8 @@
 
 #include <vdr/player.h>
 #include <vdr/plugin.h>
+#include <vdr/remote.h>
+#include <vdr/skins.h>
 
 #include "logger.h"
 
@@ -260,6 +262,22 @@ cOsdObject *cPluginDrmDevice::MainMenuAction(void)
 }
 
 /**
+ * Main thread hook
+ *
+ * Closes the menu after a detach or attach with SVDRP: the menu wasn't shown
+ * while detached, so VDR would only close it with the next menu key instead
+ * of opening the menu. The menu key is put into the queue, because only the
+ * main thread may access the menu.
+ */
+void cPluginDrmDevice::MainThreadHook(void)
+{
+	if (m_closeMenu.exchange(false) && dynamic_cast<cSkinDisplayMenu *>(cSkinDisplay::Current())) {
+		LOGDEBUG("plugin: %s: close the menu", __FUNCTION__);
+		cRemote::Put(kMenu);
+	}
+}
+
+/**
  * Return our setup menu
  */
 cMenuSetupPage *cPluginDrmDevice::SetupMenu(void)
@@ -371,6 +389,8 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 		if (m_pDevice->IsDetached())
 			return "DRMDevice is already detached";
 
+		// the menu isn't shown any more, but VDR would close it with the next menu key
+		m_closeMenu = true;
 		m_pDevice->Detach();
 		return "Detached DRMDevice";
 	}
@@ -380,6 +400,8 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 			return "DRMDevice is not detached";
 
 		m_pDevice->Attach();
+		// a menu, which was opened while detached, was never shown
+		m_closeMenu = true;
 		return "Attached DRMDevice";
 	}
 	if (!strcasecmp(command, "STAT")) {
