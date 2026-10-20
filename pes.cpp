@@ -210,9 +210,10 @@ static const std::map<AVCodecID, CodecInfo> AudioCodecMap = {
 			return syncWord == DTS_SYNC_WORD;
 		},
 		.GetFrameSize = [](const uint8_t* data) -> int {
+			// FSIZE (14 bit): frame size - 1, values below 95 are invalid
 			int frameSize = ((data[5] & 0x03) << 12) | ((data[6] & 0xFF) << 4) | ((data[7] & 0xF0) >> 4);
 			frameSize += 1;
-			if (frameSize < 80 || frameSize > 8191)
+			if (frameSize < 96 || frameSize > 16384)
 				throw std::invalid_argument("DTS: invalid frame size");
 
 			return frameSize;
@@ -558,7 +559,8 @@ AVCodecID cReassemblyBufferAudio::TruncateBufferUntilFirstValidData(void)
  * are genuine and not false positives in random data.
  *
  * The function modifies the buffer internally by erasing false positives as it searches.
- * When no sync word is found, it keeps the last MAX_HEADER_SIZE bytes.
+ * When no sync word is found, it keeps the last MAX_HEADER_SIZE - 1 bytes, which may contain
+ * the beginning of a header.
  *
  * @return SyncWordInfo with codec ID and position, or AV_CODEC_ID_NONE if not found
  */
@@ -568,7 +570,7 @@ SyncWordInfo cReassemblyBufferAudio::FindTwoConsecutiveFramesWithSameSyncWord(vo
 		SyncWordInfo firstFrame = FindSyncWord(m_buffer.Peek(), m_buffer.GetSize());
 
 		if (firstFrame.codecId == AV_CODEC_ID_NONE) // No sync word found in the entire buffer. Keep only the last few bytes that could contain a partial sync word.
-			return SyncWordInfo{AV_CODEC_ID_NONE, std::max(0, (int)m_buffer.GetSize() - MAX_HEADER_SIZE)};
+			return SyncWordInfo{AV_CODEC_ID_NONE, std::max(0, (int)m_buffer.GetSize() - (MAX_HEADER_SIZE - 1))};
 
 		try {
 			// determine the length of the first found potential frame by reading the frame's header
@@ -579,7 +581,7 @@ SyncWordInfo cReassemblyBufferAudio::FindTwoConsecutiveFramesWithSameSyncWord(vo
 			int secondSyncWord = firstFrame.pos + sizeOfFirstFrame;
 
 			// check if another sync word follows immediately after the first frame to validate the header of the first frame is a real header and no random data
-			if (secondSyncWord + MAX_HEADER_SIZE > (int)m_buffer.GetSize()) {
+			if (secondSyncWord + codecInfo.minSize > (int)m_buffer.GetSize()) {
 				// Could not find the second sync word, because there might not be enough data in the buffer to contain a complete second sync word. Wait for more data.
 				// In case we have a false positive and the header's frame size field is invalid, we buffer the following amount of data in worst-case:
 				//   - MP2: 6913 bytes (Layer 2/3: 384kbps @ 8kHz + padding)
@@ -587,7 +589,7 @@ SyncWordInfo cReassemblyBufferAudio::FindTwoConsecutiveFramesWithSameSyncWord(vo
 				//   - AC3: 2788 bytes (frmsizcod=37, fscod=1: 1394 * 2)
 				//   - EAC3: 4096 bytes (11-bit field max: 2048 * 2)
 				//   - AAC ADTS: 8191 bytes (13-bit length field max: 0x1FFF)
-				//   - DTS: 8192 bytes (14-bit length field max: 0x1FFF + 1)
+				//   - DTS: 16384 bytes (14-bit length field max: 0x3FFF + 1)
 				return SyncWordInfo{AV_CODEC_ID_NONE, firstFrame.pos};
 			} else if (DetectCodecFromSyncWord(&m_buffer.Peek()[secondSyncWord], m_buffer.GetSize() - secondSyncWord) == firstFrame.codecId)
 				// two consecutive frames with the same sync word found, and the first frame's header length field is valid
