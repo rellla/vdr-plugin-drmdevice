@@ -73,6 +73,7 @@ public:
 	void Decode(const AVPacket *);
 	void FlushBuffers(void);
 	void SetPassthroughMask(int);
+	void RetryPassthrough(void);
 	AVCodecID GetCodecId() const { return m_codecId; }  ///< get the current codec id
 
 private:
