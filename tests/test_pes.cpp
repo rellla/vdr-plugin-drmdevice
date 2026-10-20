@@ -963,7 +963,8 @@ TEST_CASE("cReassemblyBufferAudio - TruncateBufferUntilFirstValidData no sync wo
         buffer.Push(data.data(), data.size(), 0);
 
         REQUIRE(buffer.TruncateBufferUntilFirstValidData() == AV_CODEC_ID_NONE);
-        REQUIRE(buffer.GetSize() == 6);
+        // the last bytes may be the beginning of a header (the DTS header has 8 bytes)
+        REQUIRE(buffer.GetSize() == 7);
     }
 
     SECTION("Empty data") {
@@ -1004,6 +1005,120 @@ TEST_CASE("cReassemblyBufferAudio - TruncateBufferUntilFirstValidData with maxim
         REQUIRE(buffer.GetSize() == data.size());
         REQUIRE(buffer.TruncateBufferUntilFirstValidData() == AV_CODEC_ID_AAC_LATM);
     }
+}
+
+// Helper function to create a DTS core frame (16 bit big endian) with the given frame size
+// Header: SYNC (32), FTYPE (1), SHORT (5), CPF (1), NBLKS (7), FSIZE (14), AMODE (6), ...
+static std::vector<uint8_t> createDtsFrame(int frameSize)
+{
+    std::vector<uint8_t> frame(frameSize, 0x00);
+    int fsize = frameSize - 1;
+    int nblks = 15;                       // 16 blocks of 32 samples = 512 samples
+
+    frame[0] = 0x7F;
+    frame[1] = 0xFE;
+    frame[2] = 0x80;
+    frame[3] = 0x01;
+    frame[4] = 0xFC | (nblks >> 6);       // FTYPE = 1, SHORT = 31, CPF = 0, NBLKS bit 6
+    frame[5] = ((nblks & 0x3F) << 2) | ((fsize >> 12) & 0x03);
+    frame[6] = (fsize >> 4) & 0xFF;
+    frame[7] = (fsize & 0x0F) << 4;
+
+    return frame;
+}
+
+TEST_CASE("cReassemblyBufferAudio - DTS codec detection", "[reassembly][audio]") {
+    cReassemblyBufferAudio buffer;
+    std::vector<uint8_t> frame = createDtsFrame(2048);
+
+    REQUIRE(buffer.DetectCodecFromSyncWord(frame.data(), frame.size()) == AV_CODEC_ID_DTS);
+
+    SECTION("The DTS header needs 8 bytes") {
+        REQUIRE(buffer.DetectCodecFromSyncWord(frame.data(), 7) == AV_CODEC_ID_NONE);
+    }
+}
+
+TEST_CASE("cReassemblyBufferAudio - GetFrameSize DTS codec", "[reassembly][audio][framesize]") {
+    cReassemblyBufferAudio buffer;
+
+    SECTION("Typical frame size") {
+        std::vector<uint8_t> frame = createDtsFrame(2048);
+        REQUIRE(buffer.GetFrameSizeForCodec(AV_CODEC_ID_DTS, frame.data()) == 2048);
+    }
+
+    SECTION("Minimum frame size") {
+        std::vector<uint8_t> frame = createDtsFrame(96);
+        REQUIRE(buffer.GetFrameSizeForCodec(AV_CODEC_ID_DTS, frame.data()) == 96);
+    }
+
+    SECTION("Frame sizes above 8191 bytes are valid") {
+        std::vector<uint8_t> frame = createDtsFrame(8192);
+        REQUIRE(buffer.GetFrameSizeForCodec(AV_CODEC_ID_DTS, frame.data()) == 8192);
+    }
+
+    SECTION("Maximum 14-bit frame size") {
+        std::vector<uint8_t> frame = createDtsFrame(16384);
+        REQUIRE(buffer.GetFrameSizeForCodec(AV_CODEC_ID_DTS, frame.data()) == 16384);
+    }
+
+    SECTION("Frame sizes below 96 bytes are invalid") {
+        std::vector<uint8_t> frame = createDtsFrame(96);
+        frame[7] = 0x40;                  // FSIZE = 0x5E -> 95 bytes (the other bits of FSIZE are 0)
+        frame[6] = 0x05;
+        REQUIRE_THROWS_AS(buffer.GetFrameSizeForCodec(AV_CODEC_ID_DTS, frame.data()), std::invalid_argument);
+    }
+}
+
+TEST_CASE("cReassemblyBufferAudio - Two consecutive DTS frames", "[reassembly][audio][consecutive]") {
+    cReassemblyBufferAudio buffer;
+    std::vector<uint8_t> data = createDtsFrame(96);
+    std::vector<uint8_t> second = createDtsFrame(96);
+
+    SECTION("Complete header of the second frame") {
+        data.insert(data.end(), second.begin(), second.begin() + 8);
+        buffer.Push(data.data(), data.size(), 0);
+
+        REQUIRE(buffer.TruncateBufferUntilFirstValidData() == AV_CODEC_ID_DTS);
+        REQUIRE(buffer.GetSize() == 104);
+    }
+
+    SECTION("Incomplete header of the second frame waits for more data") {
+        // with only 7 bytes of the second header, the first frame must not be taken as a false positive
+        data.insert(data.end(), second.begin(), second.begin() + 7);
+        buffer.Push(data.data(), data.size(), 0);
+
+        REQUIRE(buffer.TruncateBufferUntilFirstValidData() == AV_CODEC_ID_NONE);
+        REQUIRE(buffer.GetSize() == 103);
+
+        // the last byte completes the header
+        buffer.Push(&second[7], 1, AV_NOPTS_VALUE);
+        REQUIRE(buffer.TruncateBufferUntilFirstValidData() == AV_CODEC_ID_DTS);
+        REQUIRE(buffer.GetSize() == 104);
+    }
+
+    SECTION("Pop a DTS frame") {
+        data.insert(data.end(), second.begin(), second.end());
+        buffer.Push(data.data(), data.size(), 9000);
+
+        AVPacket *pkt = buffer.PopAvPacket();
+        REQUIRE(pkt != nullptr);
+        REQUIRE(pkt->size == 96);
+        REQUIRE(pkt->pts == 9000);
+        av_packet_free(&pkt);
+    }
+}
+
+TEST_CASE("cReassemblyBufferAudio - A header at the end of the buffer is kept", "[reassembly][audio][consecutive]") {
+    cReassemblyBufferAudio buffer;
+    std::vector<uint8_t> data(20, 0x00);
+    std::vector<uint8_t> frame = createDtsFrame(96);
+
+    // the first 7 bytes of a DTS header at the end of the buffer
+    data.insert(data.end(), frame.begin(), frame.begin() + 7);
+    buffer.Push(data.data(), data.size(), 0);
+
+    REQUIRE(buffer.TruncateBufferUntilFirstValidData() == AV_CODEC_ID_NONE);
+    REQUIRE(buffer.GetSize() == 7);
 }
 
 // ============================================================================

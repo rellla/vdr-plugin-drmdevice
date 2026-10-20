@@ -192,7 +192,7 @@ public:
 	int GetFrameSizeForCodec(AVCodecID, const uint8_t *);
 private:
 	SyncWordInfo FindTwoConsecutiveFramesWithSameSyncWord();
-	static constexpr int MAX_HEADER_SIZE = 6; ///< bytes needed to detect a sync word and the frame size
+	static constexpr int MAX_HEADER_SIZE = 8; ///< max. bytes needed to detect a sync word and the frame size (DTS)
 	bool m_ptsInvalid = false;                ///< flag indicating if PTS is invalid for current buffer, because it was truncated
 };
 
