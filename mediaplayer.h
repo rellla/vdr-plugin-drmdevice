@@ -16,6 +16,7 @@
 #include <atomic>
 #include <ctime>
 #include <mutex>
+#include <random>
 #include <string>
 
 extern "C" {
@@ -141,6 +142,7 @@ private:
 	cOutputDevice *m_pDevice;                           ///< pointer to the device
 	std::atomic<bool> m_stopFile = false;               ///< true, if the current file shall be stopped
 	std::atomic<bool> m_random = false;                 ///< true, if random play is active
+	std::mt19937 m_randomGenerator{std::random_device{}()}; ///< random generator for the random play
 	bool m_noModify = false;                            ///< true, if the next entry was already selected (don't advance)
 	std::mutex m_fileMutex;                             ///< mutex to protect the file information below
 	int m_fileNumber = 0;                               ///< number of the played files (incremented with every new file)

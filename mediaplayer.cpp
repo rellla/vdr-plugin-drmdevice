@@ -18,6 +18,7 @@
 #include <cinttypes>
 #include <cstdlib>
 #include <fstream>
+#include <random>
 #include <string>
 
 extern "C" {
@@ -242,8 +243,8 @@ void cDrmDevicePlayer::Action(void)
 				m_pCurrentEntry = m_pCurrentEntry->GetNextEntry();
 
 				if (m_random) {
-					srand (time (NULL));
-					SetEntry(std::rand() % (m_entries));
+					std::uniform_int_distribution<int> distribution(0, m_entries - 1);
+					SetEntry(distribution(m_randomGenerator));
 				}
 			}
 			m_noModify = false;
