@@ -12,6 +12,10 @@
  * @license{AGPL-3.0-or-later}
  */
 
+#include <algorithm>
+#include <cstring>
+#include <endian.h>
+
 #include <alsa/asoundlib.h>
 
 extern "C" {
@@ -139,6 +143,73 @@ int GetIEC958SampleRateCode(int sampleRate, int channels, bool passthrough)
 		case 176400: return IEC958_AES3_CON_FS_176400;
 		case 192000: return IEC958_AES3_CON_FS_192000;
 		default:     return IEC958_AES3_CON_FS_NOTID;
+	}
+}
+
+/**
+ * Build an IEC 61937 pause burst
+ *
+ * The pause is filled with IEC 61937 pause data-bursts (data-type 3), which are intended to fill
+ * gaps in a non-PCM stream and keep the receiver locked. Each burst has the size of a normal burst,
+ * so the repetition period of the stream doesn't change. The burst payload carries the gap length,
+ * which is the length of the burst in IEC 60958 frames, the rest of the burst is stuffed with zeros.
+ *
+ * @param size     size of a burst of the stream in bytes
+ *
+ * @return         the pause burst (16 bit little endian words), empty if the size is invalid
+ */
+std::vector<uint16_t> BuildPauseBurst(int size)
+{
+	constexpr int IEC61937_PREAMBLE1 = 0xF872;
+	constexpr int IEC61937_PREAMBLE2 = 0x4E1F;
+	constexpr int IEC61937_PAUSE = 0x03;            // data-type of the burst info Pc
+	constexpr int IEC61937_PAUSE_PAYLOAD_BITS = 32; // length code Pd: gap length and a reserved word
+	constexpr int IEC61937_HEADER_SIZE = 8;         // Pa, Pb, Pc and Pd
+	constexpr int IEC60958_FRAME_SIZE = 4;          // two 16 bit subframes
+
+	// the burst needs the header and the payload
+	if (size < IEC61937_HEADER_SIZE + IEC61937_PAUSE_PAYLOAD_BITS / 8 || size % IEC60958_FRAME_SIZE)
+		return {};
+
+	std::vector<uint16_t> burst(size / 2, 0);
+	int gapLength = std::min(size / IEC60958_FRAME_SIZE, 0xFFFF);
+
+	burst[0] = htole16(IEC61937_PREAMBLE1);
+	burst[1] = htole16(IEC61937_PREAMBLE2);
+	burst[2] = htole16(IEC61937_PAUSE);
+	burst[3] = htole16(IEC61937_PAUSE_PAYLOAD_BITS);
+	burst[4] = htole16(gapLength);
+	// burst[5] (reserved) and the stuffing are already zero
+
+	return burst;
+}
+
+/**
+ * Fill a buffer with pause bursts
+ *
+ * The pause bursts start at the given position in a burst, so they keep the
+ * period of the bursts of the stream.
+ *
+ * @param buffer       buffer to fill
+ * @param size         size of the buffer in bytes
+ * @param pauseBurst   the pause burst (see BuildPauseBurst()), zeros are filled, if it's empty
+ * @param phase        position in the burst, where the buffer starts
+ */
+void FillPauseBursts(uint8_t *buffer, int size, const std::vector<uint16_t> &pauseBurst, int phase)
+{
+	int burstSize = pauseBurst.size() * 2;
+	if (!burstSize || phase < 0 || phase >= burstSize) {
+		memset(buffer, 0, size);
+		return;
+	}
+
+	const uint8_t *pause = reinterpret_cast<const uint8_t *>(pauseBurst.data());
+	while (size > 0) {
+		int bytes = std::min(size, burstSize - phase);
+		memcpy(buffer, pause + phase, bytes);
+		buffer += bytes;
+		size -= bytes;
+		phase = 0;
 	}
 }
 

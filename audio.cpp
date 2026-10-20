@@ -45,6 +45,7 @@ extern "C" {
 #include "misc.h"
 #include "pidcontroller.h"
 #include "ringbuffer.h"
+#include "spdif.h"
 #include "device.h"
 #include "statemachine.h"
 
@@ -458,6 +459,7 @@ void cAudioStream::DropSamplesOlderThanPtsMs(int64_t ptsMs)
 		m_fillLevel.Reset();
 		m_fillLevel.WroteFrames(dropFrames);
 		m_pRingbuffer.ReadAdvance(dropBytes);
+		AdvanceSpdifReadPhase(dropBytes);
 	}
 }
 
@@ -501,15 +503,8 @@ void cAudioStream::RebuildPauseBurst(int size)
 	if (size == m_spdifBurstSize)
 		return;
 
-	constexpr int IEC61937_PREAMBLE1 = 0xF872;
-	constexpr int IEC61937_PREAMBLE2 = 0x4E1F;
-	constexpr int IEC61937_PAUSE = 0x03;            // data-type of the burst info Pc
-	constexpr int IEC61937_PAUSE_PAYLOAD_BITS = 32; // length code Pd: gap length and a reserved word
-	constexpr int IEC61937_HEADER_SIZE = 8;         // Pa, Pb, Pc and Pd
-	constexpr int IEC60958_FRAME_SIZE = 4;          // two 16 bit subframes
-
-	// the burst needs the header and the payload
-	if (size < IEC61937_HEADER_SIZE + IEC61937_PAUSE_PAYLOAD_BITS / 8) {
+	std::vector<uint16_t> pauseBurst = BuildPauseBurst(size);
+	if (pauseBurst.empty()) {
 		LOGWARNING("audio: %s: invalid spdif burst size %d", __FUNCTION__, size);
 		return;
 	}
@@ -517,17 +512,7 @@ void cAudioStream::RebuildPauseBurst(int size)
 	LOGDEBUG2(L_SOUND, "audio: %s: spdif burst size changed %d -> %d, rebuild pause burst", __FUNCTION__, m_spdifBurstSize, size);
 
 	m_spdifBurstSize = size;
-	m_pauseBurst.assign(size / 2, 0);
-	uint16_t *spdif = m_pauseBurst.data();
-
-	int gapLength = std::min(size / IEC60958_FRAME_SIZE, 0xFFFF);
-
-	spdif[0] = htole16(IEC61937_PREAMBLE1);
-	spdif[1] = htole16(IEC61937_PREAMBLE2);
-	spdif[2] = htole16(IEC61937_PAUSE);
-	spdif[3] = htole16(IEC61937_PAUSE_PAYLOAD_BITS);
-	spdif[4] = htole16(gapLength);
-	// spdif[5] (reserved) and the stuffing are already zero
+	m_pauseBurst = std::move(pauseBurst);
 }
 
 /**
@@ -789,6 +774,7 @@ void cAudioStream::FlushBuffers(void)
 	m_fillLevel.ResetFramesCounters();
 	m_pidController.Reset();
 	m_pRingbuffer.Reset();
+	m_spdifReadPhase = 0;
 	m_inputPts = AV_NOPTS_VALUE;
 	m_filterChanged = 1;
 }
@@ -1251,8 +1237,12 @@ bool cAudioStream::SendAudio(int freeAlsaBufferFrames)
 	if (bytesToWrite == 0)
 		return false;
 
-	// muting pass-through AC-3, can produce disturbance
-	if (m_volume == 0 || (m_softVolume && !m_alsa.IsPassthroughActive())) {
+	if (m_volume == 0 && m_alsa.IsPassthroughActive()) {
+		// A muted bitstream is replaced by pause bursts. Zeros would make the receiver lose the sync.
+		m_amplifyBuffer.resize(bytesToWrite);
+		FillPause(m_amplifyBuffer.data(), bytesToWrite);
+		data = m_amplifyBuffer.data();
+	} else if (m_volume == 0 || (m_softVolume && !m_alsa.IsPassthroughActive())) {
 		// Amplify a copy: data, which is not written now, stays in the ringbuffer
 		// and must not be amplified twice on the next call
 		m_amplifyBuffer.resize(bytesToWrite);
@@ -1265,6 +1255,7 @@ bool cAudioStream::SendAudio(int freeAlsaBufferFrames)
 	int framesWritten = m_alsa.Write(data, framesToWrite);
 	m_fillLevel.WroteFrames(framesWritten);
 	m_pRingbuffer.ReadAdvance(m_alsa.FramesToBytes(framesWritten));
+	AdvanceSpdifReadPhase(m_alsa.FramesToBytes(framesWritten));
 
 	return m_alsa.CheckWrittenFrames(framesWritten, framesToWrite);
 }
@@ -1272,14 +1263,47 @@ bool cAudioStream::SendAudio(int freeAlsaBufferFrames)
 /**
  * Write pause to passthrough device
  *
+ * One burst is written, which starts at the position of the next ringbuffer byte
+ * in its burst. So the bursts keep their period, when the playback continues.
+ *
  * @return true if a complete burst was written, false otherwise
  */
 bool cAudioStream::SendPause(void)
 {
+	m_amplifyBuffer.resize(m_spdifBurstSize);
+	FillPause(m_amplifyBuffer.data(), m_spdifBurstSize);
+
 	int framesToWrite = m_alsa.BytesToFrames(m_spdifBurstSize);
-	int framesWritten = m_alsa.Write(m_pauseBurst.data(), framesToWrite);
+	int framesWritten = m_alsa.Write(m_amplifyBuffer.data(), framesToWrite);
 
 	return m_alsa.CheckWrittenFrames(framesWritten, framesToWrite);
+}
+
+/**
+ * Fill a buffer with pause bursts
+ *
+ * The pause bursts start at the position of the next ringbuffer byte in its burst
+ * (m_spdifReadPhase), so they keep the period of the bursts in the ringbuffer.
+ *
+ * @param buffer     buffer to fill
+ * @param size       size of the buffer in bytes
+ */
+void cAudioStream::FillPause(uint8_t *buffer, int size)
+{
+	FillPauseBursts(buffer, size, m_pauseBurst, m_spdifReadPhase);
+}
+
+/**
+ * Advance the position of the next ringbuffer byte in its spdif burst
+ *
+ * @param bytes      bytes read from the ringbuffer
+ */
+void cAudioStream::AdvanceSpdifReadPhase(int bytes)
+{
+	if (m_alsa.IsPassthroughActive() && m_spdifBurstSize > 0)
+		m_spdifReadPhase = (m_spdifReadPhase + bytes) % m_spdifBurstSize;
+	else
+		m_spdifReadPhase = 0;
 }
 
 

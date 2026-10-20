@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+#include <endian.h>
+
 #include <alsa/asoundlib.h>
 
 extern "C" {
@@ -499,5 +501,48 @@ TEST_CASE("IEC 60958 sample rate code", "[spdif]") {
 
     SECTION("8 channel PCM uses its sample rate") {
         REQUIRE(GetIEC958SampleRateCode(192000, 8, false) == IEC958_AES3_CON_FS_192000);
+    }
+}
+
+TEST_CASE("Pause bursts", "[spdif]") {
+    SECTION("A pause burst has the size of the bursts of the stream") {
+        std::vector<uint16_t> pause = BuildPauseBurst(6144);
+        REQUIRE(pause.size() == 3072);
+
+        const uint8_t *data = reinterpret_cast<const uint8_t *>(pause.data());
+        // Pa, Pb, Pc = 3 (pause), Pd = 32 bits, gap length = 1536 IEC 60958 frames (little endian)
+        std::vector<uint8_t> header = { 0x72, 0xF8, 0x1F, 0x4E, 0x03, 0x00, 0x20, 0x00, 0x00, 0x06, 0x00, 0x00 };
+        REQUIRE(std::vector<uint8_t>(data, data + header.size()) == header);
+        for (size_t i = header.size(); i < 6144; i++)
+            REQUIRE(data[i] == 0);
+    }
+
+    SECTION("The gap length is limited to 16 bit") {
+        std::vector<uint16_t> pause = BuildPauseBurst(61440 * 8);
+        REQUIRE(le16toh(pause[4]) == 0xFFFF);
+    }
+
+    SECTION("Invalid sizes") {
+        REQUIRE(BuildPauseBurst(0).empty());
+        REQUIRE(BuildPauseBurst(8).empty());
+        REQUIRE(BuildPauseBurst(6146).empty());
+    }
+
+    SECTION("The pause bursts keep the period of the stream") {
+        std::vector<uint16_t> pause = BuildPauseBurst(16);
+        const uint8_t *burst = reinterpret_cast<const uint8_t *>(pause.data());
+        std::vector<uint8_t> buffer(40, 0xAA);
+
+        // start in the middle of a burst
+        FillPauseBursts(buffer.data(), buffer.size(), pause, 10);
+        for (size_t i = 0; i < buffer.size(); i++)
+            REQUIRE(buffer[i] == burst[(10 + i) % 16]);
+    }
+
+    SECTION("Without a pause burst zeros are filled") {
+        std::vector<uint8_t> buffer(40, 0xAA);
+        FillPauseBursts(buffer.data(), buffer.size(), {}, 0);
+        for (uint8_t byte : buffer)
+            REQUIRE(byte == 0);
     }
 }
