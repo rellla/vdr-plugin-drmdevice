@@ -7,6 +7,7 @@ The tests cover the parts of the plugin, which can be tested without any hardwar
 | Test file                 | Unit under test                                         |
 | ------------------------- | ------------------------------------------------------- |
 | `test_audioprocessor.cpp` | software volume, normalizer, compressor and equalizer   |
+| `test_audiostreams.cpp`   | reassembly and passthrough of real audio streams        |
 | `test_config.cpp`         | parsing of the setup.conf parameters                    |
 | `test_filllevel.cpp`      | low pass filter of the audio buffer fill level          |
 | `test_h264parser.cpp`     | H.264 SPS/PPS/slice header parser                       |
@@ -20,6 +21,7 @@ The tests cover the parts of the plugin, which can be tested without any hardwar
 Every `test_*.cpp` in this directory is built automatically. Regression tests of fixed bugs
 are kept in `test_*_regressions.cpp`. `h264streamwriter.h` composes H.264 NAL units for the
 H.264 tests and `test_stubs.cpp` provides the few VDR symbols, which are needed to link the tests.
+The audio streams of `test_audiostreams.cpp` are in `data` (see `data/README.md`).
 
 ## Prerequisites
 
