@@ -773,6 +773,7 @@ private:
 	int GetFreeSlot(void);
 	void ClearSlot(int slot);
 	void eglAcquireContext(void);
+	void eglReleaseContext(void);
 };
 
 /**
