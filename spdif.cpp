@@ -252,7 +252,8 @@ void cSpdifMuxer::Close(void)
  * Pack an audio packet into IEC 61937 bursts
  *
  * The muxer may collect several packets for one burst (e.g. TrueHD, E-AC-3 with
- * less than 6 blocks per frame). The burst gets the pts of its first packet.
+ * less than 6 blocks per frame). The burst gets the pts of its first packet,
+ * which may be a packet of the previous burst (TrueHD).
  *
  * @param avpkt        input packet
  * @param[out] pts     pts of the burst (only set, if a burst is returned)
@@ -294,7 +295,8 @@ const std::vector<uint8_t> &cSpdifMuxer::Mux(const AVPacket *avpkt, int64_t *pts
 
 	if (!m_output.empty()) {
 		*pts = m_burstPts;
-		m_burstPts = AV_NOPTS_VALUE;
+		// The packet, which completes a MAT frame, is split: its rest starts the next MAT frame
+		m_burstPts = m_pFmtCtx->streams[0]->codecpar->codec_id == AV_CODEC_ID_TRUEHD ? avpkt->pts : AV_NOPTS_VALUE;
 	}
 
 	return m_output;
