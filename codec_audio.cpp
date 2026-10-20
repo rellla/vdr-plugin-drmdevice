@@ -368,6 +368,23 @@ void cAudioDecoder::FlushBuffers(void)
 }
 
 /**
+ * Try the passthrough again
+ *
+ * If the passthrough of a codec failed (e.g. the receiver was off), the codec is
+ * decoded until the next codec change. This allows a new try with the next packet.
+ */
+void cAudioDecoder::RetryPassthrough(void)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	if (m_passthroughFailed || m_dtshdFailed)
+		LOGDEBUG2(L_SOUND, "audiocodec: %s: try the passthrough again", __FUNCTION__);
+
+	m_passthroughFailed = false;
+	m_dtshdFailed = false;
+}
+
+/**
  * Set audio pass-through mask
  *
  * @param mask         codec mask to enable (AC-3, E-AC-3, DTS, TrueHD, DTS-HD)

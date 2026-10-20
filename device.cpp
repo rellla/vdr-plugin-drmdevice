@@ -851,7 +851,7 @@ bool cOutputDevice::DrainDevice(void)
  * Monitor a channel switch triggered by VDR (cStatus::ChannelSwitch())
  *
  * Save the timestamp when a channel switch is initiated (channelNum == 0)
- * for later time measurement.
+ * for later time measurement, and try a failed audio passthrough again.
  */
 void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool liveView)
 {
@@ -861,12 +861,17 @@ void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool li
 	auto now = std::chrono::steady_clock::now();
 	LOGGER->SetChannelSwitchStartTime(now);
 	LOGDEBUG2(L_AV_SYNC, "TRACE: channel switch");
+
+	// the receiver may have been switched on meanwhile
+	if (!IsDetached())
+		m_pAudioDecoder->RetryPassthrough();
 }
 
 /**
  * Monitor a replay start or end
  *
- * Save the timestamp when a replay is started for later time measurement.
+ * Save the timestamp when a replay is started for later time measurement,
+ * and try a failed audio passthrough again.
  */
 void cOutputDevice::Replaying([[maybe_unused]]const cControl *control,
                               [[maybe_unused]]const char *name,
@@ -879,6 +884,10 @@ void cOutputDevice::Replaying([[maybe_unused]]const cControl *control,
 	auto now = std::chrono::steady_clock::now();
 	LOGGER->SetChannelSwitchStartTime(now);
 	LOGDEBUG2(L_AV_SYNC, "TRACE: replay start");
+
+	// the receiver may have been switched on meanwhile
+	if (!IsDetached())
+		m_pAudioDecoder->RetryPassthrough();
 }
 
 /*********************************************************************
