@@ -65,7 +65,8 @@ public:
 	bool IsPassthroughActive(void) { return m_passthroughActive; }   ///< true, if the current audio is passed through
 	void SetPassthroughMask(int mask) { m_passthroughMask = mask; }  ///< set the codecs, which are passed through
 	int GetPassthroughMask(void) const { return m_passthroughMask; } ///< get the codecs, which are passed through
-	void SetAutoAES(bool appendAes) { m_appendAES = appendAes; }     ///< automatically append AES to the pass-through device
+	/** automatically append AES to the pass-through device */
+	void SetAutoAES(bool appendAes) { m_appendAES = appendAes; m_aesUnsupported = false; }
 	void SetDownmix(int downMix) { m_downmix = downMix; }            ///< downmix to stereo
 
 	// calculation helpers
@@ -93,6 +94,7 @@ private:
 	long m_mixerMin = 0;                      ///< minimum volume of the mixer element
 	long m_mixerMax = 0;                      ///< maximum volume of the mixer element
 	bool m_appendAES;                         ///< flag to automatic append AES
+	bool m_aesUnsupported = false;            ///< true, if the device can't be opened with AES parameters
 	int m_passthroughMask;                    ///< passthrough mask
 	std::atomic<bool> m_passthroughActive = false; ///< set, if passthrough is active
 	unsigned int m_hwSampleRate = 0;          ///< hardware sample rate in Hz
@@ -102,7 +104,8 @@ private:
 	std::string m_deviceName;                 ///< name of the used device (without the AES parameters)
 	std::string m_openedDevice;               ///< the device string, which was opened (with the AES parameters)
 
-	bool ShouldAppendAES(void) { return m_appendAES && m_passthroughMask; }  ///< true, if AES shall be appended to the device name
+	/** true, if AES shall be appended to the device name */
+	bool ShouldAppendAES(void) { return m_appendAES && m_passthroughMask && !m_aesUnsupported; }
 	char *OpenDevice(const char *);
 	std::string BuildDeviceString(const char *, bool, int, int);
 	bool ReopenDevice(const std::string &);

@@ -44,6 +44,34 @@ TEST_CASE("cDeviceConfig - Audio passthrough", "[config]") {
 	}
 }
 
+TEST_CASE("cDeviceConfig - Passthrough of all codecs", "[config]") {
+	cDeviceConfig config;
+	const int mask = CODEC_AC3 | CODEC_EAC3 | CODEC_DTS | CODEC_TRUEHD | CODEC_DTSHD;
+
+	REQUIRE(mask == CODEC_PASSTHROUGH_ALL);
+	REQUIRE(config.SetupParse("AudioPassthrough", std::to_string(mask).c_str()));
+	REQUIRE(config.ConfigAudioPassthroughMask == 124);
+	REQUIRE(config.ConfigAudioPassthroughState);
+}
+
+TEST_CASE("cDeviceConfig - Automatic AES", "[config]") {
+	cDeviceConfig config;
+
+	SECTION("The automatic AES is enabled by default") {
+		REQUIRE(config.ConfigAudioDisableAutoAES == 0);
+	}
+
+	SECTION("It can be disabled") {
+		REQUIRE(config.SetupParse("AudioDisableAutoAES", "1"));
+		REQUIRE(config.ConfigAudioDisableAutoAES == 1);
+	}
+
+	SECTION("The old parameter is accepted, but ignored") {
+		REQUIRE(config.SetupParse("AudioAutoAES", "0"));
+		REQUIRE(config.ConfigAudioDisableAutoAES == 0);
+	}
+}
+
 TEST_CASE("cDeviceConfig - FFmpeg log level", "[config]") {
 	cDeviceConfig config;
 

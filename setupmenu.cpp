@@ -94,7 +94,7 @@ void cDeviceSetupMenu::Create(void)
 			Add(new cMenuEditBoolItem(tr("  DTS passthrough"), &m_cAudioPassthroughDTS, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  DTS-HD passthrough"), &m_cAudioPassthroughDTSHD, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  TrueHD passthrough"), &m_cAudioPassthroughTrueHD, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  Enable automatic AES"), &m_cAudioAutoAES, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr("  Disable automatic AES"), &m_cAudioDisableAutoAES, trVDR("no"), trVDR("yes")));
 		}
 		Add(new cMenuEditIntItem(tr(" Audio/Video delay (ms)"), &m_cAudioDelay, -1000, 1000));
 		Add(new cMenuEditBoolItem(tr(" Enable normalize volume"), &m_cAudioNormalize, trVDR("no"), trVDR("yes")));
@@ -323,7 +323,7 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_cAudioPassthroughDTS     = m_pConfig->ConfigAudioPassthroughMask & CODEC_DTS;
 	m_cAudioPassthroughTrueHD  = m_pConfig->ConfigAudioPassthroughMask & CODEC_TRUEHD;
 	m_cAudioPassthroughDTSHD   = m_pConfig->ConfigAudioPassthroughMask & CODEC_DTSHD;
-	m_cAudioAutoAES            = m_pConfig->ConfigAudioAutoAES;
+	m_cAudioDisableAutoAES     = m_pConfig->ConfigAudioDisableAutoAES;
 	m_cAudioDelay              = m_pConfig->ConfigVideoAudioDelayMs;
 	m_cAudioNormalize          = m_pConfig->ConfigAudioNormalize;
 	m_cAudioMaxNormalize       = m_pConfig->ConfigAudioMaxNormalize;
@@ -497,7 +497,7 @@ void cDeviceSetupMenu::Store(void)
 	} else {
 		SetupStore("AudioPassthrough", -m_pConfig->ConfigAudioPassthroughMask);
 	}
-	SetupStore("AudioAutoAES", m_pConfig->ConfigAudioAutoAES = m_cAudioAutoAES);
+	SetupStore("AudioDisableAutoAES", m_pConfig->ConfigAudioDisableAutoAES = m_cAudioDisableAutoAES);
 	SetupStore("AudioDelay", m_pConfig->ConfigVideoAudioDelayMs = m_cAudioDelay);
 	SetupStore("AudioNormalize", m_pConfig->ConfigAudioNormalize = m_cAudioNormalize);
 	SetupStore("AudioMaxNormalize", m_pConfig->ConfigAudioMaxNormalize = m_cAudioMaxNormalize);
@@ -616,7 +616,7 @@ void cDeviceSetupMenu::Store(void)
 	cAudioStream *audio = m_pDevice->Audio();
 	audio->SetSoftvol(m_pConfig->ConfigAudioSoftvol);
 	audio->SetDownmix(m_pConfig->ConfigAudioDownmix);
-	audio->SetAutoAES(m_pConfig->ConfigAudioAutoAES);
+	audio->SetAutoAES(!m_pConfig->ConfigAudioDisableAutoAES);
 	audio->SetNormalize(m_pConfig->ConfigAudioNormalize, m_pConfig->ConfigAudioMaxNormalize);
 	audio->SetCompression(m_pConfig->ConfigAudioCompression, m_pConfig->ConfigAudioMaxCompression);
 	audio->SetStereoDescent(m_pConfig->ConfigAudioStereoDescent);
