@@ -59,6 +59,7 @@ protected:
 	int m_cAudioPassthroughAC3;
 	int m_cAudioPassthroughEAC3;
 	int m_cAudioPassthroughDTS;
+	int m_cAudioPassthroughTrueHD;
 	int m_cAudioAutoAES;
 	int m_cAudioDelay;
 	int m_cAudioNormalize;

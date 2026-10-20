@@ -41,9 +41,12 @@ class cAudioStream;
  * @ingroup audiodecoder
  */
 enum PassthroughMask {
-	CODEC_AC3  = (1 << 2), ///< AC-3 bit mask
-	CODEC_EAC3 = (1 << 3), ///< E-AC-3 bit mask
-	CODEC_DTS  = (1 << 4), ///< DTS bit mask
+	CODEC_AC3    = (1 << 2), ///< AC-3 bit mask
+	CODEC_EAC3   = (1 << 3), ///< E-AC-3 bit mask
+	CODEC_DTS    = (1 << 4), ///< DTS bit mask
+	CODEC_TRUEHD = (1 << 5), ///< TrueHD bit mask
+	/** all codecs, which can be passed through */
+	CODEC_PASSTHROUGH_ALL = CODEC_AC3 | CODEC_EAC3 | CODEC_DTS | CODEC_TRUEHD,
 };
 
 /**
@@ -93,6 +96,7 @@ private:
 
 	constexpr static int AUDIO_PASSTHROUGH_NUM_CHANNELS = 2; ///< fixed passthrough channel number
 	constexpr static int AUDIO_PASSTHROUGH_RATE_HZ = 48000;  ///< passthrough sample rate, if the rate of the stream is unknown
+	constexpr static int AUDIO_HBR_NUM_CHANNELS = 8;         ///< channel number of a high bitrate bitstream (TrueHD)
 
 	bool OpenSpdifMuxer(AVCodecID, int);
 	void CloseSpdifMuxer(void);

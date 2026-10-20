@@ -180,7 +180,8 @@ private:
 	std::string BuildChannelMapFilter(const AVChannelLayout &);
 
 	// ring buffer variables
-	static constexpr unsigned RINGBUFFER_SIZE = 3 * 5 * 7 * 8 * 2 * 1000; ///< default ring buffer size ~2s 8ch 16bit (3 * 5 * 7 * 8)
+	/** ring buffer size (frames of 1 to 8 channels fit): ~4s 8ch 16bit 48kHz, ~1s TrueHD (8ch 16bit 192kHz) */
+	static constexpr unsigned RINGBUFFER_SIZE = 3 * 5 * 7 * 8 * 2 * 2000;
 	cRingbuffer m_pRingbuffer{RINGBUFFER_SIZE};                           ///< sample ring buffer
 
 	int64_t GetOutputPtsMsInternal(void);
