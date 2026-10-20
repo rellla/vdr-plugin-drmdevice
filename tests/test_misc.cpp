@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
+#include <thread>
 
 #include "../misc.h"
 
@@ -66,4 +67,43 @@ TEST_CASE("misc - isInterlacedFrame", "[misc]") {
 	REQUIRE(isInterlacedFrame(frame));
 
 	av_frame_free(&frame);
+}
+
+TEST_CASE("misc - The string buffers are per thread", "[misc]") {
+	SECTION("Timestamp2String") {
+		const char *mine = Timestamp2StringMs(61001);
+
+		// another thread uses all of its buffers
+		std::thread other([]() {
+			for (int i = 0; i < 3; i++)
+				REQUIRE(std::string(Timestamp2StringMs(3723456)) == " 1:02:03.456");
+		});
+		other.join();
+
+		REQUIRE(std::string(mine) == " 0:01:01.001");
+	}
+
+#ifdef av_err2str
+	SECTION("av_err2str") {
+		const char *mine = av_err2str(AVERROR(EAGAIN));
+		std::string expected = mine;
+
+		std::thread other([]() {
+			for (int i = 0; i < 3; i++)
+				REQUIRE(std::string(av_err2str(AVERROR_EOF)) == "End of file");
+		});
+		other.join();
+
+		REQUIRE(std::string(mine) == expected);
+	}
+
+	SECTION("Three strings can be used at once") {
+		const char *a = av_err2str(AVERROR_EOF);
+		const char *b = av_err2str(AVERROR(EAGAIN));
+		const char *c = av_err2str(AVERROR(ENOMEM));
+
+		REQUIRE(std::string(a) == "End of file");
+		REQUIRE(std::string(b) != std::string(c));
+	}
+#endif
 }
