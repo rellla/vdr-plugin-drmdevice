@@ -46,8 +46,9 @@ enum PassthroughMask {
 	CODEC_EAC3   = (1 << 3), ///< E-AC-3 bit mask
 	CODEC_DTS    = (1 << 4), ///< DTS bit mask
 	CODEC_TRUEHD = (1 << 5), ///< TrueHD bit mask
+	CODEC_DTSHD  = (1 << 6), ///< DTS-HD bit mask
 	/** all codecs, which can be passed through */
-	CODEC_PASSTHROUGH_ALL = CODEC_AC3 | CODEC_EAC3 | CODEC_DTS | CODEC_TRUEHD,
+	CODEC_PASSTHROUGH_ALL = CODEC_AC3 | CODEC_EAC3 | CODEC_DTS | CODEC_TRUEHD | CODEC_DTSHD,
 };
 
 /**
@@ -88,6 +89,8 @@ private:
 	int m_currentHwNumChannels = 0;             ///< current number of hw channels
 	bool m_currentPassthrough = false;          ///< true, if the audio is currently set up for passthrough
 	std::atomic<bool> m_passthroughFailed = false; ///< true, if the passthrough of the current codec failed (decode it instead)
+	std::atomic<bool> m_dtshdFailed = false;    ///< true, if the DTS-HD passthrough failed (pass the DTS core through instead)
+	int m_currentDtshdRate = 0;                 ///< rate of the current DTS-HD bitstream (0: no DTS-HD)
 	std::mutex m_mutex;                         ///< decoder mutex
 
 	cSpdifMuxer m_spdif;                        ///< spdif muxer

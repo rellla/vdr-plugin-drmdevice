@@ -36,7 +36,7 @@ extern "C" {
  *
  * @param mask    passthrough bitmask
  *
- * @return a string like " (passthrough mask: AC3 E-AC-3 DTS TrueHD)"
+ * @return a string like " (passthrough mask: AC3 E-AC-3 DTS TrueHD DTS-HD)"
  */
 static std::string GetPassthroughMaskString(int mask)
 {
@@ -48,6 +48,7 @@ static std::string GetPassthroughMaskString(int mask)
 		if (mask & CODEC_EAC3)   passthrough += " E-AC-3";
 		if (mask & CODEC_DTS)    passthrough += " DTS";
 		if (mask & CODEC_TRUEHD) passthrough += " TrueHD";
+		if (mask & CODEC_DTSHD)  passthrough += " DTS-HD";
 		passthrough += ")";
 	}
 
@@ -129,7 +130,9 @@ void cAudioDecoder::Open(AVCodecID codecId, AVCodecParameters *par, AVRational t
 	m_currentHwNumChannels = 0;
 	m_currentPassthroughMask = 0;
 	m_currentPassthrough = false;
+	m_currentDtshdRate = 0;
 	m_passthroughFailed = false;
+	m_dtshdFailed = false;
 }
 
 /**
@@ -157,7 +160,7 @@ void cAudioDecoder::Close(void)
  *
  * To enable passthrough, the current codec must be enabled in the setup
  *
- * Currently supported: AC3, E-AC-3, DTS, TrueHD
+ * Currently supported: AC3, E-AC-3, DTS, TrueHD, DTS-HD (Master Audio and High Resolution Audio)
  *
  * @return             true, if the data should be passed through
  */
@@ -169,6 +172,8 @@ bool cAudioDecoder::ShouldTryPassthrough(void)
 	return (m_passthroughMask & CODEC_AC3    && m_pAudioCtx->codec_id == AV_CODEC_ID_AC3) ||
 	       (m_passthroughMask & CODEC_EAC3   && m_pAudioCtx->codec_id == AV_CODEC_ID_EAC3) ||
 	       (m_passthroughMask & CODEC_DTS    && m_pAudioCtx->codec_id == AV_CODEC_ID_DTS) ||
+	       (m_passthroughMask & CODEC_DTSHD  && m_pAudioCtx->codec_id == AV_CODEC_ID_DTS &&
+	        IsDtsHdProfile(m_pAudioCtx->profile) && !m_dtshdFailed) ||
 	       (m_passthroughMask & CODEC_TRUEHD && m_pAudioCtx->codec_id == AV_CODEC_ID_TRUEHD);
 }
 
@@ -193,9 +198,12 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 		m_spdif.Close();
 		// The bitstream is sent with the sample rate of the stream. It is only known
 		// from the codec parameters (mediaplayer), the PES data isn't decoded.
-		sPassthroughFormat format = GetPassthroughFormat(m_pAudioCtx->codec_id, m_pAudioCtx->sample_rate, m_pAudioCtx->profile, false);
+		// The DTS-HD profile is also only known from the codec parameters.
+		bool dtshd = (m_passthroughMask & CODEC_DTSHD) && !m_dtshdFailed;
+		sPassthroughFormat format = GetPassthroughFormat(m_pAudioCtx->codec_id, m_pAudioCtx->sample_rate, m_pAudioCtx->profile, dtshd);
 		m_currentHwSampleRate = format.sampleRate;
 		m_currentHwNumChannels = format.channels;
+		m_currentDtshdRate = format.dtshdRate;
 	}
 
 	int err = 0;
@@ -250,7 +258,16 @@ void cAudioDecoder::Decode(const AVPacket *avpkt)
  */
 int cAudioDecoder::Passthrough(const AVPacket *avpkt)
 {
-	if (CheckUpdateFormat(true)) {
+	int err = CheckUpdateFormat(true);
+
+	// e.g. the device doesn't offer 8 channels with 192kHz
+	if (err && m_currentDtshdRate && (m_passthroughMask & CODEC_DTS)) {
+		LOGWARNING("audiocodec: %s: passthrough of DTS-HD is not possible, pass the DTS core through", __FUNCTION__);
+		m_dtshdFailed = true;
+		err = CheckUpdateFormat(true);
+	}
+
+	if (err) {
 		// e.g. the device doesn't offer the needed sample rate (yet)
 		LOGWARNING("audiocodec: %s: passthrough of %s is not possible, decode it until the next codec change", __FUNCTION__, avcodec_get_name(m_pAudioCtx->codec_id));
 		m_passthroughFailed = true;
@@ -259,7 +276,7 @@ int cAudioDecoder::Passthrough(const AVPacket *avpkt)
 		return 0;
 	}
 
-	if (!m_spdif.IsOpen() && !m_spdif.Open(m_pAudioCtx->codec_id, m_currentHwSampleRate)) {
+	if (!m_spdif.IsOpen() && !m_spdif.Open(m_pAudioCtx->codec_id, m_currentHwSampleRate, m_currentDtshdRate)) {
 		LOGERROR("audiocodec: %s: failed to open spdif muxer for codec %s @ %dHz!", __FUNCTION__, avcodec_get_name(m_pAudioCtx->codec_id), m_currentHwSampleRate);
 		return 0;
 	}
@@ -353,10 +370,11 @@ void cAudioDecoder::FlushBuffers(void)
 /**
  * Set audio pass-through mask
  *
- * @param mask         codec mask to enable (AC-3, E-AC-3, DTS, TrueHD)
+ * @param mask         codec mask to enable (AC-3, E-AC-3, DTS, TrueHD, DTS-HD)
  */
 void cAudioDecoder::SetPassthroughMask(int mask)
 {
 	m_passthroughMask = mask & CODEC_PASSTHROUGH_ALL;
 	m_passthroughFailed = false; // try again with the new settings
+	m_dtshdFailed = false;
 }

@@ -209,14 +209,16 @@ Setup: /etc/vdr/setup.conf
 		Use FFmpeg downmix of AC-3/EAC-3 audio to stereo.
 
 	drmdevice.AudioPassthrough = 0
-		0 = none, 4 = AC-3, 8 = EAC-3, 16 = DTS, 32 = TrueHD
+		0 = none, 4 = AC-3, 8 = EAC-3, 16 = DTS, 32 = TrueHD, 64 = DTS-HD
 
-		For AC-3/EAC-3/DTS/TrueHD the passthrough device is used and the audio
-		stream is passed undecoded to the output device.
+		For AC-3/EAC-3/DTS/TrueHD/DTS-HD the passthrough device is used and the
+		audio stream is passed undecoded to the output device.
 		Add the values above: e.g. 12 = AC-3 + EAC-3
 		negating the value disables passthrough but remembers the setting
-		DTS-HD is passed through as DTS core only. TrueHD (only played by the
-		mediaplayer) needs a device with 8 channels and 192kHz (HDMI).
+		TrueHD and DTS-HD Master Audio need a device with 8 channels and 192kHz
+		(HDMI), DTS-HD High Resolution Audio needs 192kHz. DTS-HD is only
+		recognized by the mediaplayer, otherwise (and if the device doesn't
+		offer the format) only the DTS core is passed through with DTS enabled.
 
 	drmdevice.AudioAutoAES = 0
 		0 = disabled
