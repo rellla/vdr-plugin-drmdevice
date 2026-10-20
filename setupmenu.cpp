@@ -92,6 +92,7 @@ void cDeviceSetupMenu::Create(void)
 			Add(new cMenuEditBoolItem(tr("  AC-3 passthrough"), &m_cAudioPassthroughAC3, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  E-AC-3 passthrough"), &m_cAudioPassthroughEAC3, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  DTS passthrough"), &m_cAudioPassthroughDTS, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr("  TrueHD passthrough"), &m_cAudioPassthroughTrueHD, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  Enable automatic AES"), &m_cAudioAutoAES, trVDR("no"), trVDR("yes")));
 		}
 		Add(new cMenuEditIntItem(tr(" Audio/Video delay (ms)"), &m_cAudioDelay, -1000, 1000));
@@ -319,6 +320,7 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_cAudioPassthroughAC3     = m_pConfig->ConfigAudioPassthroughMask & CODEC_AC3;
 	m_cAudioPassthroughEAC3    = m_pConfig->ConfigAudioPassthroughMask & CODEC_EAC3;
 	m_cAudioPassthroughDTS     = m_pConfig->ConfigAudioPassthroughMask & CODEC_DTS;
+	m_cAudioPassthroughTrueHD  = m_pConfig->ConfigAudioPassthroughMask & CODEC_TRUEHD;
 	m_cAudioAutoAES            = m_pConfig->ConfigAudioAutoAES;
 	m_cAudioDelay              = m_pConfig->ConfigVideoAudioDelayMs;
 	m_cAudioNormalize          = m_pConfig->ConfigAudioNormalize;
@@ -484,7 +486,8 @@ void cDeviceSetupMenu::Store(void)
 		m_pDevice->ResetChannelId();
 	m_pConfig->ConfigAudioPassthroughMask = (m_cAudioPassthroughAC3 ? CODEC_AC3 : 0)
 	                                      | (m_cAudioPassthroughEAC3 ? CODEC_EAC3 : 0)
-	                                      | (m_cAudioPassthroughDTS ? CODEC_DTS : 0);
+	                                      | (m_cAudioPassthroughDTS ? CODEC_DTS : 0)
+	                                      | (m_cAudioPassthroughTrueHD ? CODEC_TRUEHD : 0);
 	m_pConfig->ConfigAudioPassthroughState = m_cAudioPassthroughDefault;
 	if (m_pConfig->ConfigAudioPassthroughState) {
 		SetupStore("AudioPassthrough", m_pConfig->ConfigAudioPassthroughMask);

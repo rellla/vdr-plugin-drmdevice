@@ -100,7 +100,7 @@ char *cAlsaDevice::OpenDevice(const char *device)
 	LOGDEBUG2(L_SOUND, "audio: %s: try opening device '%s'", __FUNCTION__, device);
 
 	// the AES parameters are adjusted to the format in Setup()
-	std::string deviceString = BuildDeviceString(device, false, 48000);
+	std::string deviceString = BuildDeviceString(device, false, 48000, 2);
 
 	// open none blocking; if device is already used, we don't want wait
 	if ((err = snd_pcm_open(&m_pPCMHandle, deviceString.c_str(), SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK)) < 0) {
@@ -121,15 +121,17 @@ char *cAlsaDevice::OpenDevice(const char *device)
  *
  * If enabled, the channel status is appended to the device name: the non-audio
  * flag is only set for passthrough, and the sample rate is set to the rate of the
- * stream (e.g. 192kHz for E-AC-3).
+ * stream (e.g. 192kHz for E-AC-3). A high bitrate bitstream (8 channels with
+ * 192kHz, e.g. TrueHD) is sent with 768kHz.
  *
  * @param device        device name
  * @param passthrough   true, if the device is used for passthrough
  * @param sampleRate    sample rate in Hz
+ * @param channels      number of channels
  *
  * @return the device string to be opened
  */
-std::string cAlsaDevice::BuildDeviceString(const char *device, bool passthrough, int sampleRate)
+std::string cAlsaDevice::BuildDeviceString(const char *device, bool passthrough, int sampleRate, int channels)
 {
 	if (!ShouldAppendAES() || !strcmp(device, "null"))
 		return device;
@@ -145,6 +147,9 @@ std::string cAlsaDevice::BuildDeviceString(const char *device, bool passthrough,
 		case 192000: aes3 = IEC958_AES3_CON_FS_192000; break;
 		default:     aes3 = IEC958_AES3_CON_FS_NOTID;  break;
 	}
+
+	if (passthrough && channels == 8)
+		aes3 = sampleRate == 192000 ? IEC958_AES3_CON_FS_768000 : IEC958_AES3_CON_FS_NOTID;
 
 	char aes[80];
 	snprintf(aes, sizeof(aes), "%sAES0=%d,AES1=%d,AES2=0,AES3=%d",
@@ -383,7 +388,7 @@ int cAlsaDevice::Setup(int channels, int sample_rate, bool passthrough, int down
 
 	// The IEC958 channel status is set, when the device is opened, so reopen it,
 	// if the passthrough state or the sample rate changed
-	std::string deviceString = BuildDeviceString(m_deviceName.c_str(), passthrough, sample_rate);
+	std::string deviceString = BuildDeviceString(m_deviceName.c_str(), passthrough, sample_rate, channels);
 	if (!m_deviceName.empty() && deviceString != m_openedDevice && !ReopenDevice(deviceString))
 		return -1;
 
