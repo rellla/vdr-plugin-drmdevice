@@ -178,7 +178,8 @@ struct SyncWordInfo {
  * Audio Stream Reassembly Buffer
  *
  * Reassembles audio elementary streams by detecting sync words and validating
- * frame headers. Supports MP2, AAC (LATM/ADTS), AC3, E-AC3 and DTS codecs.
+ * frame headers. Supports MP2, AAC (LATM/ADTS), AC3, E-AC3 and DTS codecs
+ * (including the DTS-HD extension substream after a DTS core frame).
  *
  * @ingroup misc
  */
@@ -190,6 +191,7 @@ public:
 	SyncWordInfo FindSyncWord(const uint8_t *, int );
 	AVCodecID DetectCodecFromSyncWord(const uint8_t *, int);
 	int GetFrameSizeForCodec(AVCodecID, const uint8_t *);
+	int GetCompleteFrameSize(AVCodecID, const uint8_t *, int);
 private:
 	SyncWordInfo FindTwoConsecutiveFramesWithSameSyncWord();
 	static constexpr int MAX_HEADER_SIZE = 8; ///< max. bytes needed to detect a sync word and the frame size (DTS)
