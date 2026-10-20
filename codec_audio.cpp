@@ -28,6 +28,7 @@ extern "C" {
 #include "audio.h"
 #include "codec_audio.h"
 #include "logger.h"
+#include "spdif.h"
 #include "misc.h"
 
 /**
@@ -141,7 +142,7 @@ void cAudioDecoder::Close(void)
 	if (!m_pAudioCtx)
 		return;
 
-	CloseSpdifMuxer();
+	m_spdif.Close();
 
 	LOGDEBUG2(L_CODEC, "audiocodec: %s", __FUNCTION__);
 
@@ -149,130 +150,6 @@ void cAudioDecoder::Close(void)
 
 	m_codecId = AV_CODEC_ID_NONE;
 	m_lastPts = AV_NOPTS_VALUE;
-}
-
-/**
- * Callback for the spdif muxer
- *
- * This is called, whenever FFmpeg flushes data from the muxer to the AVIOContext.
- * In the current implementation, a flush is forced after every muxer input write.
- */
-#if LIBAVFORMAT_VERSION_MAJOR >= 61
-int cAudioDecoder::SpdifWriteCallback(void *opaque, const uint8_t *buffer, int bufferSize)
-#else
-int cAudioDecoder::SpdifWriteCallback(void *opaque, uint8_t *buffer, int bufferSize)
-#endif
-{
-	auto &output = *static_cast<std::vector<uint8_t> *>(opaque);
-	output.insert(output.end(), buffer, buffer + bufferSize);
-
-	return bufferSize;
-}
-
-/**
- * Open the spdif muxer
- *
- * @param codecId         Codec ID of the stream
- * @param sampleRate      Samplerate of the stream
- *
- * @return                true, if the spdif muxer could be opened
- *                        false on any error
- */
-bool cAudioDecoder::OpenSpdifMuxer(AVCodecID codecId, int sampleRate)
-{
-	CloseSpdifMuxer();
-
-	if (avformat_alloc_output_context2(&m_spdifFmtCtx, nullptr, "spdif", nullptr) < 0 || !m_spdifFmtCtx) {
-		LOGERROR("audiocodec: %s: failed to allocate spdif muxer", __FUNCTION__);
-		return false;
-	}
-
-	m_spdifFmtCtx->pb = avio_alloc_context(m_spdifIoBuffer.data(), m_spdifIoBuffer.size(), 1, &m_spdifOutputBuf, nullptr, &cAudioDecoder::SpdifWriteCallback, nullptr);
-	if (!m_spdifFmtCtx->pb) {
-		avformat_free_context(m_spdifFmtCtx);
-		m_spdifFmtCtx = nullptr;
-		return false;
-	}
-
-	AVStream *stream = avformat_new_stream(m_spdifFmtCtx, nullptr);
-	if (!stream) {
-		CloseSpdifMuxer();
-		return false;
-	}
-
-	stream->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
-	stream->codecpar->codec_id = codecId;
-	stream->codecpar->sample_rate = sampleRate;
-	av_channel_layout_default(&stream->codecpar->ch_layout, 2);
-	stream->time_base = AVRational{1, sampleRate};
-
-	if (avformat_write_header(m_spdifFmtCtx, nullptr) < 0) {
-		LOGERROR("audiocodec: %s: failed to write avformat header", __FUNCTION__);
-		CloseSpdifMuxer();
-		return false;
-	}
-
-	LOGDEBUG2(L_CODEC, "audiocodec: %s: opened spdif muxer for %s @ %dHz", __FUNCTION__, avcodec_get_name(codecId), sampleRate);
-
-	return true;
-}
-
-/**
- * Close the spdif muxer and free the resources
- */
-void cAudioDecoder::CloseSpdifMuxer(void)
-{
-	if (m_spdifFmtCtx) {
-		LOGDEBUG2(L_CODEC, "audiocodec: %s: close spdif muxer", __FUNCTION__);
-		if (m_spdifFmtCtx->pb) {
-			m_spdifFmtCtx->pb->buffer = nullptr;
-			avio_context_free(&m_spdifFmtCtx->pb);
-		}
-		avformat_free_context(m_spdifFmtCtx);
-		m_spdifFmtCtx = nullptr;
-	}
-
-	m_spdifOutputBuf.clear();
-	m_burstPts = AV_NOPTS_VALUE;
-}
-
-/**
- * Prepend an IEC61937 header to the raw audio data by sending the avpkt to the spdif muxer
- *
- * @param avpkt        input packet
- *
- * @return             output data from the spdif muxer (maybe nullptr, if no output is available)
- */
-const std::vector<uint8_t> &cAudioDecoder::BuildIEC61937(const AVPacket *avpkt)
-{
-	if (!m_spdifFmtCtx || !avpkt || !avpkt->data || avpkt->size <= 0) {
-		m_spdifOutputBuf.clear();
-		return m_spdifOutputBuf;
-	}
-
-	m_spdifOutputBuf.clear();
-
-	AVPacket pkt = {};
-	int ret = av_packet_ref(&pkt, avpkt);
-	if (ret < 0) {
-		LOGERROR("audiocodec: %s: av_packet_ref failed: %s", __FUNCTION__, av_err2str(ret));
-		return m_spdifOutputBuf;
-	}
-
-	pkt.stream_index = 0;
-
-	ret = av_write_frame(m_spdifFmtCtx, &pkt);
-	av_packet_unref(&pkt);
-	if (ret < 0) {
-		LOGERROR("audiocodec: %s: av_write_frame failed: %s", __FUNCTION__, av_err2str(ret));
-		m_spdifOutputBuf.clear();
-		return m_spdifOutputBuf;
-	}
-
-	// always flush to see, if new output is ready
-	avio_flush(m_spdifFmtCtx->pb);
-
-	return m_spdifOutputBuf;
 }
 
 /**
@@ -313,22 +190,12 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 	m_currentHwNumChannels = m_pAudioCtx->ch_layout.nb_channels;
 
 	if (passthrough) {
-		CloseSpdifMuxer();
+		m_spdif.Close();
 		// The bitstream is sent with the sample rate of the stream. It is only known
 		// from the codec parameters (mediaplayer), the PES data isn't decoded.
-		m_currentHwSampleRate = m_pAudioCtx->sample_rate > 0 ? m_pAudioCtx->sample_rate : AUDIO_PASSTHROUGH_RATE_HZ;
-		m_currentHwNumChannels = AUDIO_PASSTHROUGH_NUM_CHANNELS;
-
-		// E-AC-3 needs four times the sample rate (IEC 61937-3), there is no fallback
-		if (m_pAudioCtx->codec_id == AV_CODEC_ID_EAC3)
-			m_currentHwSampleRate *= 4;
-
-		// TrueHD is sent as high bitrate bitstream with 8 channels and 192kHz,
-		// or 176.4kHz for the 44.1kHz rate family (IEC 61937-9)
-		if (m_pAudioCtx->codec_id == AV_CODEC_ID_TRUEHD) {
-			m_currentHwSampleRate = m_currentHwSampleRate % 44100 ? 192000 : 176400;
-			m_currentHwNumChannels = AUDIO_HBR_NUM_CHANNELS;
-		}
+		sPassthroughFormat format = GetPassthroughFormat(m_pAudioCtx->codec_id, m_pAudioCtx->sample_rate, m_pAudioCtx->profile, false);
+		m_currentHwSampleRate = format.sampleRate;
+		m_currentHwNumChannels = format.channels;
 	}
 
 	int err = 0;
@@ -387,29 +254,23 @@ int cAudioDecoder::Passthrough(const AVPacket *avpkt)
 		// e.g. the device doesn't offer the needed sample rate (yet)
 		LOGWARNING("audiocodec: %s: passthrough of %s is not possible, decode it until the next codec change", __FUNCTION__, avcodec_get_name(m_pAudioCtx->codec_id));
 		m_passthroughFailed = true;
-		CloseSpdifMuxer();
+		m_spdif.Close();
 		DecodePCM(avpkt);
 		return 0;
 	}
 
-	if (!m_spdifFmtCtx && !OpenSpdifMuxer(m_pAudioCtx->codec_id, m_currentHwSampleRate)) {
+	if (!m_spdif.IsOpen() && !m_spdif.Open(m_pAudioCtx->codec_id, m_currentHwSampleRate)) {
 		LOGERROR("audiocodec: %s: failed to open spdif muxer for codec %s @ %dHz!", __FUNCTION__, avcodec_get_name(m_pAudioCtx->codec_id), m_currentHwSampleRate);
 		return 0;
 	}
 
 	m_pAudio->SetTimebase(m_pAudioCtx->pkt_timebase);
 
-	// The muxer may collect several packets for one burst (e.g. TrueHD), the burst starts with the first one
-	if (m_burstPts == AV_NOPTS_VALUE)
-		m_burstPts = avpkt->pts;
-
-	const auto &burst = BuildIEC61937(avpkt);
+	int64_t pts = AV_NOPTS_VALUE;
+	const auto &burst = m_spdif.Mux(avpkt, &pts);
 
 	if (burst.empty())
 		return 0;
-
-	int64_t pts = m_burstPts;
-	m_burstPts = AV_NOPTS_VALUE;
 
 	m_pAudio->EnqueueSpdif(reinterpret_cast<const uint16_t *>(burst.data()), burst.size(), pts);
 	return 1;
@@ -483,7 +344,7 @@ void cAudioDecoder::FlushBuffers(void)
 		avcodec_flush_buffers(m_pAudioCtx);
 
 	// the muxer may hold data of a burst, which isn't complete yet (e.g. TrueHD)
-	CloseSpdifMuxer();
+	m_spdif.Close();
 
 	m_lastPts = AV_NOPTS_VALUE;
 	m_codecId = AV_CODEC_ID_NONE;

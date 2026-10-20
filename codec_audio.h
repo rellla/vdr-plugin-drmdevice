@@ -13,7 +13,6 @@
 #ifndef __DRMDEVICE_CODEC_AUDIO_H
 #define __DRMDEVICE_CODEC_AUDIO_H
 
-#include <array>
 #include <atomic>
 #include <cstdint>
 #include <mutex>
@@ -25,6 +24,8 @@ extern "C" {
 }
 
 #include <vdr/remux.h>
+
+#include "spdif.h"
 
 class cAudioStream;
 
@@ -89,23 +90,8 @@ private:
 	std::atomic<bool> m_passthroughFailed = false; ///< true, if the passthrough of the current codec failed (decode it instead)
 	std::mutex m_mutex;                         ///< decoder mutex
 
-	std::array<uint8_t, 32768> m_spdifIoBuffer{}; ///< spdif I/O buffer
-	AVFormatContext *m_spdifFmtCtx = nullptr;   ///< spdif muxer context
-	std::vector<uint8_t> m_spdifOutputBuf;      ///< spdif muxer output
-	int64_t m_burstPts = AV_NOPTS_VALUE;        ///< pts of the first packet of the next spdif burst
+	cSpdifMuxer m_spdif;                        ///< spdif muxer
 
-	constexpr static int AUDIO_PASSTHROUGH_NUM_CHANNELS = 2; ///< fixed passthrough channel number
-	constexpr static int AUDIO_PASSTHROUGH_RATE_HZ = 48000;  ///< passthrough sample rate, if the rate of the stream is unknown
-	constexpr static int AUDIO_HBR_NUM_CHANNELS = 8;         ///< channel number of a high bitrate bitstream (TrueHD)
-
-	bool OpenSpdifMuxer(AVCodecID, int);
-	void CloseSpdifMuxer(void);
-	const std::vector<uint8_t> &BuildIEC61937(const AVPacket *);
-#if LIBAVFORMAT_VERSION_MAJOR >= 61
-	static int SpdifWriteCallback(void *, const uint8_t *, int);
-#else
-	static int SpdifWriteCallback(void *, uint8_t *, int);
-#endif
 
 	bool ShouldTryPassthrough(void);
 	int Passthrough(const AVPacket *);
