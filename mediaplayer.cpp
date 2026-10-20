@@ -237,10 +237,10 @@ void cDrmDevicePlayer::Action(void)
 
 	if (IsM3UPlaylist(m_pSource)) {
 		while (m_pCurrentEntry && Running()) {
-			PlayFile(m_pCurrentEntry->GetPath().c_str());
+			PlayFile(m_pCurrentEntry.load()->GetPath().c_str());
 
 			if (!m_noModify) {
-				m_pCurrentEntry = m_pCurrentEntry->GetNextEntry();
+				m_pCurrentEntry = m_pCurrentEntry.load()->GetNextEntry();
 
 				if (m_random) {
 					std::uniform_int_distribution<int> distribution(0, m_entries - 1);
@@ -248,9 +248,6 @@ void cDrmDevicePlayer::Action(void)
 				}
 			}
 			m_noModify = false;
-
-			if (cDeviceMenu::Menu())
-				cDeviceMenu::Menu()->PlayListMenu();
 		}
 	} else
 		PlayFile(m_pSource);
@@ -457,7 +454,8 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 	std::string path = url;
 	m_fileNumber++;
 	m_filePath = path;
-	m_fileTitle = m_pCurrentEntry ? m_pCurrentEntry->OsdItemString() : path.substr(path.find_last_of('/') + 1);
+	cPlaylistEntry *entry = m_pCurrentEntry;
+	m_fileTitle = entry ? entry->OsdItemString() : path.substr(path.find_last_of('/') + 1);
 
 	return true;
 }

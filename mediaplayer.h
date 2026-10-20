@@ -135,7 +135,7 @@ private:
 	int64_t PtsToPositionMs(int64_t);
 
 	cPlaylistEntry *m_pFirstEntry = nullptr;            ///< first playlist entry
-	cPlaylistEntry *m_pCurrentEntry = nullptr;          ///< currently played playlist entry
+	std::atomic<cPlaylistEntry *> m_pCurrentEntry = nullptr; ///< currently played playlist entry (read by the menu)
 
 	char *m_pSource;                                    ///< played file or playlist
 	int m_entries = 0;                                  ///< number of playlist entries
