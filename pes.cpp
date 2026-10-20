@@ -222,6 +222,52 @@ static const std::map<AVCodecID, CodecInfo> AudioCodecMap = {
 };
 
 
+/** sync word of a DTS-HD extension substream */
+static constexpr uint32_t DTS_SUBSTREAM_SYNC_WORD = 0x64582025;
+/** bytes needed to read the size of a DTS-HD extension substream */
+static constexpr int DTS_SUBSTREAM_HEADER_SIZE = 10;
+/**
+ * maximum size of a DTS-HD extension substream, which is accepted
+ *
+ * The size field allows 1 MiB, but a real substream is much smaller (24.5 Mbit/s
+ * of DTS-HD MA are about 33 KiB per frame). A wrongly detected substream in
+ * corrupted data must not let the reassembly wait for that much data.
+ */
+static constexpr int DTS_SUBSTREAM_MAX_SIZE = 65536;
+
+/**
+ * Get the size of a DTS-HD extension substream frame
+ *
+ * Header: SYNC (32), UserDefinedBits (8), nExtSSIndex (2), bHeaderSizeType (1),
+ * nuExtSSHeaderSize (8 or 12), nuExtSSFsize (16 or 20), ...
+ *
+ * @param data      start of the substream (DTS_SUBSTREAM_HEADER_SIZE bytes)
+ * @return          size of the substream frame in bytes
+ * @throws std::invalid_argument on an invalid header
+ */
+static int GetDtsSubstreamSize(const uint8_t *data)
+{
+	uint64_t bits = 0;
+	for (int i = 4; i < DTS_SUBSTREAM_HEADER_SIZE; i++)
+		bits = (bits << 8) | data[i];
+
+	constexpr int NUM_BITS = (DTS_SUBSTREAM_HEADER_SIZE - 4) * 8;
+	bool wideHeader = (bits >> (NUM_BITS - 11)) & 0x01;
+	int headerSize, frameSize;
+	if (wideHeader) {
+		headerSize = ((bits >> (NUM_BITS - 23)) & 0xFFF) + 1;
+		frameSize = ((bits >> (NUM_BITS - 43)) & 0xFFFFF) + 1;
+	} else {
+		headerSize = ((bits >> (NUM_BITS - 19)) & 0xFF) + 1;
+		frameSize = ((bits >> (NUM_BITS - 35)) & 0xFFFF) + 1;
+	}
+
+	if (headerSize < DTS_SUBSTREAM_HEADER_SIZE || frameSize < headerSize || frameSize > DTS_SUBSTREAM_MAX_SIZE)
+		throw std::invalid_argument("DTS-HD: invalid substream size");
+
+	return frameSize;
+}
+
 /** @} */
 
 /**
@@ -506,7 +552,7 @@ AVPacket *cReassemblyBufferAudio::PopAvPacket(void)
 	m_codec = detectedCodec;
 
 	try {
-		AVPacket *packet = cReassemblyBuffer::PopAvPacket(AudioCodecMap.at(m_codec).GetFrameSize(m_buffer.Peek()));
+		AVPacket *packet = cReassemblyBuffer::PopAvPacket(GetCompleteFrameSize(m_codec, m_buffer.Peek(), m_buffer.GetSize()));
 
 		if (!packet)
 			return nullptr;
@@ -575,13 +621,11 @@ SyncWordInfo cReassemblyBufferAudio::FindTwoConsecutiveFramesWithSameSyncWord(vo
 		try {
 			// determine the length of the first found potential frame by reading the frame's header
 			const CodecInfo &codecInfo = AudioCodecMap.at(firstFrame.codecId);
-			int sizeOfFirstFrame = codecInfo.GetFrameSize(&m_buffer.Peek()[firstFrame.pos]);
-			if (sizeOfFirstFrame < codecInfo.minSize) // a frame can't be smaller than its header, the buffer would get stuck
-				throw std::invalid_argument("frame size smaller than the header");
+			int sizeOfFirstFrame = GetCompleteFrameSize(firstFrame.codecId, &m_buffer.Peek()[firstFrame.pos], m_buffer.GetSize() - firstFrame.pos);
 			int secondSyncWord = firstFrame.pos + sizeOfFirstFrame;
 
 			// check if another sync word follows immediately after the first frame to validate the header of the first frame is a real header and no random data
-			if (secondSyncWord + codecInfo.minSize > (int)m_buffer.GetSize()) {
+			if (!sizeOfFirstFrame || secondSyncWord + codecInfo.minSize > (int)m_buffer.GetSize()) {
 				// Could not find the second sync word, because there might not be enough data in the buffer to contain a complete second sync word. Wait for more data.
 				// In case we have a false positive and the header's frame size field is invalid, we buffer the following amount of data in worst-case:
 				//   - MP2: 6913 bytes (Layer 2/3: 384kbps @ 8kHz + padding)
@@ -646,6 +690,42 @@ AVCodecID cReassemblyBufferAudio::DetectCodecFromSyncWord(const uint8_t *syncWor
 	}
 
 	return AV_CODEC_ID_NONE;
+}
+
+/**
+ * Get the size of a complete frame
+ *
+ * The size of the frame is read from the frame header. In a DTS-HD stream an
+ * extension substream follows each DTS core frame, it belongs to the frame.
+ *
+ * @param codec     the audio codec ID
+ * @param data      start of the frame
+ * @param size      available bytes
+ *
+ * @return          frame size in bytes, 0 if more data is needed to get the size
+ * @throws std::invalid_argument if the frame header is invalid
+ */
+int cReassemblyBufferAudio::GetCompleteFrameSize(AVCodecID codec, const uint8_t *data, int size)
+{
+	const CodecInfo &codecInfo = AudioCodecMap.at(codec);
+	int frameSize = codecInfo.GetFrameSize(data);
+	if (frameSize < codecInfo.minSize) // a frame can't be smaller than its header, the buffer would get stuck
+		throw std::invalid_argument("frame size smaller than the header");
+
+	if (codec != AV_CODEC_ID_DTS)
+		return frameSize;
+
+	// a DTS-HD extension substream may follow
+	if (frameSize + 4 > size)
+		return 0;
+
+	if (ReadBytes(&data[frameSize], 4) != DTS_SUBSTREAM_SYNC_WORD)
+		return frameSize;
+
+	if (frameSize + DTS_SUBSTREAM_HEADER_SIZE > size)
+		return 0;
+
+	return frameSize + GetDtsSubstreamSize(&data[frameSize]);
 }
 
 /**

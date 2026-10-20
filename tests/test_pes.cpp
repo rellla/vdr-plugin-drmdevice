@@ -1108,6 +1108,102 @@ TEST_CASE("cReassemblyBufferAudio - Two consecutive DTS frames", "[reassembly][a
     }
 }
 
+// Helper function to create a DTS-HD extension substream with the given size
+// Header: SYNC (32), UserDefinedBits (8), nExtSSIndex (2), bHeaderSizeType (1),
+// nuExtSSHeaderSize (8 or 12), nuExtSSFsize (16 or 20)
+static std::vector<uint8_t> createDtsSubstream(int size, bool wideHeader = false, int headerSize = 16)
+{
+    std::vector<uint8_t> substream(size, 0x00);
+    uint64_t bits = 0;
+    int numBits = 0;
+    auto put = [&](uint64_t value, int n) { bits = (bits << n) | value; numBits += n; };
+
+    put(0, 8);                            // UserDefinedBits
+    put(0, 2);                            // nExtSSIndex
+    put(wideHeader, 1);
+    put(headerSize - 1, wideHeader ? 12 : 8);
+    put(size - 1, wideHeader ? 20 : 16);
+    bits <<= 48 - numBits;
+
+    substream[0] = 0x64;
+    substream[1] = 0x58;
+    substream[2] = 0x20;
+    substream[3] = 0x25;
+    for (int i = 0; i < 6; i++)
+        substream[4 + i] = (bits >> (40 - 8 * i)) & 0xFF;
+
+    return substream;
+}
+
+TEST_CASE("cReassemblyBufferAudio - DTS-HD extension substream", "[reassembly][audio][consecutive]") {
+    cReassemblyBufferAudio buffer;
+    std::vector<uint8_t> core = createDtsFrame(1024);
+    std::vector<uint8_t> data;
+
+    SECTION("The substream belongs to the core frame") {
+        std::vector<uint8_t> substream = createDtsSubstream(3000);
+        for (int i = 0; i < 2; i++) {
+            data.insert(data.end(), core.begin(), core.end());
+            data.insert(data.end(), substream.begin(), substream.end());
+        }
+        buffer.Push(data.data(), data.size(), 9000);
+
+        REQUIRE(buffer.GetCompleteFrameSize(AV_CODEC_ID_DTS, data.data(), data.size()) == 4024);
+        REQUIRE(buffer.TruncateBufferUntilFirstValidData() == AV_CODEC_ID_DTS);
+
+        AVPacket *pkt = buffer.PopAvPacket();
+        REQUIRE(pkt != nullptr);
+        REQUIRE(pkt->size == 4024);
+        REQUIRE(pkt->pts == 9000);
+        av_packet_free(&pkt);
+        REQUIRE(buffer.GetSize() == 4024);
+    }
+
+    SECTION("Substream with a wide header") {
+        std::vector<uint8_t> substream = createDtsSubstream(40000, true, 20);
+        data.insert(data.end(), core.begin(), core.end());
+        data.insert(data.end(), substream.begin(), substream.end());
+
+        REQUIRE(buffer.GetCompleteFrameSize(AV_CODEC_ID_DTS, data.data(), data.size()) == 41024);
+    }
+
+    SECTION("A substream larger than 64 KiB is invalid") {
+        // e.g. a wrongly detected substream in corrupted data, the reassembly would wait for 1 MiB
+        std::vector<uint8_t> substream = createDtsSubstream(70000, true, 20);
+        data.insert(data.end(), core.begin(), core.end());
+        data.insert(data.end(), substream.begin(), substream.end());
+
+        REQUIRE_THROWS_AS(buffer.GetCompleteFrameSize(AV_CODEC_ID_DTS, data.data(), data.size()), std::invalid_argument);
+    }
+
+    SECTION("The size is unknown until the substream header is complete") {
+        std::vector<uint8_t> substream = createDtsSubstream(3000);
+        data.insert(data.end(), core.begin(), core.end());
+
+        REQUIRE(buffer.GetCompleteFrameSize(AV_CODEC_ID_DTS, data.data(), data.size()) == 0);
+        data.insert(data.end(), substream.begin(), substream.begin() + 9);
+        REQUIRE(buffer.GetCompleteFrameSize(AV_CODEC_ID_DTS, data.data(), data.size()) == 0);
+        data.push_back(substream[9]);
+        REQUIRE(buffer.GetCompleteFrameSize(AV_CODEC_ID_DTS, data.data(), data.size()) == 4024);
+    }
+
+    SECTION("A core frame without a substream") {
+        std::vector<uint8_t> next = createDtsFrame(1024);
+        data.insert(data.end(), core.begin(), core.end());
+        data.insert(data.end(), next.begin(), next.begin() + 8);
+
+        REQUIRE(buffer.GetCompleteFrameSize(AV_CODEC_ID_DTS, data.data(), data.size()) == 1024);
+    }
+
+    SECTION("An invalid substream header") {
+        std::vector<uint8_t> substream = createDtsSubstream(3000, false, 4); // header smaller than its fields
+        data.insert(data.end(), core.begin(), core.end());
+        data.insert(data.end(), substream.begin(), substream.end());
+
+        REQUIRE_THROWS_AS(buffer.GetCompleteFrameSize(AV_CODEC_ID_DTS, data.data(), data.size()), std::invalid_argument);
+    }
+}
+
 TEST_CASE("cReassemblyBufferAudio - A header at the end of the buffer is kept", "[reassembly][audio][consecutive]") {
     cReassemblyBufferAudio buffer;
     std::vector<uint8_t> data(20, 0x00);
