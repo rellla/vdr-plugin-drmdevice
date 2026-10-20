@@ -24,6 +24,13 @@ extern "C" {
 #include "../pes.h"
 #include "../spdif.h"
 
+// FFmpeg 6.1 renamed the profiles from FF_PROFILE_* to AV_PROFILE_*
+#ifdef AV_PROFILE_DTS_HD_MA
+#define DTS_PROFILE(name) AV_PROFILE_##name
+#else
+#define DTS_PROFILE(name) FF_PROFILE_##name
+#endif
+
 #ifndef TEST_DATA_DIR
 #define TEST_DATA_DIR "data"
 #endif
@@ -185,6 +192,35 @@ std::vector<std::pair<const uint8_t *, int>> SplitFrames(const std::vector<uint8
     return frames;
 }
 
+/**
+ * Build DTS-HD frames: append a (synthetic) extension substream to each DTS core frame
+ *
+ * FFmpeg can't encode DTS-HD. The spdif muxer doesn't parse the substream, it only
+ * needs its size.
+ */
+std::vector<uint8_t> MakeDtsHd(const std::vector<uint8_t> &core, int substreamSize)
+{
+    std::vector<uint8_t> data;
+    std::vector<uint8_t> substream(substreamSize, 0x00);
+
+    // SYNC, UserDefinedBits (8), nExtSSIndex (2), bHeaderSizeType (1) = 0,
+    // nuExtSSHeaderSize - 1 (8) = 15, nuExtSSFsize - 1 (16)
+    uint64_t bits = ((uint64_t)15 << (48 - 19)) | ((uint64_t)(substreamSize - 1) << (48 - 35));
+    substream[0] = 0x64;
+    substream[1] = 0x58;
+    substream[2] = 0x20;
+    substream[3] = 0x25;
+    for (int i = 0; i < 6; i++)
+        substream[4 + i] = (bits >> (40 - 8 * i)) & 0xFF;
+
+    for (const auto &frame : SplitFrames(core, AV_CODEC_ID_DTS)) {
+        data.insert(data.end(), frame.first, frame.first + frame.second);
+        data.insert(data.end(), substream.begin(), substream.end());
+    }
+
+    return data;
+}
+
 /** TrueHD access units of a raw TrueHD stream */
 std::vector<std::pair<const uint8_t *, int>> SplitTrueHD(const std::vector<uint8_t> &data)
 {
@@ -315,6 +351,53 @@ TEST_CASE("Audio streams - spdif passthrough", "[audiostreams][spdif]") {
         CheckBurstDuration(format, 61440, 24 * 40, 48000);
     }
 
+    SECTION("DTS-HD Master Audio") {
+        std::vector<uint8_t> core = ReadFile("dts_48k.dts");
+        std::vector<uint8_t> data = MakeDtsHd(core, 4000);
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_DTS, 48000, DTS_PROFILE(DTS_HD_MA), true);
+        REQUIRE(format.sampleRate == 192000);
+        REQUIRE(format.channels == 8);
+        REQUIRE(format.dtshdRate == 768000);
+        REQUIRE(muxer.Open(AV_CODEC_ID_DTS, format.sampleRate, format.dtshdRate));
+
+        std::vector<std::pair<const uint8_t *, int>> frames = SplitFrames(data, AV_CODEC_ID_DTS);
+        REQUIRE(frames[0].second == 1024 + 4000);
+
+        // DTS type IV with the complete frame
+        std::vector<sBurst> bursts = Mux(muxer, frames);
+        CheckBursts(bursts, PC_DTSHD, 32768, 1);
+        CheckBurstDuration(format, 32768, 512, 48000);
+        REQUIRE(bursts[0].data[6] + (bursts[0].data[7] << 8) >= 1024 + 4000);
+    }
+
+    SECTION("DTS-HD High Resolution Audio") {
+        std::vector<uint8_t> core = ReadFile("dts_48k.dts");
+        std::vector<uint8_t> data = MakeDtsHd(core, 2000);
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_DTS, 48000, DTS_PROFILE(DTS_HD_HRA), true);
+        REQUIRE(format.sampleRate == 192000);
+        REQUIRE(format.channels == 2);
+        REQUIRE(format.dtshdRate == 192000);
+        REQUIRE(muxer.Open(AV_CODEC_ID_DTS, format.sampleRate, format.dtshdRate));
+
+        std::vector<sBurst> bursts = Mux(muxer, SplitFrames(data, AV_CODEC_ID_DTS));
+        CheckBursts(bursts, PC_DTSHD, 8192, 1);
+        CheckBurstDuration(format, 8192, 512, 48000);
+    }
+
+    SECTION("DTS-HD without DTS-HD passthrough sends the core") {
+        std::vector<uint8_t> core = ReadFile("dts_48k.dts");
+        std::vector<uint8_t> data = MakeDtsHd(core, 4000);
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_DTS, 48000, DTS_PROFILE(DTS_HD_MA), false);
+        REQUIRE(format.sampleRate == 48000);
+        REQUIRE(format.dtshdRate == 0);
+        REQUIRE(muxer.Open(AV_CODEC_ID_DTS, format.sampleRate, format.dtshdRate));
+
+        std::vector<sBurst> bursts = Mux(muxer, SplitFrames(data, AV_CODEC_ID_DTS));
+        CheckBursts(bursts, PC_DTS1, 2048, 1);
+        // length code Pd in bits: only the core
+        REQUIRE(bursts[0].data[6] + (bursts[0].data[7] << 8) == 1024 * 8);
+    }
+
     SECTION("Closing drops the data of an incomplete burst") {
         std::vector<uint8_t> data = ReadFile("truehd_48k.thd");
         std::vector<std::pair<const uint8_t *, int>> units = SplitTrueHD(data);
@@ -367,6 +450,37 @@ TEST_CASE("Passthrough format", "[spdif]") {
         }
         for (int rate : {44100, 88200, 176400})
             REQUIRE(GetPassthroughFormat(AV_CODEC_ID_TRUEHD, rate, 0, false).sampleRate == 176400);
+    }
+}
+
+TEST_CASE("Passthrough format - DTS-HD", "[spdif]") {
+    SECTION("DTS-HD profiles with a core") {
+        REQUIRE(IsDtsHdProfile(DTS_PROFILE(DTS_HD_MA)));
+        REQUIRE(IsDtsHdProfile(DTS_PROFILE(DTS_HD_HRA)));
+        REQUIRE_FALSE(IsDtsHdProfile(DTS_PROFILE(DTS)));
+        REQUIRE_FALSE(IsDtsHdProfile(DTS_PROFILE(DTS_ES)));
+        REQUIRE_FALSE(IsDtsHdProfile(DTS_PROFILE(DTS_EXPRESS)));  // no core
+        REQUIRE_FALSE(IsDtsHdProfile(DTS_PROFILE(UNKNOWN)));
+    }
+
+    SECTION("Master Audio is a high bitrate bitstream") {
+        for (int rate : {48000, 96000, 192000}) {
+            sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_DTS, rate, DTS_PROFILE(DTS_HD_MA), true);
+            REQUIRE(format.sampleRate == 192000);
+            REQUIRE(format.channels == 8);
+            REQUIRE(format.dtshdRate == 768000);
+        }
+    }
+
+    SECTION("The 44.1kHz rate family and unknown profiles pass the core through") {
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_DTS, 44100, DTS_PROFILE(DTS_HD_MA), true);
+        REQUIRE(format.sampleRate == 44100);
+        REQUIRE(format.dtshdRate == 0);
+
+        format = GetPassthroughFormat(AV_CODEC_ID_DTS, 0, DTS_PROFILE(UNKNOWN), true);
+        REQUIRE(format.sampleRate == 48000);
+        REQUIRE(format.channels == 2);
+        REQUIRE(format.dtshdRate == 0);
     }
 }
 
