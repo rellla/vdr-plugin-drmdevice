@@ -220,9 +220,13 @@ Setup: /etc/vdr/setup.conf
 		recognized by the mediaplayer, otherwise (and if the device doesn't
 		offer the format) only the DTS core is passed through with DTS enabled.
 
-	drmdevice.AudioAutoAES = 0
-		0 = disabled
-		1 = auto append AES string to the audio device
+	drmdevice.AudioDisableAutoAES = 0
+		0 = default: append the AES parameters (IEC 60958 channel status) to
+		    the passthrough device (e.g. the non-audio flag and the sample rate,
+		    as required by most receivers). A device, which doesn't accept
+		    AES parameters, is used without them.
+		1 = don't append the AES parameters
+		(replaces AudioAutoAES, which was disabled by default)
 
 	drmdevice.AudioDelay = 0
 		+n or -n ms

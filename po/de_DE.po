@@ -119,8 +119,8 @@ msgstr "  Aktiviere DTS-HD Passthrough"
 msgid "  TrueHD passthrough"
 msgstr "  Aktiviere TrueHD Passthrough"
 
-msgid "  Enable automatic AES"
-msgstr "  Aktiviere automatische AES Parameter"
+msgid "  Disable automatic AES"
+msgstr "  Deaktiviere automatische AES Parameter"
 
 msgid " Audio/Video delay (ms)"
 msgstr " Audio/Video Verzögerung (ms)"
