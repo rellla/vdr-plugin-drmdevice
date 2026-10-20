@@ -36,7 +36,7 @@
 /*****************************************************************************
  * Static variables
  ****************************************************************************/
-static const char *const VERSION = "2.0.2" GIT_DESCRIBE;    ///< vdr-plugin version number
+static const char *const VERSION = "2.0.3" GIT_DESCRIBE;    ///< vdr-plugin version number
                                                             ///< Makefile extracts the version number for generating the file name
                                                             ///< for the distribution archive.
 
