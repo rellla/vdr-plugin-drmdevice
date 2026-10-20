@@ -162,6 +162,7 @@ OBJS = $(PLUGINENTRY).o \
 	ringbuffer.o \
 	setupmenu.o \
 	softosd.o \
+	spdif.o \
 	statemachine.o \
 	videofilter.o \
 	videorender.o \
