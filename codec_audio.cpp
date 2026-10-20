@@ -311,7 +311,9 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 
 	if (passthrough) {
 		CloseSpdifMuxer();
-		m_currentHwSampleRate = AUDIO_PASSTHROUGH_RATE_HZ;
+		// The bitstream is sent with the sample rate of the stream. It is only known
+		// from the codec parameters (mediaplayer), the PES data isn't decoded.
+		m_currentHwSampleRate = m_pAudioCtx->sample_rate > 0 ? m_pAudioCtx->sample_rate : AUDIO_PASSTHROUGH_RATE_HZ;
 		m_currentHwNumChannels = AUDIO_PASSTHROUGH_NUM_CHANNELS;
 
 		// E-AC-3 needs four times the sample rate (IEC 61937-3), there is no fallback
