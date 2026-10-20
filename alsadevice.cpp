@@ -40,7 +40,7 @@ static void AlsaNoopCallback( __attribute__ ((unused))
 cAlsaDevice::cAlsaDevice(cDeviceConfig *m_pConfig)
 	: m_pPCMDevice(m_pConfig->ConfigAudioPCMDevice),
 	  m_pMixerChannel(m_pConfig->ConfigAudioMixerChannel),
-	  m_appendAES(m_pConfig->ConfigAudioAutoAES),
+	  m_appendAES(!m_pConfig->ConfigAudioDisableAutoAES),
 	  m_passthroughMask(m_pConfig->ConfigAudioPassthroughState ? m_pConfig->ConfigAudioPassthroughMask : 0),
 	  m_downmix(m_pConfig->ConfigAudioDownmix)
 {
@@ -104,7 +104,18 @@ char *cAlsaDevice::OpenDevice(const char *device)
 	std::string deviceString = BuildDeviceString(device, false, 48000, 2);
 
 	// open none blocking; if device is already used, we don't want wait
-	if ((err = snd_pcm_open(&m_pPCMHandle, deviceString.c_str(), SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK)) < 0) {
+	err = snd_pcm_open(&m_pPCMHandle, deviceString.c_str(), SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
+
+	// not every device accepts AES parameters (e.g. "default" or "plughw")
+	if (err < 0 && deviceString != device) {
+		LOGWARNING("audio: %s: could not open device '%s' with AES parameters (%s), open it without", __FUNCTION__, device, snd_strerror(err));
+		deviceString = device;
+		err = snd_pcm_open(&m_pPCMHandle, deviceString.c_str(), SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
+		if (err >= 0)
+			m_aesUnsupported = true;
+	}
+
+	if (err < 0) {
 		LOGWARNING("audio: %s: could not open device '%s' error: %s", __FUNCTION__, device, snd_strerror(err));
 		return NULL;
 	}
@@ -181,6 +192,14 @@ bool cAlsaDevice::ReopenDevice(const std::string &deviceString)
 			LOGERROR("audio: %s: can't set block mode: %s", __FUNCTION__, snd_strerror(err));
 
 		m_openedDevice = candidate;
+
+		// not every device accepts AES parameters (e.g. "default" or "plughw"), use it without
+		if (candidate == m_deviceName && candidate != deviceString) {
+			LOGWARNING("audio: %s: device '%s' doesn't accept AES parameters, use it without", __FUNCTION__, m_deviceName.c_str());
+			m_aesUnsupported = true;
+			return true;
+		}
+
 		return candidate == deviceString;
 	}
 
