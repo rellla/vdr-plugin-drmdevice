@@ -52,7 +52,7 @@ TEST_CASE("cPidController - Integral and derivative term", "[pid]") {
 	REQUIRE_THAT(pid.GetDTerm(), WithinAbs(-8.0, 1e-9));
 }
 
-TEST_CASE("cPidController - Saturation resets the controller", "[pid]") {
+TEST_CASE("cPidController - Saturation keeps the integral term", "[pid]") {
 	// maxIntegral = maxOutput / ki = 100
 	cPidController pid(0.0, 1.0, 0.0, 100.0);
 	pid.SetTargetValue(30.0);
@@ -62,9 +62,28 @@ TEST_CASE("cPidController - Saturation resets the controller", "[pid]") {
 	REQUIRE_THAT(pid.Update(0.0, 1.0), WithinAbs(60.0, 1e-9));
 	REQUIRE_THAT(pid.Update(0.0, 1.0), WithinAbs(90.0, 1e-9));
 
-	// the integral sum is clamped to 100, the output reaches the maximum and the controller resets
+	// the integral sum is clamped to 100, the output stays at the maximum
+	for (int i = 0; i < 5; i++) {
+		REQUIRE_THAT(pid.Update(0.0, 1.0), WithinAbs(100.0, 1e-9));
+		REQUIRE_THAT(pid.GetITerm(), WithinAbs(100.0, 1e-9));
+	}
+
+	// the error changes its sign: the integral term decreases from the limit (no windup)
+	pid.SetTargetValue(0.0);
+	REQUIRE_THAT(pid.Update(10.0, 1.0), WithinAbs(90.0, 1e-9));
+}
+
+TEST_CASE("cPidController - The proportional term saturates the output", "[pid]") {
+	cPidController pid(10.0, 1.0, 0.0, 100.0);
+	pid.SetTargetValue(50.0);
+
+	// P = 500 -> limited to 100, the integral term is kept
+	pid.Update(0.0, 1.0); // first run
 	REQUIRE_THAT(pid.Update(0.0, 1.0), WithinAbs(100.0, 1e-9));
-	REQUIRE(pid.GetITerm() == 0.0);
+	REQUIRE_THAT(pid.GetITerm(), WithinAbs(50.0, 1e-9));
+
+	// back at the target, the integral term remains as correction
+	REQUIRE_THAT(pid.Update(50.0, 1.0), WithinAbs(50.0, 1e-9));
 }
 
 TEST_CASE("cPidController - Output is limited", "[pid]") {

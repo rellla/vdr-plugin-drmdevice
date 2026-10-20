@@ -50,6 +50,7 @@ private:
 	bool firstRun = true;        ///< Flag for first run
 	double maxOutput = 0;        ///< Hard limit for output correction
 	double maxIntegral = 0;      ///< Anti-windup limit for the integral term
+	bool outputSaturated = false; ///< true, if the output is at the limit
 
 #ifdef PID_CONTROLLER_TUNING_AID_ADDRESS
 	void SendTuningAidData(double, double, double, double, double, double);
