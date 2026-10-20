@@ -1479,7 +1479,8 @@ int cVideoRender::Init(void)
 /**
  * Delete the osd and black buffer
  *
- * The GBM bo (GLES OSD) are also destroyed here
+ * The GBM buffer objects of the GLES OSD belong to the GBM surface: the locked
+ * one is released here, they are destroyed with the EGL surface.
  */
 void cVideoRender::DeleteBuffers(void)
 {
@@ -1491,10 +1492,11 @@ void cVideoRender::DeleteBuffers(void)
 			delete m_pBufOsd;
 		}
 	} else {
-		if (m_pNextBo)
-			gbm_bo_destroy(m_pNextBo);
-		if (m_pOldBo)
-			gbm_bo_destroy(m_pOldBo);
+		if (m_bo)
+			gbm_surface_release_buffer(m_pDrmDevice->GbmSurface(), m_bo);
+
+		m_bo = m_pNextBo = m_pOldBo = nullptr;
+		m_pBufOsd = nullptr;     // the drm buffer belongs to the buffer object
 	}
 #else
 	if (m_pBufOsd) {
@@ -1526,8 +1528,10 @@ void cVideoRender::Exit(void)
 	DeleteBuffers();
 
 #ifdef USE_GLES
-	if (!m_disableOglOsd)
+	if (!m_disableOglOsd) {
+		m_pDrmDevice->ExitEGL();
 		m_pDrmDevice->ExitGbm();
+	}
 #endif
 
 	m_pDrmDevice->Close();

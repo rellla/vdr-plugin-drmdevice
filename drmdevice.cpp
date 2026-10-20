@@ -1040,6 +1040,37 @@ int cDrmDevice::InitEGL(void)
 }
 
 /**
+ * Free the EGL surface, context and display
+ *
+ * Must be called before ExitGbm(): destroying the EGL surface also destroys
+ * its gbm buffer objects (and their drm framebuffers).
+ * The OpenGL thread must have released the context before.
+ */
+void cDrmDevice::ExitEGL(void)
+{
+	m_glInitiated = false;
+
+	if (m_eglDisplay == EGL_NO_DISPLAY)
+		return;
+
+	eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+
+	if (m_eglSurface != EGL_NO_SURFACE)
+		eglDestroySurface(m_eglDisplay, m_eglSurface);
+
+	if (m_eglContext != EGL_NO_CONTEXT)
+		eglDestroyContext(m_eglDisplay, m_eglContext);
+
+	eglTerminate(m_eglDisplay);
+
+	m_eglSurface = EGL_NO_SURFACE;
+	m_eglContext = EGL_NO_CONTEXT;
+	m_eglDisplay = EGL_NO_DISPLAY;
+
+	LOGDEBUG2(L_OPENGL, "drmdevice: %s: EGL context freed", __FUNCTION__);
+}
+
+/**
  * Callback function to destroy a drm buffer which stays in the gbm_bo's user data
  *
  * @ingroup drm

@@ -1753,7 +1753,6 @@ void cOglThread::Stop(void)
 {
 	CleanupImageCache();
 	Cancel(2);
-	Cleanup();
 	m_stalled = false;
 }
 
@@ -1886,6 +1885,7 @@ void cOglThread::Action(void)
 	if (!InitOpenGL()) {
 		LOGERROR("openglosd: %s: Could not initiate OpenGL context", __FUNCTION__);
 		Cleanup();
+		eglReleaseContext();
 		m_startWait->Signal();
 		return;
 	}
@@ -1893,6 +1893,7 @@ void cOglThread::Action(void)
 	if (!InitShaders()) {
 		LOGERROR("openglosd: %s: Could not initiate shaders", __FUNCTION__);
 		Cleanup();
+		eglReleaseContext();
 		m_startWait->Signal();
 		return;
 	}
@@ -1900,6 +1901,7 @@ void cOglThread::Action(void)
 	if (!InitVertexBuffers()) {
 		LOGERROR("openglosd: %s: Vertex Buffers NOT initialized", __FUNCTION__);
 		Cleanup();
+		eglReleaseContext();
 		m_startWait->Signal();
 		return;
 	}
@@ -1959,12 +1961,25 @@ void cOglThread::Action(void)
 			m_stalled = false;
 	}
 
+	// the OpenGL objects can only be deleted with the current context, then release it,
+	// so the renderer can destroy the EGL context and surface
+	Cleanup();
+	eglReleaseContext();
+
 	LOGINFO("OpenGL worker thread stopped");
 }
 
 void cOglThread::eglAcquireContext(void)
 {
 	EGL_CHECK(eglMakeCurrent(m_pRender->EglDisplay(), m_pRender->EglSurface(), m_pRender->EglSurface(), m_pRender->EglContext()));
+}
+
+/**
+ * Release the EGL context of this thread
+ */
+void cOglThread::eglReleaseContext(void)
+{
+	EGL_CHECK(eglMakeCurrent(m_pRender->EglDisplay(), EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
 }
 
 /**
