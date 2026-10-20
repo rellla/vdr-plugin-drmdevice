@@ -14,6 +14,8 @@
 #ifndef __DRMDEVICE_PLUGIN_DRM_DEVICE_H
 #define __DRMDEVICE_PLUGIN_DRM_DEVICE_H
 
+#include <atomic>
+
 #include <vdr/plugin.h>
 
 #include "git-version.h"
@@ -46,6 +48,7 @@ public:
 	virtual bool Initialize(void);
 	virtual bool Start(void);
 	virtual void Stop(void);
+	virtual void MainThreadHook(void);
 	virtual const char *MainMenuEntry(void);
 	virtual cOsdObject *MainMenuAction(void);
 	virtual cMenuSetupPage *SetupMenu(void);
@@ -56,6 +59,7 @@ public:
 private:
 	cOutputDevice *m_pDevice;          ///< pointer to cOutputDevice object
 	cDeviceConfig *m_pConfig;          ///< pointer to cDeviceConfig object
+	std::atomic<bool> m_closeMenu = false; ///< true, if an open menu shall be closed (by the main thread)
 };
 
 #endif
