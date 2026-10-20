@@ -15,6 +15,7 @@
  * @license{AGPL-3.0-or-later}
  */
 
+#include <algorithm>
 #include <cstring>
 #include <cstdlib>
 #include <mutex>
@@ -90,6 +91,8 @@ bool cDeviceConfig::SetupParse(const char *name, const char *value)
 	                                                         ConfigLogState = atoi(value) > 0;
 	                                                         PrintLogLevel(ConfigLogState ? ConfigLogLevels : 0);
 	                                                         cLogger::GetLogger()->SetLogLevel(ConfigLogState ? ConfigLogLevels : 0);
+	} else if (!strcasecmp(name, "LogFFmpegLevel"))        { ConfigLogFFmpegLevel = std::clamp(atoi(value), 0, 3);
+	                                                         cLogger::GetLogger()->SetFFmpegLogLevel(FFmpegLogLevel(ConfigLogFFmpegLevel));
 
 	// Expert Settings
 	} else if (!strcasecmp(name, "AdditionalBufferLengthMs"))   { ConfigAdditionalBufferLengthMs = atoi(value);
@@ -106,6 +109,26 @@ bool cDeviceConfig::SetupParse(const char *name, const char *value)
 		return false;
 
 	return true;
+}
+
+/**
+ * Convert the FFmpeg log level of the config to the FFmpeg log level
+ *
+ * @param configLevel  0 = info, 1 = verbose, 2 = debug, 3 = trace
+ * @return             AV_LOG_INFO, AV_LOG_VERBOSE, AV_LOG_DEBUG or AV_LOG_TRACE
+ */
+int cDeviceConfig::FFmpegLogLevel(int configLevel)
+{
+	switch (configLevel) {
+		case 1:
+			return AV_LOG_VERBOSE;
+		case 2:
+			return AV_LOG_DEBUG;
+		case 3:
+			return AV_LOG_TRACE;
+		default:
+			return AV_LOG_INFO;
+	}
 }
 
 void cDeviceConfig::PrintLogLevel(int loglevel)

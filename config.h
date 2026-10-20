@@ -109,6 +109,7 @@ public:
 	// Logging
 	bool ConfigLogState = true;                 ///< flag logging on/off
 	int ConfigLogLevels = 0;                    ///< loglevel config
+	int ConfigLogFFmpegLevel = 0;               ///< FFmpeg log level: 0 = info, 1 = verbose, 2 = debug, 3 = trace
 
 	// Expert Settings
 	int ConfigAdditionalBufferLengthMs = 0;     ///< config size ms of a/v buffer
@@ -154,6 +155,7 @@ public:
 	cDeviceConfig(void) = default;
 	bool SetupParse(const char *, const char *);
 	void PrintLogLevel(int);
+	static int FFmpegLogLevel(int);
 	void SetDecoderNeedsMaxPackets(int);
 	int GetDecoderNeedsMaxPackets(void);
 	bool CompareCurrentMode(sDrmMode *);

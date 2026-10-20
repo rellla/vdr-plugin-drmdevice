@@ -161,6 +161,8 @@ void cDeviceSetupMenu::Create(void)
 			Add(new cMenuEditBoolItem(tr("  AV Sync debug logs"), &m_cLogAVSync, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  Sound debug logs"), &m_cLogSound, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  FFmpeg debug logs"), &m_cLogFFmpeg, trVDR("no"), trVDR("yes")));
+			if (m_cLogFFmpeg)
+				Add(new cMenuEditStraItem(tr("   FFmpeg log level"), &m_cLogFFmpegLevel, FFMPEG_LOG_LEVELS, m_ffmpegLogLevels));
 			Add(new cMenuEditBoolItem(tr("  Packet tracking logs"), &m_cLogPacket, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  OSD debug logs"), &m_cLogOSD, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  Grabbing debug logs"), &m_cLogGrab, trVDR("no"), trVDR("yes")));
@@ -248,6 +250,7 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 	int old_cPipMenu = m_cPipMenu;
 	int old_cLoggingMenu = m_cLoggingMenu;
 	int old_cLogDefault = m_cLogDefault;
+	int old_cLogFFmpeg = m_cLogFFmpeg;
 	int old_cStatisticsMenu = m_cStatisticsMenu;
 	int old_cExpertMenu = m_cExpertMenu;
 	int old_cDecoderFallbackToSw = m_cDecoderFallbackToSw;
@@ -268,6 +271,7 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 		    old_cPipMenu                 != m_cPipMenu ||
 		    old_cLoggingMenu             != m_cLoggingMenu ||
 		    old_cLogDefault              != m_cLogDefault ||
+		    old_cLogFFmpeg               != m_cLogFFmpeg ||
 		    old_cStatisticsMenu          != m_cStatisticsMenu ||
 		    old_cExpertMenu              != m_cExpertMenu ||
 		    old_cDecoderFallbackToSw     != m_cDecoderFallbackToSw) {
@@ -355,6 +359,7 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_cLogAVSync    = m_pConfig->ConfigLogLevels & L_AV_SYNC;
 	m_cLogSound     = m_pConfig->ConfigLogLevels & L_SOUND;
 	m_cLogFFmpeg    = m_pConfig->ConfigLogLevels & L_FFMPEG;
+	m_cLogFFmpegLevel = m_pConfig->ConfigLogFFmpegLevel;
 	m_cLogPacket    = m_pConfig->ConfigLogLevels & L_PACKET;
 	m_cLogOSD       = m_pConfig->ConfigLogLevels & L_OSD;
 	m_cLogGrab      = m_pConfig->ConfigLogLevels & L_GRAB;
@@ -558,6 +563,8 @@ void cDeviceSetupMenu::Store(void)
 		(m_cLogGLTime    ? L_OPENGL_TIME : 0) |
 		(m_cLogGLTimeAll ? L_OPENGL_TIME_ALL : 0);
 	m_pConfig->ConfigLogState = m_cLogDefault;
+	SetupStore("LogFFmpegLevel", m_pConfig->ConfigLogFFmpegLevel = m_cLogFFmpegLevel);
+	LOGGER->SetFFmpegLogLevel(cDeviceConfig::FFmpegLogLevel(m_pConfig->ConfigLogFFmpegLevel));
 	if (m_pConfig->ConfigLogState) {
 		SetupStore("LogLevel", m_pConfig->ConfigLogLevels);
 		if (LOGGER->GetLogLevel() != m_pConfig->ConfigLogLevels) {

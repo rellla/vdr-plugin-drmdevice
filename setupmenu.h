@@ -83,6 +83,7 @@ protected:
 	int m_cLogAVSync;
 	int m_cLogSound;
 	int m_cLogFFmpeg;
+	int m_cLogFFmpegLevel;
 	int m_cLogPacket;
 	int m_cLogOSD;
 	int m_cLogGrab;
@@ -117,6 +118,8 @@ private:
 	std::vector<const char *> m_displayModePtrs;
 	std::vector<std::string> m_channelSwitchMode;
 	std::vector<const char *> m_channelSwitchModePtrs;
+	static constexpr int FFMPEG_LOG_LEVELS = 4;
+	const char *m_ffmpegLogLevels[FFMPEG_LOG_LEVELS] = { "info", "verbose", "debug", "trace" };
 
 	inline cOsdItem * CollapsedItem(const char *, int &, const char * = NULL);
 	void Create(void);

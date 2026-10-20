@@ -292,6 +292,13 @@ Setup: /etc/vdr/setup.conf
 			8192  Grabbing debug logs
 			16384 FFmpeg debug logs
 
+	drmdevice.LogFFmpegLevel = 0
+		max. level of the FFmpeg logs (only used with the FFmpeg debug logs)
+		0 = default (info, warnings and errors)
+		1 = verbose
+		2 = debug
+		3 = trace
+
 	drmdevice.AdditionalBufferLengthMs = 0
 		0 = default (min 450ms fixed)
 		-300 - 1000 = length of additional buffering duration in ms
