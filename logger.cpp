@@ -228,10 +228,55 @@ void cLogger::LogFFmpeg(const char *fmt, va_list vl)
  */
 void cLogger::LogFFmpegCallback([[maybe_unused]] void *ptr, int level, const char *fmt, va_list vl)
 {
-	// a custom callback gets all messages, also the very verbose ones
-	if (level > AV_LOGLEVEL)
+	auto logger = GetLogger();
+	if (!logger)
 		return;
 
-	if (auto logger = GetLogger())
-		logger->LogFFmpeg(fmt, vl);
+	// a custom callback gets all messages, also the very verbose ones
+	if (level > logger->m_ffmpegLogLevel)
+		return;
+
+	logger->LogFFmpeg(fmt, vl);
+}
+
+/**
+ * Set the log level mask
+ *
+ * @param level      log level mask (see ::LogFlags)
+ */
+void cLogger::SetLogLevel(int level)
+{
+	m_logLevel = level;
+	UpdateFFmpegLogLevel();
+}
+
+/**
+ * Set the max. level of the logged FFmpeg messages
+ *
+ * The FFmpeg messages are only logged, if ::L_FFMPEG is set in the log level mask.
+ *
+ * @param level      max. level (AV_LOG_INFO, AV_LOG_VERBOSE, AV_LOG_DEBUG or AV_LOG_TRACE)
+ */
+void cLogger::SetFFmpegLogLevel(int level)
+{
+	m_ffmpegLogLevel = level;
+	UpdateFFmpegLogLevel();
+}
+
+/**
+ * Pass the FFmpeg log level to FFmpeg
+ *
+ * Some parts of FFmpeg check the log level, before they compose very verbose
+ * messages. Without the FFmpeg logs, FFmpeg keeps its default level.
+ *
+ * The log callback is set here, so the FFmpeg messages are logged before the
+ * first decoder is opened, too.
+ */
+void cLogger::UpdateFFmpegLogLevel(void)
+{
+	if (m_logLevel & L_FFMPEG) {
+		av_log_set_callback(LogFFmpegCallback);
+		av_log_set_level(m_ffmpegLogLevel);
+	} else
+		av_log_set_level(AV_LOG_INFO);
 }

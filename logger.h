@@ -17,6 +17,10 @@
 #include <cstdarg>
 #include <memory>
 
+extern "C" {
+#include <libavutil/log.h>
+}
+
 /**
  * Miscellaneous Helper Functions
  * @defgroup misc Miscellaneous
@@ -26,9 +30,6 @@
  * @addtogroup misc
  * @{
  */
-
-/** FFmpeg log level */
-#define AV_LOGLEVEL AV_LOG_INFO
 
 /********************************************************************************
  * Logger macros
@@ -95,8 +96,10 @@ public:
 	void LogDebug2(const int cat, const char *format, ...) __attribute__((format(printf, 3, 4)));
 	void LogFFmpeg(const char *, va_list);
 
-	void SetLogLevel(int level) { m_logLevel = level; };
+	void SetLogLevel(int);
 	int GetLogLevel(void) { return m_logLevel; };
+	void SetFFmpegLogLevel(int);
+	int GetFFmpegLogLevel(void) { return m_ffmpegLogLevel; };
 
 	void SetChannelSwitchStartTime(std::chrono::steady_clock::time_point time) { m_channelSwitchStartTime = time; };
 	void SetChannelSwitchDataReceivedTime(std::chrono::steady_clock::time_point time) { m_dataReceivedTime = time; };
@@ -113,7 +116,10 @@ private:
 	std::chrono::steady_clock::time_point m_channelSwitchStartTime; ///< timestamp, when VDR triggered a channel switch
 	std::chrono::steady_clock::time_point m_dataReceivedTime;       ///< timestamp, when the first audio or video data after a channel switch arrives in Play*()
 
-	std::atomic<int> m_logLevel = 0; ///< loglevel mask (see enum LogFlags)
+	void UpdateFFmpegLogLevel(void);
+
+	std::atomic<int> m_logLevel = 0;                 ///< loglevel mask (see enum LogFlags)
+	std::atomic<int> m_ffmpegLogLevel = AV_LOG_INFO; ///< max. level of the logged FFmpeg messages (AV_LOG_*)
 };
 
 #endif

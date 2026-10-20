@@ -44,6 +44,60 @@ TEST_CASE("cDeviceConfig - Audio passthrough", "[config]") {
 	}
 }
 
+TEST_CASE("cDeviceConfig - FFmpeg log level", "[config]") {
+	cDeviceConfig config;
+
+	REQUIRE(config.ConfigLogFFmpegLevel == 0);
+
+	SECTION("Valid values select the FFmpeg log level") {
+		REQUIRE(config.SetupParse("LogFFmpegLevel", "2"));
+		REQUIRE(config.ConfigLogFFmpegLevel == 2);
+		REQUIRE(LOGGER->GetFFmpegLogLevel() == AV_LOG_DEBUG);
+	}
+
+	SECTION("Invalid values are clamped") {
+		REQUIRE(config.SetupParse("LogFFmpegLevel", "7"));
+		REQUIRE(config.ConfigLogFFmpegLevel == 3);
+		REQUIRE(LOGGER->GetFFmpegLogLevel() == AV_LOG_TRACE);
+		REQUIRE(config.SetupParse("LogFFmpegLevel", "-1"));
+		REQUIRE(config.ConfigLogFFmpegLevel == 0);
+		REQUIRE(LOGGER->GetFFmpegLogLevel() == AV_LOG_INFO);
+	}
+
+	SECTION("Config levels map to the FFmpeg levels") {
+		REQUIRE(cDeviceConfig::FFmpegLogLevel(0) == AV_LOG_INFO);
+		REQUIRE(cDeviceConfig::FFmpegLogLevel(1) == AV_LOG_VERBOSE);
+		REQUIRE(cDeviceConfig::FFmpegLogLevel(2) == AV_LOG_DEBUG);
+		REQUIRE(cDeviceConfig::FFmpegLogLevel(3) == AV_LOG_TRACE);
+	}
+
+	LOGGER->SetFFmpegLogLevel(AV_LOG_INFO);
+}
+
+TEST_CASE("cDeviceConfig - FFmpeg log level only applies with the FFmpeg logs", "[config]") {
+	cDeviceConfig config;
+
+	REQUIRE(config.SetupParse("LogFFmpegLevel", "3"));
+
+	SECTION("Without the FFmpeg logs FFmpeg keeps its default level") {
+		REQUIRE(config.SetupParse("LogLevel", std::to_string(L_DEBUG).c_str()));
+		REQUIRE(av_log_get_level() == AV_LOG_INFO);
+	}
+
+	SECTION("With the FFmpeg logs FFmpeg gets the selected level") {
+		REQUIRE(config.SetupParse("LogLevel", std::to_string(L_FFMPEG).c_str()));
+		REQUIRE(av_log_get_level() == AV_LOG_TRACE);
+	}
+
+	SECTION("Disabled logging keeps the FFmpeg default level") {
+		REQUIRE(config.SetupParse("LogLevel", std::to_string(-L_FFMPEG).c_str()));
+		REQUIRE(av_log_get_level() == AV_LOG_INFO);
+	}
+
+	config.SetupParse("LogFFmpegLevel", "0");
+	LOGGER->SetLogLevel(0);
+}
+
 TEST_CASE("cDeviceConfig - Log level", "[config]") {
 	cDeviceConfig config;
 

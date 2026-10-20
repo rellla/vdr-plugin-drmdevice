@@ -238,6 +238,9 @@ msgstr "  Sound debug Logs"
 msgid "  FFmpeg debug logs"
 msgstr "  FFMpeg logs"
 
+msgid "   FFmpeg log level"
+msgstr "   FFmpeg Loglevel"
+
 msgid "  Packet tracking logs"
 msgstr "  Paketverfolgung"
 
