@@ -119,6 +119,8 @@ void cDeviceMenu::MainMenu(void)
 {
 	int current;
 
+	m_playlistShown = false;
+
 	current = Current();               // get current menu item index
 	Clear();                           // clear the menu
 
@@ -215,6 +217,9 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 {
 	eOSState state;
 	cOsdItem *item;
+
+	if (key == kNone)
+		UpdatePlayListMenu();
 
 	switch (m_hotkeyState) {
 		case HotkeyState::Initial:
@@ -386,15 +391,38 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
  ****************************************************************************/
 
 /**
+ * Update the playlist menu, if the mediaplayer plays another title
+ *
+ * The player thread must not access the menu, so the menu checks for a new title
+ * itself. If the player ended, the main menu is shown.
+ */
+void cDeviceMenu::UpdatePlayListMenu(void)
+{
+	if (!m_playlistShown)
+		return;
+
+	cDrmDeviceControl *control = cDrmDeviceControl::Control();
+	if (!control || !control->Player()->GetFirstPlaylistEntry()) {
+		MainMenu();
+		return;
+	}
+
+	if (control->Player()->GetCurrentPlaylistEntry() != m_pShownEntry)
+		PlayListMenu();
+}
+
+/**
  * Create mediaplayer playlist menu
  */
 void cDeviceMenu::PlayListMenu(void)
 {
 	cPlaylistEntry *entry = cDrmDeviceControl::Control()->Player()->GetFirstPlaylistEntry();
+	m_pShownEntry = cDrmDeviceControl::Control()->Player()->GetCurrentPlaylistEntry();
+	m_playlistShown = true;
 	Clear();
 	while (entry) {
 		std::string p_string = entry->OsdItemString();
-		Add(new cOsdItem(p_string.c_str()), (entry == cDrmDeviceControl::Control()->Player()->GetCurrentPlaylistEntry()));
+		Add(new cOsdItem(p_string.c_str()), entry == m_pShownEntry);
 
 		if (!entry->GetNextEntry())
 			break;
@@ -420,6 +448,7 @@ void cDeviceMenu::SelectPlaylistMenu(void)
 		return;
 	}
 
+	m_playlistShown = false;
 	Clear();
 	for (i = 0; i < n; i++) {
 		if (dirList[i]->d_name[0] != '.' && (strcasestr(dirList[i]->d_name, ".M3U"))) {
@@ -450,6 +479,7 @@ void cDeviceMenu::FindFileMenu(const std::string &searchPath, FILE *playlist)
 		sp = searchPath.c_str();
 
 	if (!playlist) {
+		m_playlistShown = false;
 		Clear();
 		if (searchPath.size())
 			Add(new cOsdItem("[..]"));
