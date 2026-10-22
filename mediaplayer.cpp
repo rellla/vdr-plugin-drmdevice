@@ -34,6 +34,7 @@ extern "C" {
 #include <vdr/player.h>
 #include <vdr/plugin.h>
 #include <vdr/remux.h>
+#include <vdr/skins.h>
 
 #include "audio.h"
 #include "device.h"
@@ -1619,7 +1620,8 @@ static constexpr int STAY_SECONDS_OFF_END = 10;
  * @param device          pointer to device
  */
 cDrmDeviceControl::cDrmDeviceControl(const char *url, cOutputDevice *device)
-	: cControl(m_pPlayer = new cDrmDevicePlayer(url, device))
+	: cControl(m_pPlayer = new cDrmDevicePlayer(url, device)),
+	  m_pDevice(device)
 {
 	m_pControl = this;
 }
@@ -1998,9 +2000,12 @@ eOSState cDrmDeviceControl::ProcessKey(eKeys key)
 			m_pPlayer->SkipSeconds(Setup.SkipSeconds);
 			break;
 		case kStop:
-		case kBlue:
 			Hide();
 			return osEnd;
+		case kBlue:
+			m_pDevice->NextZoomLevel();
+			Skins.QueueMessage(mtInfo, m_pDevice->ZoomLevelString());
+			break;
 		default:
 			doShowMode = false;
 			switch (int(key)) {

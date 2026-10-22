@@ -210,7 +210,8 @@ Setup: /etc/vdr/setup.conf
 		(+12.5%) picture on a 16:9 screen.
 		The active zoom level is reset with every channel switch and replay
 		start and isn't stored. Select it in the plugin menu, with the key
-		macros or with SVDRP ZOOM.
+		macros, with SVDRP ZOOM or with the Blue key in the mediaplayer
+		(the key macros don't work during a replay).
 
 	drmdevice.VideoChannelSwitchMode = 0
 		0 = fast channel switch is disabled
@@ -571,7 +572,8 @@ are used. In replay mode, you can control playback with the following keys:
 	               Left/Right: skip the time backward/ forward)
 	Green:         Skip backward (skip distance, the repeat distance if held)
 	Yellow:        Skip forward (skip distance, the repeat distance if held)
-	Stop/Blue:     Stop replay and end player
+	Stop:          Stop replay and end player
+	Blue:          Next zoom level (see drmdevice.ZoomLevel1-5)
 	Back:          Stop replay and open the file menu
 	Prev/Next:     Previous/ next file in playlist
 	Audio:         Select the audio track
