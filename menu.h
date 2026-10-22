@@ -88,6 +88,7 @@ private:
 	void MakePlayList(const char *, const char *);
 	bool IsValidMediaFile(const char *);
 	void PlayMedia(const char *);
+	void DeleteItem(const char *);
 	std::string m_path;                                 ///< current directory of the file menu
 	std::string m_lastItem;                             ///< last selected item (to select it again)
 	std::string m_playlist;                             ///< name of the current playlist

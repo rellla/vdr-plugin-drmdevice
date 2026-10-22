@@ -542,6 +542,12 @@ Playback can be started with svdrp or via the main menu. If the mediaplayer is c
 the main menu, you can either choose a previously created playlist, create a new playlist or
 simply play a single file.
 
+In the file menu, the Blue key deletes the file or the folder with all its files under the
+cursor after a confirmation. Only files in VDR's video directory can be deleted. A symbolic
+link is deleted itself (not its target), and the files of a mounted file system in the folder
+are kept. A recording, which VDR records or replays at the moment, isn't deleted (also not
+as part of a folder). The deletion of a large folder may take some time.
+
 The replay works like the replay of a VDR recording, the keys and the replay display
 behave like in VDR. The settings "Multi speed mode", "Show replay mode", "Show remaining time",
 "Progress display time" and the skip distances with the Green/Yellow keys of VDR's replay setup
