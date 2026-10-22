@@ -240,15 +240,52 @@ static std::string SubtitleTrackDescription(const AVStream *stream)
 }
 
 /**
- * Returns true, if the playlist is a m3u playlist
+ * Check, if a source is a stream on a server (e.g. http://...)
+ *
+ * @param source          file or url
+ *
+ * @ingroup mediaplayer
+ */
+static bool IsUrl(const char *source)
+{
+	return strstr(source, "://") != nullptr;
+}
+
+/**
+ * Check, if a local m3u/m3u8 file is a HLS manifest
+ *
+ * A HLS manifest contains HLS tags (\#EXT-X-...), a playlist only lists files.
+ *
+ * @param path            local m3u/m3u8 file
+ *
+ * @ingroup mediaplayer
+ */
+static bool IsHlsManifest(const char *path)
+{
+	std::ifstream file(path);
+	std::string line;
+
+	while (std::getline(file, line)) {
+		if (!line.compare(0, 7, "#EXT-X-"))
+			return true;
+	}
+
+	return false;
+}
+
+/**
+ * Returns true, if the source is a m3u playlist, which is played by the mediaplayer
+ *
+ * A m3u/m3u8 file on a server or with HLS tags is a HLS stream, which is
+ * played by FFmpeg.
  *
  * @param source          file or playlist to be played
  *
  * @ingroup mediaplayer
  */
-static bool IsM3UPlaylist(char *source)
+static bool IsM3UPlaylist(const char *source)
 {
-	return (strcasestr(source, ".M3U") && !strcasestr(source, ".M3U8"));
+	return strcasestr(source, ".M3U") && !IsUrl(source) && !IsHlsManifest(source);
 }
 
 /**
@@ -297,7 +334,8 @@ cDrmDevicePlayer::cDrmDevicePlayer(const char *url, cOutputDevice *device)
 	m_pSource = (char *) malloc(1 + strlen(url));
 	strcpy(m_pSource, url);
 
-	if (IsM3UPlaylist(m_pSource)) {
+	m_isPlaylist = IsM3UPlaylist(m_pSource);
+	if (m_isPlaylist) {
 		ReadPlaylist(m_pSource);
 		m_pCurrentEntry = m_pFirstEntry;
 	} else
@@ -353,7 +391,7 @@ void cDrmDevicePlayer::Action(void)
 	LOGDEBUG2(L_MEDIA, "mediaplayer: %s:", __FUNCTION__);
 	m_noModify = false;
 
-	if (IsM3UPlaylist(m_pSource)) {
+	if (m_isPlaylist) {
 		while (m_pCurrentEntry && Running()) {
 			PlayFile(m_pCurrentEntry.load()->GetPath().c_str());
 
@@ -391,10 +429,26 @@ void cDrmDevicePlayer::ReadPlaylist(const char *playlist)
 		return;
 	}
 
+	// relative paths are relative to the folder of the playlist
+	std::string folder = playlist;
+	folder.resize(folder.find_last_of('/') + 1);
+
+	bool firstLine = true;
 	while (!inputFile.eof()) {
 		std::string s;
 		getline(inputFile, s);
+
+		// UTF-8 byte order mark and DOS line endings
+		if (firstLine && !s.compare(0, 3, "\xEF\xBB\xBF"))
+			s.erase(0, 3);
+		firstLine = false;
+		if (s.size() && s.back() == '\r')
+			s.pop_back();
+
 		if (s.size() && s.compare(0, 1, "#")) {
+			if (s[0] != '/' && !IsUrl(s.c_str()))
+				s = folder + s;
+
 			cPlaylistEntry *entry = new cPlaylistEntry(s);
 
 			if (!lastEntry)
@@ -492,8 +546,16 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 	const AVCodec *videoCodec;
 #endif
 	AVFormatContext *format = avformat_alloc_context();
-	if (avformat_open_input(&format, url, NULL, NULL) != 0) {
-		LOGERROR("mediaplayer: %s: Could not open file '%s'", __FUNCTION__, url);
+	AVDictionary *options = nullptr;
+
+	// the segments of a local HLS manifest may be on a server
+	if (!IsUrl(url) && strcasestr(url, ".M3U"))
+		av_dict_set(&options, "protocol_whitelist", "file,http,https,tcp,tls,crypto,data", 0);
+
+	int err = avformat_open_input(&format, url, NULL, &options);
+	av_dict_free(&options);
+	if (err != 0) {
+		LOGERROR("mediaplayer: %s: Could not open file '%s': %s", __FUNCTION__, url, av_err2str(err));
 		return false;
 	}
 #ifdef MEDIA_DEBUG
@@ -537,7 +599,9 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 	m_videoIdx = videoIdx;
 	m_startTime = format->start_time != AV_NOPTS_VALUE ? format->start_time : 0;
 	m_durationMs = format->duration > 0 ? format->duration / (AV_TIME_BASE / 1000) : 0;
-	m_seekable = format->pb && (format->pb->seekable & AVIO_SEEKABLE_NORMAL);
+	// a HLS stream with a duration (no live stream) is seekable by the demuxer
+	m_seekable = (format->pb && (format->pb->seekable & AVIO_SEEKABLE_NORMAL)) ||
+	             (format->duration > 0 && !strcmp(format->iformat->name, "hls"));
 
 	m_fps = DEFAULTFRAMESPERSECOND;
 	if (videoIdx >= 0) {
@@ -569,6 +633,8 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 
 	if (videoIdx >= 0)
 		m_pDevice->SetVideoCodec(videoCodec->id, format->streams[videoIdx]->codecpar, PES_TIMEBASE);
+
+	UpdateStreamDiscards();
 
 	std::lock_guard<std::mutex> lock(m_fileMutex);
 	std::string path = url;
@@ -660,6 +726,23 @@ int cDrmDevicePlayer::AddTracks(AVFormatContext *format)
 }
 
 /**
+ * Let the demuxer drop the streams, which aren't played
+ *
+ * E.g. a HLS stream has variants with different bitrates, the demuxer only
+ * loads the segments of the played variants then.
+ *
+ * Must be called with the thread lock.
+ */
+void cDrmDevicePlayer::UpdateStreamDiscards(void)
+{
+	for (unsigned int i = 0; i < m_pFormat->nb_streams; i++) {
+		int idx = static_cast<int>(i);
+		bool played = idx == m_audioIdx || idx == m_videoIdx || idx == m_subtitleIdx;
+		m_pFormat->streams[i]->discard = played ? AVDISCARD_DEFAULT : AVDISCARD_ALL;
+	}
+}
+
+/**
  * Select the audio track (called by VDR, e.g. from the track menu)
  *
  * The track is switched by the player thread.
@@ -694,6 +777,7 @@ void cDrmDevicePlayer::SwitchAudioTrack(void)
 	LOGDEBUG2(L_MEDIA, "mediaplayer: %s: switch from stream %d to %d", __FUNCTION__, m_audioIdx, audioIdx);
 
 	m_audioIdx = audioIdx;
+	UpdateStreamDiscards();
 	if (m_seekable && m_playMode == pmPlay)
 		Empty();
 	else if (m_seekable && m_playMode == pmPause)
@@ -743,6 +827,7 @@ void cDrmDevicePlayer::SwitchSubtitleTrack(void)
 		return;
 
 	CloseSubtitleDecoder();
+	UpdateStreamDiscards();
 
 	if (subtitleIdx < 0 || subtitleIdx >= static_cast<int>(m_pFormat->nb_streams) ||
 	    !IsTextSubtitle(m_pFormat->streams[subtitleIdx]))
@@ -763,6 +848,7 @@ void cDrmDevicePlayer::SwitchSubtitleTrack(void)
 
 	LOGDEBUG2(L_MEDIA, "mediaplayer: %s: show subtitle stream %d (%s)", __FUNCTION__, subtitleIdx, codec->name);
 	m_subtitleIdx = subtitleIdx;
+	UpdateStreamDiscards();
 }
 
 /**
