@@ -164,6 +164,8 @@ OBJS = $(PLUGINENTRY).o \
 	softosd.o \
 	spdif.o \
 	statemachine.o \
+	subtitle.o \
+	subtitletext.o \
 	videofilter.o \
 	videorender.o \
 	videostream.o
