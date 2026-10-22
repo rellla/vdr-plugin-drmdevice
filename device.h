@@ -166,6 +166,13 @@ public:
 	bool IsVideoOnlyPlayback(void) { return m_playbackMode == VIDEO_ONLY; }  ///< true, if only video is played
 	bool IsAudioOnlyPlayback(void) { return m_playbackMode == AUDIO_ONLY; }  ///< true, if only audio is played
 
+	// Zoom
+	int GetZoom(void);
+	int GetZoomLevel(void) const { return m_zoomLevel; }      ///< get the active zoom level (0 = off)
+	bool SetZoomLevel(int);
+	int NextZoomLevel(void);
+	cString ZoomLevelString(void);
+
 	// Osd
 #ifdef USE_GLES
 	int MaxSizeGPUImageCache(void);
@@ -275,6 +282,7 @@ private:
 	/** current channel switch mode */
 	std::atomic<ChannelSwitchMode> m_channelSwitchMode = CHANNEL_SWITCH_AVSYNC;
 	bool m_logPlaybackStart = true;                 ///< log the duration until the playback started
+	std::atomic<int> m_zoomLevel = 0;               ///< active zoom level (0 = off, reset with every new content)
 
 	std::atomic<PlaybackMode> m_playbackMode = NONE; ///< current playback mode
 	int m_audioChannelID = -1;       ///< current audio channel ID

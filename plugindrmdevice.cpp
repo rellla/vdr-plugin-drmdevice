@@ -14,6 +14,7 @@
  * @license{AGPL-3.0-or-later}
  */
 
+#include <cstdlib>
 #include <libintl.h>
 
 #include <vdr/player.h>
@@ -345,6 +346,8 @@ static const char *SVDRPHelpText[] = {
 	"PIPC\n" "        Pip swap channels.\n",
 	"PIPS\n" "        Pip switch main stream to pip channel and close pip.\n",
 	"PIPP\n" "        Pip swap positions.\n",
+	"ZOOM [next | 0-5]\n" "    Select the next zoom level (next) or the given level (0 = off).\n"
+	"    Without an argument the active zoom level is returned.\n",
 	NULL
 };
 
@@ -413,6 +416,24 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 			reply_code = 911;
 			return "DRMDevice is detached";
 		}
+	}
+
+	// zoom
+	if (!strcasecmp(command, "ZOOM")) {
+		LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
+		if (option && !strcasecmp(option, "next")) {
+			m_pDevice->NextZoomLevel();
+		} else if (option && *option) {
+			char *end;
+			long level = strtol(option, &end, 10);
+			if (*end || level < 0 || level > cDeviceConfig::ZOOM_LEVELS || !m_pDevice->SetZoomLevel(static_cast<int>(level))) {
+				reply_code = 501;
+				return cString::sprintf("Invalid or disabled zoom level '%s'", option);
+			}
+		}
+		int zoom = m_pDevice->GetZoom();
+		return zoom ? cString::sprintf("Zoom level %d (+%d.%d%%)", m_pDevice->GetZoomLevel(), zoom / 10, zoom % 10)
+		            : cString("Zoom off");
 	}
 
 	// pip

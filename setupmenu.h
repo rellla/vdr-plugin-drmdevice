@@ -16,8 +16,9 @@
 
 #include <vdr/menuitems.h>
 
+#include "config.h"
+
 class cAudioStream;
-class cDeviceConfig;
 class cOutputDevice;
 
 /**
@@ -50,6 +51,7 @@ protected:
 	int m_cVideoEnableHDR;
 	int m_cVideoDisplayMode;
 	int m_cVideoChannelSwitchMode;
+	int m_cZoomLevel[cDeviceConfig::ZOOM_LEVELS];
 
 	// Audio
 	int m_cAudioMenu;
