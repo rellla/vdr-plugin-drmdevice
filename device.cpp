@@ -822,9 +822,14 @@ bool cOutputDevice::Flush(int timeoutMs)
 			: m_pVideoStream->BuffersEmpty();
 	};
 
+	// the buffered data is played, even if the buffering threshold isn't reached
+	m_flushing = true;
+
 	const cTimeMs timeout(timeoutMs);
 	while (!buffersEmpty() && !timeout.TimedOut())
 		cCondWait::SleepMs(std::min(5, timeoutMs));
+
+	m_flushing = false;
 
 	return buffersEmpty();
 }
@@ -1105,6 +1110,8 @@ bool cOutputDevice::VideoArrivedInAudioOnlyPlayback(void)
  *      -> the render output buffer queue is completely filled once (which implies "a video frame reached the renderer")
  *   4) if CHANNEL_SWITCH_FAST_AUDIO mode is selected:
  *      -> if audio playback has already started, the audio pts must have reached the video pts
+ *   5) if a player waits for empty buffers (DrainDevice() or Flush()):
+ *      -> a video frame reached the renderer or only audio was received
  *
  * @return true, if all conditions for a playback start are met, false otherwise
  *
@@ -1118,6 +1125,13 @@ bool cOutputDevice::CheckPlaybackStartConditions()
 	bool audioHasInputPts = m_pAudio->HasInputPts();
 	bool videoHasInputPts = m_pVideoStream->HasInputPts();
 	bool videoHasOutputPts = m_pRender->GetOutputPtsMs() != AV_NOPTS_VALUE;
+
+	// A player waits for empty buffers (e.g. the dvd plugin before a still picture or the mediaplayer
+	// at the end of a file), so the buffering threshold may never be reached. Play, what was buffered.
+	if ((m_draining || m_flushing) && ((videoHasInputPts && videoHasOutputPts) || (audioHasInputPts && !videoHasInputPts))) {
+		LOGDEBUG("device: %s: start the playback, because a player waits for empty buffers", __FUNCTION__);
+		return true;
+	}
 
 	// Assume audio only or video only if no PES fragment from the other stream has been received, while the buffering threshold of the other stream is reached.
 	// Check for buffer fill level only if at least one PES packet was reassembled and pushed to the respective decoder.
