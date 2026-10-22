@@ -19,6 +19,7 @@
 #include <alsa/asoundlib.h>
 
 #include "alsadevice.h"
+#include "codec_audio.h"
 #include "config.h"
 #include "logger.h"
 #include "spdif.h"
@@ -41,7 +42,8 @@ cAlsaDevice::cAlsaDevice(cDeviceConfig *m_pConfig)
 	: m_pPCMDevice(m_pConfig->ConfigAudioPCMDevice),
 	  m_pMixerChannel(m_pConfig->ConfigAudioMixerChannel),
 	  m_appendAES(!m_pConfig->ConfigAudioDisableAutoAES),
-	  m_passthroughMask(m_pConfig->ConfigAudioPassthroughState ? m_pConfig->ConfigAudioPassthroughMask : 0),
+	  m_passthroughMask(!m_pConfig->ConfigAudioPassthroughState ? 0 :
+	                    m_pConfig->ConfigAudioPassthroughAuto ? CODEC_PASSTHROUGH_AUTO : m_pConfig->ConfigAudioPassthroughMask),
 	  m_downmix(m_pConfig->ConfigAudioDownmix)
 {
 }
@@ -122,10 +124,106 @@ char *cAlsaDevice::OpenDevice(const char *device)
 
 	m_deviceName = device;
 	m_openedDevice = deviceString;
+	RememberCard();
 
 	LOGDEBUG2(L_SOUND, "audio: %s: opened device '%s'", __FUNCTION__, deviceString.c_str());
 
 	return (char *)device;
+}
+
+/**
+ * Remember the sound card and the pcm device number of the opened device
+ *
+ * They are needed to read the ELD of the HDMI sink. A device without a sound
+ * card (e.g. "null") has no ELD.
+ */
+void cAlsaDevice::RememberCard(void)
+{
+	snd_pcm_info_t *info;
+	snd_pcm_info_alloca(&info);
+
+	if (!m_pPCMHandle || snd_pcm_info(m_pPCMHandle, info) < 0) {
+		m_card = -1;
+		m_pcmDevice = -1;
+		return;
+	}
+
+	m_card = snd_pcm_info_get_card(info);
+	m_pcmDevice = snd_pcm_info_get_device(info);
+}
+
+/**
+ * Read the codecs, which the HDMI sink can decode, from its ELD
+ *
+ * The HDMI driver provides the ELD of the sink in the control element "ELD"
+ * of the pcm device.
+ *
+ * @return CODEC_* bit mask of the codecs, which the sink can decode
+ *         (0, if the device has no ELD or the sink didn't report any codec)
+ */
+int cAlsaDevice::ReadEldPassthroughMask(void)
+{
+	int card = m_card;
+	int pcmDevice = m_pcmDevice;
+	int mask = 0;
+
+	if (card >= 0 && pcmDevice >= 0) {
+		snd_ctl_t *ctl;
+		char name[32];
+		snprintf(name, sizeof(name), "hw:%d", card);
+
+		if (snd_ctl_open(&ctl, name, 0) >= 0) {
+			snd_ctl_elem_id_t *id;
+			snd_ctl_elem_info_t *info;
+			snd_ctl_elem_value_t *value;
+			snd_ctl_elem_id_alloca(&id);
+			snd_ctl_elem_info_alloca(&info);
+			snd_ctl_elem_value_alloca(&value);
+
+			snd_ctl_elem_id_set_interface(id, SND_CTL_ELEM_IFACE_PCM);
+			snd_ctl_elem_id_set_name(id, "ELD");
+			snd_ctl_elem_id_set_device(id, pcmDevice);
+			snd_ctl_elem_info_set_id(info, id);
+			snd_ctl_elem_value_set_id(value, id);
+
+			if (snd_ctl_elem_info(ctl, info) >= 0 &&
+			    snd_ctl_elem_info_get_type(info) == SND_CTL_ELEM_TYPE_BYTES &&
+			    snd_ctl_elem_read(ctl, value) >= 0) {
+				const uint8_t *eld = static_cast<const uint8_t *>(snd_ctl_elem_value_get_bytes(value));
+				mask = GetPassthroughMaskFromEld(eld, snd_ctl_elem_info_get_count(info));
+			} else {
+				LOGDEBUG2(L_SOUND, "audio: %s: no ELD for hw:%d,%d", __FUNCTION__, card, pcmDevice);
+			}
+
+			snd_ctl_close(ctl);
+		}
+	}
+
+	if (m_eldMask.exchange(mask) != mask)
+		LOGINFO("audio: passthrough codecs of the ELD (hw:%d,%d):%s%s%s%s%s%s", card, pcmDevice,
+			mask & CODEC_AC3 ? " AC-3" : "", mask & CODEC_EAC3 ? " E-AC-3" : "",
+			mask & CODEC_DTS ? " DTS" : "", mask & CODEC_DTSHD ? " DTS-HD" : "",
+			mask & CODEC_TRUEHD ? " TrueHD" : "", mask ? "" : " none");
+
+	return mask;
+}
+
+/**
+ * Get the codecs, which are passed through
+ *
+ * With the automatic passthrough, the codecs are read from the ELD of the
+ * HDMI sink, so a sink, which was switched on meanwhile, is recognized.
+ *
+ * @return CODEC_* bit mask
+ */
+int cAlsaDevice::GetPassthroughMask(void)
+{
+	int mask = m_passthroughMask;
+
+	if (mask & CODEC_PASSTHROUGH_AUTO)
+		return ReadEldPassthroughMask();
+
+	return mask;
 }
 
 /**
@@ -192,6 +290,7 @@ bool cAlsaDevice::ReopenDevice(const std::string &deviceString)
 			LOGERROR("audio: %s: can't set block mode: %s", __FUNCTION__, snd_strerror(err));
 
 		m_openedDevice = candidate;
+		RememberCard();
 
 		// not every device accepts AES parameters (e.g. "default" or "plughw"), use it without
 		if (candidate == m_deviceName && candidate != deviceString) {

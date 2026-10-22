@@ -99,7 +99,7 @@ public:
 	void SetAutoAES(bool appendAes) { m_alsa.SetAutoAES(appendAes); }          ///< automatically append AES to the pass-through device
 	void SetTimebase(AVRational timebase) { m_timebase = timebase; }           ///< set the timebase of the pts values
 	void SetDownmix(int downMix) { m_alsa.SetDownmix(downMix); }               ///< downmix to stereo
-	int GetPassthroughMask(void) const { return m_alsa.GetPassthroughMask(); } ///< get the codecs, which are passed through
+	int GetPassthroughMask(void) { return m_alsa.GetPassthroughMask(); }       ///< get the codecs, which are passed through (read from the ELD in auto mode)
 
 	void DropSamplesOlderThanPtsMs(int64_t);
 	void ClockDriftCompensation(void);
