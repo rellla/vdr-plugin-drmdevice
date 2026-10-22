@@ -740,7 +740,7 @@ int cAlsaDevice::GetHwDelayFrames(void)
  */
 bool cAlsaDevice::HandleError(int error)
 {
-	bool underrunHappened = snd_pcm_state(m_pPCMHandle) == SND_PCM_STATE_XRUN && !m_passthroughActive;
+	bool underrunHappened = snd_pcm_state(m_pPCMHandle) == SND_PCM_STATE_XRUN;
 
 	int err = snd_pcm_recover(m_pPCMHandle, error, 0);
 
