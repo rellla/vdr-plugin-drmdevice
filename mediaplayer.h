@@ -88,6 +88,7 @@ public:
 	virtual bool GetIndex(int &, int &, bool = false);
 	virtual bool GetFrameNumber(int &, int &);
 	virtual bool GetReplayMode(bool &, bool &, int &);
+	virtual void SetAudioTrack(eTrackType, const tTrackId *);
 
 	// playlist
 	void SetEntry(int);
@@ -118,6 +119,8 @@ private:
 
 	void PlayFile(const char *);
 	bool OpenFile(const char *);
+	int AddTracks(AVFormatContext *);
+	void SwitchAudioTrack(void);
 	void CloseFile(void);
 	void ReadPlaylist(const char *);
 
@@ -154,6 +157,10 @@ private:
 	AVPacket *m_pPacket = nullptr;                      ///< packet, which wasn't accepted by the device yet
 	int m_audioIdx = -1;                                ///< index of the audio stream (-1, if none)
 	int m_videoIdx = -1;                                ///< index of the video stream (-1, if none)
+	static constexpr int NO_TRACK_REQUEST = -2;         ///< no track change was requested
+	/** stream index of the audio track selected by the user */
+	std::atomic<int> m_requestedAudioIdx = NO_TRACK_REQUEST;
+	bool m_resyncAfterPause = false;                    ///< true, if the audio track changed in pause mode
 	int64_t m_startTime = 0;                            ///< start time of the file (AV_TIME_BASE units)
 	std::atomic<int64_t> m_durationMs = 0;              ///< duration of the file in ms (0, if unknown)
 	std::atomic<double> m_fps = DEFAULTFRAMESPERSECOND; ///< frame rate of the file
