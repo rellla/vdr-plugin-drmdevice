@@ -16,6 +16,13 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+msgid "Zoom off"
+msgstr "Zoom aus"
+
+#, c-format
+msgid "Zoom %d (+%d.%d%%)"
+msgstr "Zoom %d (+%d.%d%%)"
+
 #. TRANSLATORS: note the trailing blank!
 msgid "Jump: "
 msgstr "Springen: "
@@ -37,6 +44,9 @@ msgstr " Tausche Position"
 
 msgid " Switch to pip channel"
 msgstr " Schalte auf PiP Kanal"
+
+msgid " Next zoom level"
+msgstr " Nächste Zoomstufe"
 
 msgid " Detach device"
 msgstr " Device trennen"
@@ -85,6 +95,10 @@ msgstr " Anzeigemodus"
 
 msgid " Enable fast channel switch"
 msgstr " Aktiviere schnelles Umschalten"
+
+#, c-format
+msgid " Zoom level %d (/1000)"
+msgstr " Zoomstufe %d (/1000)"
 
 msgid "Audio"
 msgstr "Audio"
