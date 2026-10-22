@@ -267,6 +267,7 @@ private:
 
 	bool m_initialized = false;                     ///< true, if the plugin had a successful Initialize()
 	std::atomic<bool> m_draining = false;           ///< true, if the device is in draining mode (waiting for empty buffers)
+	std::atomic<bool> m_flushing = false;           ///< true, while a player waits in Flush() for empty buffers
 	std::mutex m_eventMutex;                        ///< mutex to protect event queue
 	bool m_needsMakePrimary = false;                ///< true, if device should be made a primary device after attach
 	cDvbSpuDecoder *m_pSpuDecoder = nullptr;        ///< pointer to spu decoder
