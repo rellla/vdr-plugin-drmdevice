@@ -438,7 +438,29 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 		LOGDEBUG("device: %s: new channel id 0x%02X", __FUNCTION__, m_audioChannelID);
 	}
 
-	m_audioReassemblyBuffer.Push(pesPacket.GetPayload(), pesPacket.GetPayloadSize(), pesPacket.GetPts());
+	const uint8_t *payload = pesPacket.GetPayload();
+	int payloadSize = pesPacket.GetPayloadSize();
+	AVPacket *lpcmPkt = nullptr;
+
+	// DVD audio (e.g. of the dvd plugin) starts with the sub stream header
+	if (IsDvdAudioSubStream(id)) {
+		if (payloadSize <= DVD_SUBSTREAM_HEADER_SIZE)
+			return size;
+
+		payload += DVD_SUBSTREAM_HEADER_SIZE;
+		payloadSize -= DVD_SUBSTREAM_HEADER_SIZE;
+	}
+
+	// LPCM has no sync words, every packet is decoded (starting with the LPCM header)
+	if (IsDvdLpcmSubStream(id)) {
+		if (!(lpcmPkt = av_packet_alloc()) || av_new_packet(lpcmPkt, payloadSize) < 0) {
+			av_packet_free(&lpcmPkt);
+			return size;
+		}
+		memcpy(lpcmPkt->data, payload, payloadSize);
+		lpcmPkt->pts = pesPacket.GetPts();
+	} else
+		m_audioReassemblyBuffer.Push(payload, payloadSize, pesPacket.GetPts());
 
 	// fire playback start, if all buffers reached the threshold fill levels
 	if (CheckPlaybackStartConditions())
@@ -451,13 +473,19 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 
 	AVPacket *avpkt;
 	do {
-		if (!(avpkt = m_audioReassemblyBuffer.PopAvPacket()))
+		AVCodecID codecId;
+		if (lpcmPkt) {
+			avpkt = lpcmPkt;
+			lpcmPkt = nullptr;
+			codecId = AV_CODEC_ID_PCM_DVD;
+		} else if (IsDvdLpcmSubStream(id) || !(avpkt = m_audioReassemblyBuffer.PopAvPacket())) {
 			break;
+		} else
+			codecId = m_audioReassemblyBuffer.GetCodec();
 
 		// (Re)open the decoder, if the playback has just started or the codec changed.
 		// The PES stream id doesn't change between AC-3 and E-AC-3 (both are private stream 1),
 		// so the codec has to be compared.
-		AVCodecID codecId = m_audioReassemblyBuffer.GetCodec();
 		if (codecId != AV_CODEC_ID_NONE && m_pAudioDecoder->GetCodecId() != codecId) {
 			if (m_pAudioDecoder->GetCodecId() != AV_CODEC_ID_NONE)
 				LOGINFO("device: %s: audio codec changed from %s to %s", __FUNCTION__,
