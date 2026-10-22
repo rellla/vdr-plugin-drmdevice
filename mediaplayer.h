@@ -230,6 +230,7 @@ private:
 	static cDrmDeviceControl *m_pControl;               ///< the current control
 	static cDrmDevicePlayer *m_pPlayer;                 ///< the current player
 	cSkinDisplayReplay *m_pDisplayReplay = nullptr;     ///< replay display
+	cOutputDevice *m_pDevice;                           ///< pointer to the device (zoom)
 	std::atomic<bool> m_closing = false;                ///< true, if the control shall be closed
 
 	// replay display (like cReplayControl)
