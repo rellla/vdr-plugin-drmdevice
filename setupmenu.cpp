@@ -14,6 +14,8 @@
  * @license{AGPL-3.0-or-later}
  */
 
+#include <string>
+
 #include <vdr/menuitems.h>
 
 #include "audio.h"
@@ -64,6 +66,165 @@ inline cOsdItem *cDeviceSetupMenu::CollapsedItem(const char *label, int &flag, c
 }
 
 /**
+ * Get a readable name of a codec for the statistics
+ *
+ * @param codec     FFmpeg name of the codec (e.g. "eac3")
+ * @param profile   profile of the codec (e.g. "DTS-HD MA" or empty)
+ * @return          e.g. "E-AC-3" or "DTS-HD MA"
+ *
+ * @ingroup menu
+ */
+static std::string CodecLabel(const std::string &codec, const std::string &profile)
+{
+	static const struct { const char *codec; const char *label; } labels[] = {
+		{ "mpeg2video", "MPEG-2" }, { "h264", "H.264" }, { "hevc", "HEVC" },
+		{ "ac3", "AC-3" }, { "eac3", "E-AC-3" }, { "dts", "DTS" }, { "truehd", "TrueHD" },
+		{ "mp2", "MP2" }, { "mp3", "MP3" }, { "aac", "AAC" }, { "aac_latm", "AAC-LATM" },
+		{ "pcm_dvd", "LPCM" },
+	};
+
+	// the DTS profiles name the format (e.g. "DTS-HD MA")
+	if (codec == "dts" && !profile.empty())
+		return profile;
+
+	std::string label = codec;
+	for (const auto &l : labels) {
+		if (codec == l.codec)
+			label = l.label;
+	}
+
+	return profile.empty() ? label : label + " (" + profile + ")";
+}
+
+/**
+ * Get the codecs of a passthrough mask for the statistics
+ *
+ * @param mask      CODEC_* bit mask
+ * @return          e.g. "AC-3 E-AC-3" or "-", if the mask is empty
+ *
+ * @ingroup menu
+ */
+static std::string PassthroughCodecs(int mask)
+{
+	std::string codecs;
+
+	if (mask & CODEC_AC3)    codecs += " AC-3";
+	if (mask & CODEC_EAC3)   codecs += " E-AC-3";
+	if (mask & CODEC_DTS)    codecs += " DTS";
+	if (mask & CODEC_DTSHD)  codecs += " DTS-HD";
+	if (mask & CODEC_TRUEHD) codecs += " TrueHD";
+
+	return codecs.empty() ? "-" : codecs.substr(1);
+}
+
+/**
+ * Add a statistics item, whose text is updated, while the menu is shown
+ *
+ * @param text      creates the current text of the item
+ */
+void cDeviceSetupMenu::AddLiveItem(std::function<cString(void)> text)
+{
+	cOsdItem *item = new cOsdItem(text(), osUnknown, false);
+	Add(item);
+	m_liveItems.push_back({ item, std::move(text) });
+}
+
+/**
+ * Update the texts of the statistics items and redraw the menu, if one changed
+ *
+ * The whole menu is drawn again, because not every skin draws a single item,
+ * which is changed with cOsdMenu::DisplayItem().
+ */
+void cDeviceSetupMenu::UpdateLiveItems(void)
+{
+	bool changed = false;
+
+	for (auto &live : m_liveItems) {
+		cString text = live.text();
+		if (strcmp(text, live.item->Text())) {
+			live.item->SetText(text);
+			changed = true;
+		}
+	}
+
+	if (changed)
+		Display();
+}
+
+/**
+ * Add the statistics of the played streams, the display and the audio output
+ */
+void cDeviceSetupMenu::AddStatistics(void)
+{
+	// video
+	AddLiveItem([this]() {
+		if (m_pDevice->IsDetached())
+			return cString(tr(" Device detached"));
+		sVideoStreamInfo video = m_pConfig->GetVideoStreamInfo();
+		if (video.codec.empty())
+			return cString(tr(" Video: none"));
+		return cString::sprintf(tr(" Video: %s %dx%d%s, %.2f fps"), CodecLabel(video.codec, "").c_str(),
+			video.width, video.height, video.interlaced ? "i" : "p", video.frameRate);
+	});
+	AddLiveItem([this]() {
+		return cString::sprintf(tr(" Video decoder: %s (%s)"), m_pConfig->CurrentDecoderName, m_pConfig->CurrentDecoderType);
+	});
+	AddLiveItem([this]() {
+		const char *deinterlacer = m_pConfig->GetVideoStreamInfo().deinterlacer;
+		return cString::sprintf(tr(" Deinterlacer: %s"), !strcmp(deinterlacer, "off") ? trVDR("off") : tr(deinterlacer));
+	});
+	AddLiveItem([this]() {
+		return cString::sprintf(tr(" Display: %dx%d@%.2f%s, %s"), m_pConfig->CurrentDrmMode.width, m_pConfig->CurrentDrmMode.height,
+			m_pConfig->CurrentDrmMode.refreshRateHz, m_pConfig->CurrentDrmMode.interlaced ? "i" : "",
+			m_pConfig->StatHdrActive ? "HDR" : "SDR");
+	});
+	AddLiveItem([this]() {
+		int duped;
+		int dropped;
+		int counter;
+		m_pDevice->GetStats(&duped, &dropped, &counter);
+		return cString::sprintf(tr(" Frames duped(%d) dropped(%d) total(%d)"), duped, dropped, counter);
+	});
+
+	// audio
+	AddLiveItem([this]() {
+		sAudioStreamInfo audio = m_pConfig->GetAudioStreamInfo();
+		if (audio.codec.empty())
+			return cString(tr(" Audio: none"));
+		std::string codec = CodecLabel(audio.codec, audio.profile);
+		// the stream format of a bitstream is only known from the mediaplayer
+		if (!audio.sampleRate || !audio.channels)
+			return cString::sprintf(tr(" Audio: %s"), codec.c_str());
+		return cString::sprintf(tr(" Audio: %s, %d Hz, %d channels"), codec.c_str(), audio.sampleRate, audio.channels);
+	});
+	AddLiveItem([this]() {
+		sAudioStreamInfo audio = m_pConfig->GetAudioStreamInfo();
+		if (audio.codec.empty())
+			return cString(tr(" Audio output: none"));
+		return cString::sprintf(audio.passthrough ? tr(" Audio output: passthrough, %d Hz, %d channels") : tr(" Audio output: PCM, %d Hz, %d channels"),
+			audio.outputSampleRate, audio.outputChannels);
+	});
+	AddLiveItem([this]() {
+		cAudioStream *audio = m_pDevice->Audio();
+		return cString::sprintf(tr(" Audio device: %s"), audio ? audio->GetDeviceName().c_str() : "-");
+	});
+	AddLiveItem([this]() {
+		cAudioStream *audio = m_pDevice->Audio();
+		// in automatic mode the codecs of the sink's ELD are passed through
+		if (audio && m_pDevice->IsPassthroughOn() && m_pConfig->ConfigAudioPassthroughAuto && audio->GetEldPassthroughMask() >= 0)
+			return cString::sprintf(" %s (%s)", *m_pDevice->PassthroughString(), PassthroughCodecs(audio->GetEldPassthroughMask()).c_str());
+		return cString::sprintf(" %s", *m_pDevice->PassthroughString());
+	});
+
+	// osd
+#ifdef USE_GLES
+	Add(new cOsdItem(cString::sprintf(tr(" OSD: Using %s rendering"), m_pConfig->ConfigDisableOglOsd ? "software" : "hardware"), osUnknown, false));
+#else
+	Add(new cOsdItem(cString::sprintf(tr(" OSD: Using software rendering")), osUnknown, false));
+#endif
+}
+
+/**
  * Build setup menu
  */
 void cDeviceSetupMenu::Create(void)
@@ -72,6 +233,7 @@ void cDeviceSetupMenu::Create(void)
 
 	current = Current();	// get current menu item index
 	Clear();            	// clear the menu
+	m_liveItems.clear();
 
 	//
 	// General
@@ -195,19 +357,8 @@ void cDeviceSetupMenu::Create(void)
 	// Statistics
 	//
 	Add(CollapsedItem(tr("Statistics"), m_cStatisticsMenu));
-	if (m_cStatisticsMenu) {
-		int duped;
-		int dropped;
-		int counter;
-		m_pDevice->GetStats(&duped, &dropped, &counter);
-		Add(new cOsdItem(cString::sprintf(tr(" Frames duped(%d) dropped(%d) total(%d)"), duped, dropped, counter), osUnknown, false));
-#ifdef USE_GLES
-		Add(new cOsdItem(cString::sprintf(tr(" OSD: Using %s rendering"), m_pConfig->ConfigDisableOglOsd ? "software" : "hardware"), osUnknown, false));
-#else
-		Add(new cOsdItem(cString::sprintf(tr(" OSD: Using software rendering")), osUnknown, false));
-#endif
-		Add(new cOsdItem(cString::sprintf(tr(" Video decoder: %s (%s)"), m_pConfig->CurrentDecoderName, m_pConfig->CurrentDecoderType), osUnknown, false));
-	}
+	if (m_cStatisticsMenu)
+		AddStatistics();
 
 	//
 	// Expert settings
@@ -217,13 +368,15 @@ void cDeviceSetupMenu::Create(void)
 		Add(SeparatorName(tr(" Audio settings")));
 		Add(new cMenuEditIntItem(tr(" Adjust a/v buffer size (ms)"), &m_cAdditionalBufferLengthMs, - (m_pDevice->GetMinBufferFillLevelThresholdMs() - 100), 1000));
 
-		int shortTermAudioJitter = m_pConfig->StatMaxShortTermAudioJitterMs;
-		int longTermAudioJitter = m_pConfig->StatMaxLongTermAudioJitterMs;
-		int shortTermVideoJitter = m_pConfig->StatMaxShortTermVideoJitterMs;
-		int longTermVideoJitter = m_pConfig->StatMaxLongTermVideoJitterMs;
-		Add(new cOsdItem(cString::sprintf(tr("   Current a/v buffer size: %dms"), m_pDevice->GetMinBufferFillLevelThresholdMs() + m_cAdditionalBufferLengthMs), osUnknown, false));
-		Add(new cOsdItem(cString::sprintf(tr("   Audio jitter: %dms, max: %dms"), shortTermAudioJitter, longTermAudioJitter), osUnknown, false));
-		Add(new cOsdItem(cString::sprintf(tr("   Video jitter: %dms, max: %dms"), shortTermVideoJitter, longTermVideoJitter), osUnknown, false));
+		AddLiveItem([this]() {
+			return cString::sprintf(tr("   Current a/v buffer size: %dms"), m_pDevice->GetMinBufferFillLevelThresholdMs() + m_cAdditionalBufferLengthMs);
+		});
+		AddLiveItem([this]() {
+			return cString::sprintf(tr("   Audio jitter: %dms, max: %dms"), m_pConfig->StatMaxShortTermAudioJitterMs.load(), m_pConfig->StatMaxLongTermAudioJitterMs.load());
+		});
+		AddLiveItem([this]() {
+			return cString::sprintf(tr("   Video jitter: %dms, max: %dms"), m_pConfig->StatMaxShortTermVideoJitterMs.load(), m_pConfig->StatMaxLongTermVideoJitterMs.load());
+		});
 
 		Add(SeparatorName(tr(" Video settings")));
 		Add(new cMenuEditBoolItem(tr(" Disable deinterlacer"), &m_cDisableDeint, trVDR("no"), trVDR("yes")));
@@ -272,6 +425,12 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 	int old_cDecoderFallbackToSw = m_cDecoderFallbackToSw;
 
 	eOSState state = cMenuSetupPage::ProcessKey(key);
+
+	// update the statistics, while the menu is shown
+	if (key == kNone && !HasSubMenu() && !m_liveItems.empty() && m_liveUpdateTimer.TimedOut()) {
+		UpdateLiveItems();
+		m_liveUpdateTimer.Set(LIVE_UPDATE_INTERVAL_MS);
+	}
 
 	if (key != kNone) {
 		// update menu only, if something on the structure has changed

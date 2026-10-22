@@ -27,6 +27,7 @@ extern "C" {
 
 #include "audio.h"
 #include "codec_audio.h"
+#include "config.h"
 #include "logger.h"
 #include "spdif.h"
 #include "misc.h"
@@ -156,6 +157,7 @@ void cAudioDecoder::Close(void)
 
 	m_codecId = AV_CODEC_ID_NONE;
 	m_lastPts = AV_NOPTS_VALUE;
+	m_pAudio->Config()->SetAudioStreamInfo({});
 }
 
 /**
@@ -223,6 +225,20 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 	m_currentNumChannels = m_currentHwNumChannels;
 	m_currentPassthroughMask = m_passthroughMask;
 	m_currentPassthrough = passthrough;
+
+	// for the statistics
+	sAudioStreamInfo info;
+	info.codec = avcodec_get_name(m_pAudioCtx->codec_id);
+	const char *profile = avcodec_profile_name(m_pAudioCtx->codec_id, m_pAudioCtx->profile);
+	if (profile)
+		info.profile = profile;
+	info.sampleRate = m_pAudioCtx->sample_rate;
+	info.channels = m_pAudioCtx->ch_layout.nb_channels;
+	info.passthrough = passthrough;
+	info.outputSampleRate = m_currentHwSampleRate;
+	info.outputChannels = m_currentHwNumChannels;
+	info.device = m_pAudio->GetDeviceName();
+	m_pAudio->Config()->SetAudioStreamInfo(info);
 
 	// audio was newly set up (err == 0)
 	if (!err)
