@@ -36,6 +36,18 @@ typedef enum {
 } HotkeyState;
 
 /**
+ * Shown Menu
+ *
+ * @ingroup menu
+ */
+enum class ShownMenu {
+	Main,          ///< main menu (accepts the hotkeys)
+	Playlist,      ///< playlist of the running mediaplayer
+	Playlists,     ///< selection of a playlist
+	Files          ///< file menu
+};
+
+/**
  * Plugin Main Menu
  *
  * Main menu with the pip, detach and mediaplayer functions, and the
@@ -73,7 +85,7 @@ private:
 	std::string m_path;                                 ///< current directory of the file menu
 	std::string m_lastItem;                             ///< last selected item (to select it again)
 	std::string m_playlist;                             ///< name of the current playlist
-	bool m_playlistShown = false;                       ///< true, if the playlist menu is shown
+	ShownMenu m_shownMenu = ShownMenu::Main;            ///< the shown menu
 	cPlaylistEntry *m_pShownEntry = nullptr;            ///< playlist entry, which is selected in the playlist menu
 	static bool s_openMediaMenu;                        ///< true, if the next menu shall show the file of the stopped mediaplayer
 	static std::string s_mediaSource;                   ///< file or playlist of the stopped mediaplayer
