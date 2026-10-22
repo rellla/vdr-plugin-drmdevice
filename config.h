@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <string>
 #include <vector>
 
 /**
@@ -32,6 +33,36 @@ struct sDrmMode {
 	int height = 0;              ///< display height
 	double refreshRateHz = 0.0;  ///< display refresh rate
 	bool interlaced = false;     ///< is this an interlaced mode?
+};
+
+/**
+ * Properties of the played video stream (shown in the statistics)
+ *
+ * @ingroup config
+ */
+struct sVideoStreamInfo {
+	std::string codec;                  ///< codec (empty, if no video is played)
+	int width = 0;                      ///< coded width
+	int height = 0;                     ///< coded height
+	double frameRate = 0.0;             ///< frame rate (0, if unknown)
+	bool interlaced = false;            ///< true, if the stream is interlaced
+	const char *deinterlacer = "off";   ///< deinterlacer: "hardware", "software" or "off"
+};
+
+/**
+ * Properties of the played audio stream (shown in the statistics)
+ *
+ * @ingroup config
+ */
+struct sAudioStreamInfo {
+	std::string codec;                  ///< codec (empty, if no audio is played)
+	std::string profile;                ///< profile of the codec (e.g. "DTS-HD MA", empty, if unknown)
+	int sampleRate = 0;                 ///< sample rate of the stream (0, if unknown)
+	int channels = 0;                   ///< channels of the stream (0, if unknown)
+	bool passthrough = false;           ///< true, if the stream is passed through
+	int outputSampleRate = 0;           ///< sample rate of the audio device
+	int outputChannels = 0;             ///< channels of the audio device
+	std::string device;                 ///< opened audio device
 };
 
 /**
@@ -151,6 +182,7 @@ public:
 	std::atomic<int> StatMaxLongTermAudioJitterMs = 0;  ///< logged max overall audio jitter since stream start
 	std::atomic<int> StatMaxShortTermVideoJitterMs = 0; ///< logged max video jitter of the last 1000 packets
 	std::atomic<int> StatMaxLongTermVideoJitterMs = 0;  ///< logged max overall video jitter since stream start
+	std::atomic<bool> StatHdrActive = false;            ///< true, if the display gets HDR metadata
 	std::vector<sDrmMode> CollectedDrmModes;            ///< collected available drm modes on the current connector
 	sDrmMode AutoDetectedDrmMode;                       ///< auto detected mode on the first startup (maybe equal to UserSetMode)
 	sDrmMode UserSetDrmMode;                            ///< user requested drm mode on the current connector
@@ -165,10 +197,17 @@ public:
 	void SetDecoderNeedsMaxPackets(int);
 	int GetDecoderNeedsMaxPackets(void);
 	bool CompareCurrentMode(sDrmMode *);
+	void SetVideoStreamInfo(const sVideoStreamInfo &);
+	sVideoStreamInfo GetVideoStreamInfo(void);
+	void SetAudioStreamInfo(const sAudioStreamInfo &);
+	sAudioStreamInfo GetAudioStreamInfo(void);
 
 private:
 	int m_decoderNeedsMaxPackets = 0;                   ///< see GetDecoderNeedsMaxPackets()
 	std::mutex m_mutex;                                 ///< protects m_decoderNeedsMaxPackets
+	sVideoStreamInfo m_videoStreamInfo;                 ///< properties of the played video stream
+	sAudioStreamInfo m_audioStreamInfo;                 ///< properties of the played audio stream
+	std::mutex m_streamInfoMutex;                       ///< protects m_videoStreamInfo and m_audioStreamInfo
 };
 
 #endif

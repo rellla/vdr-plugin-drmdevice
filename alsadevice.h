@@ -65,6 +65,9 @@ public:
 	bool IsPassthroughActive(void) { return m_passthroughActive; }   ///< true, if the current audio is passed through
 	void SetPassthroughMask(int mask) { m_passthroughMask = mask; }  ///< set the codecs, which are passed through (or CODEC_PASSTHROUGH_AUTO)
 	int GetPassthroughMask(void);
+	int GetEldPassthroughMask(void) const { return m_eldMask; }      ///< codecs of the last read ELD (-1: not read yet)
+	/** name of the used device (without the AES parameters) */
+	const std::string &GetDeviceName(void) const { return m_deviceName; }
 	/** automatically append AES to the pass-through device */
 	void SetAutoAES(bool appendAes) { m_appendAES = appendAes; m_aesUnsupported = false; }
 	void SetDownmix(int downMix) { m_downmix = downMix; }            ///< downmix to stereo
