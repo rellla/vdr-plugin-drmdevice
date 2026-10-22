@@ -15,11 +15,14 @@
  */
 
 #include <algorithm>
+#include <cctype>
 #include <cinttypes>
 #include <cstdlib>
 #include <fstream>
 #include <random>
 #include <string>
+#include <utility>
+#include <vector>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -27,6 +30,7 @@ extern "C" {
 }
 
 #include <vdr/config.h>
+#include <vdr/i18n.h>
 #include <vdr/player.h>
 #include <vdr/plugin.h>
 #include <vdr/remux.h>
@@ -119,6 +123,81 @@ static void RescaleToPesTimebase(AVPacket *pkt, AVRational timebase, int64_t sta
 		pkt->pts += offset;
 	if (pkt->dts != AV_NOPTS_VALUE)
 		pkt->dts += offset;
+}
+
+/**
+ * Check, if an audio codec is passed in a Dolby track
+ *
+ * Like in VDR, the formats, which can be passed through, are Dolby tracks.
+ * They are preferred, if Setup.CurrentDolby is set.
+ *
+ * @param codecId         codec of the audio stream
+ *
+ * @ingroup mediaplayer
+ */
+static bool IsDolbyTrack(AVCodecID codecId)
+{
+	return codecId == AV_CODEC_ID_AC3 || codecId == AV_CODEC_ID_EAC3 ||
+	       codecId == AV_CODEC_ID_TRUEHD || codecId == AV_CODEC_ID_DTS;
+}
+
+/**
+ * Describe an audio stream for the track menu
+ *
+ * @param stream          audio stream
+ * @return                e.g. "AC-3 5.1" or "AAC stereo - Commentary"
+ *
+ * @ingroup mediaplayer
+ */
+static std::string AudioTrackDescription(const AVStream *stream)
+{
+	const AVCodecParameters *par = stream->codecpar;
+	std::string description;
+
+	switch (par->codec_id) {
+		case AV_CODEC_ID_AC3:    description = "AC-3"; break;
+		case AV_CODEC_ID_EAC3:   description = "E-AC-3"; break;
+		case AV_CODEC_ID_TRUEHD: description = "TrueHD"; break;
+		case AV_CODEC_ID_DTS:    description = "DTS"; break;
+		case AV_CODEC_ID_MP2:    description = "MP2"; break;
+		case AV_CODEC_ID_MP3:    description = "MP3"; break;
+		default: {
+			const AVCodecDescriptor *desc = avcodec_descriptor_get(par->codec_id);
+			description = desc ? desc->name : "?";
+			std::transform(description.begin(), description.end(), description.begin(), ::toupper);
+			break;
+		}
+	}
+
+	switch (par->ch_layout.nb_channels) {
+		case 0:  break;
+		case 1:  description += " mono"; break;
+		case 2:  description += " stereo"; break;
+		case 6:  description += " 5.1"; break;
+		case 8:  description += " 7.1"; break;
+		default: description += " " + std::to_string(par->ch_layout.nb_channels) + "ch"; break;
+	}
+
+	const AVDictionaryEntry *title = av_dict_get(stream->metadata, "title", nullptr, 0);
+	if (title && *title->value)
+		description += std::string(" - ") + title->value;
+
+	return description;
+}
+
+/**
+ * Get the language of a stream
+ *
+ * @param stream          the stream
+ * @return                ISO 639-2 language code or an empty string
+ *
+ * @ingroup mediaplayer
+ */
+static const char *StreamLanguage(const AVStream *stream)
+{
+	const AVDictionaryEntry *language = av_dict_get(stream->metadata, "language", nullptr, 0);
+
+	return language && strcmp(language->value, "und") ? language->value : "";
 }
 
 /**
@@ -387,13 +466,9 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 		return false;
 	}
 
-	int audioIdx = -1;
-	for (unsigned int i = 0; i < format->nb_streams; i++) {
-		if (format->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-			audioIdx = i;
-			break;
-		}
-	}
+	bool hasAudio = false;
+	for (unsigned int i = 0; i < format->nb_streams; i++)
+		hasAudio |= format->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO;
 
 	int videoIdx = av_find_best_stream(format, AVMEDIA_TYPE_VIDEO, -1, -1, &videoCodec, 0);
 
@@ -401,7 +476,7 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 	if (videoIdx >= 0 && (format->streams[videoIdx]->disposition & AV_DISPOSITION_ATTACHED_PIC))
 		videoIdx = -1;
 
-	if (audioIdx < 0 && videoIdx < 0) {
+	if (!hasAudio && videoIdx < 0) {
 		LOGERROR("mediaplayer: %s: no audio or video stream in file '%s'", __FUNCTION__, url);
 		avformat_close_input(&format);
 		return false;
@@ -411,6 +486,10 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 		LOGDEBUG2(L_MEDIA, "mediaplayer: %s: stream does not seem to contain video", __FUNCTION__);
 
 	LOCK_THREAD;
+
+	int audioIdx = AddTracks(format);
+	m_requestedAudioIdx = NO_TRACK_REQUEST;
+	m_resyncAfterPause = false;
 
 	m_pFormat = format;
 	m_audioIdx = audioIdx;
@@ -458,6 +537,123 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 	m_fileTitle = entry ? entry->OsdItemString() : path.substr(path.find_last_of('/') + 1);
 
 	return true;
+}
+
+/**
+ * Tell VDR the audio tracks of a file and select one
+ *
+ * The audio track is selected like VDR does with the tracks of a recording:
+ * the preferred audio language of the setup and, with Setup.CurrentDolby,
+ * the Dolby tracks are preferred. Otherwise the default track of the file is
+ * played. The user can select another track with the Audio key.
+ *
+ * @param format    format context of the file
+ * @return          stream index of the selected audio track (-1, if none)
+ */
+int cDrmDevicePlayer::AddTracks(AVFormatContext *format)
+{
+	DeviceClrAvailableTracks();
+
+	int numAudio = 0;
+	int numDolby = 0;
+	std::vector<std::pair<eTrackType, int>> tracks;           // track type and stream index
+
+	for (unsigned int i = 0; i < format->nb_streams && i < 0xFFFF; i++) {
+		AVStream *stream = format->streams[i];
+		if (stream->codecpar->codec_type != AVMEDIA_TYPE_AUDIO)
+			continue;
+
+		bool dolby = IsDolbyTrack(stream->codecpar->codec_id);
+		eTrackType type = dolby ? ttDolby : ttAudio;
+		int index = dolby ? numDolby : numAudio;
+		if (type + index > (dolby ? ttDolbyLast : ttAudioLast))
+			continue;
+
+		(dolby ? numDolby : numAudio)++;
+		DeviceSetAvailableTrack(type, index, i + 1, StreamLanguage(stream), AudioTrackDescription(stream).c_str());
+		tracks.emplace_back(eTrackType(type + index), i);
+	}
+
+	if (tracks.empty())
+		return -1;
+
+	// the default track of the file, if no language is preferred
+	int audioIdx = av_find_best_stream(format, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
+	eTrackType selected = ttNone;
+	for (auto &track : tracks) {
+		if (track.second == audioIdx)
+			selected = track.first;
+	}
+	if (selected == ttNone) {
+		selected = tracks.front().first;
+		audioIdx = tracks.front().second;
+	}
+
+	// like cDevice::EnsureAudioTrack()
+	int languagePreference = -1;
+	for (int pass = 0; pass < 2; pass++) {
+		// with Setup.CurrentDolby the Dolby tracks are checked first, so they win at the same preference
+		bool dolby = (pass == 0) == static_cast<bool>(Setup.CurrentDolby);
+		for (auto &track : tracks) {
+			if (IS_DOLBY_TRACK(track.first) != dolby)
+				continue;
+			if (I18nIsPreferredLanguage(Setup.AudioLanguages, StreamLanguage(format->streams[track.second]), languagePreference)) {
+				selected = track.first;
+				audioIdx = track.second;
+			}
+		}
+	}
+
+	DeviceSetCurrentAudioTrack(selected);
+	LOGDEBUG2(L_MEDIA, "mediaplayer: %s: %zu audio tracks, play stream %d", __FUNCTION__, tracks.size(), audioIdx);
+
+	return audioIdx;
+}
+
+/**
+ * Select the audio track (called by VDR, e.g. from the track menu)
+ *
+ * The track is switched by the player thread.
+ *
+ * @param type      track type
+ * @param trackId   track (the id is the stream index + 1)
+ */
+void cDrmDevicePlayer::SetAudioTrack([[maybe_unused]] eTrackType type, const tTrackId *trackId)
+{
+	if (trackId && trackId->id)
+		m_requestedAudioIdx = trackId->id - 1;
+}
+
+/**
+ * Switch to the audio track, which the user selected
+ *
+ * In normal play mode the file is read again from the current position, so
+ * the new track starts at once (like cDvbPlayer). In pause mode this is done,
+ * when the playback continues.
+ *
+ * Must be called with the thread lock.
+ */
+void cDrmDevicePlayer::SwitchAudioTrack(void)
+{
+	int audioIdx = m_requestedAudioIdx.exchange(NO_TRACK_REQUEST);
+
+	if (audioIdx == NO_TRACK_REQUEST || audioIdx == m_audioIdx || audioIdx < 0 ||
+	    audioIdx >= static_cast<int>(m_pFormat->nb_streams) ||
+	    m_pFormat->streams[audioIdx]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO)
+		return;
+
+	LOGDEBUG2(L_MEDIA, "mediaplayer: %s: switch from stream %d to %d", __FUNCTION__, m_audioIdx, audioIdx);
+
+	m_audioIdx = audioIdx;
+	if (m_seekable && m_playMode == pmPlay)
+		Empty();
+	else if (m_seekable && m_playMode == pmPause)
+		m_resyncAfterPause = true;
+	else if (m_pPacket && m_pPacket->stream_index != m_videoIdx)
+		av_packet_free(&m_pPacket);
+
+	AVStream *stream = m_pFormat->streams[audioIdx];
+	m_pDevice->SetAudioCodec(stream->codecpar->codec_id, stream->codecpar, PES_TIMEBASE);
 }
 
 /**
@@ -730,6 +926,8 @@ void cDrmDevicePlayer::ShowStillPicture(void)
  */
 bool cDrmDevicePlayer::Feed(void)
 {
+	SwitchAudioTrack();
+
 	// reposition after an Empty()
 	if (m_seekMs >= 0) {
 		Seek(m_seekMs, false);
@@ -910,8 +1108,10 @@ void cDrmDevicePlayer::Play(void)
 {
 	if (m_playMode != pmPlay) {
 		LOCK_THREAD;
-		if (m_playMode == pmStill || m_playMode == pmFast || (m_playMode == pmSlow && m_playDir == pdBackward))
+		if (m_playMode == pmStill || m_playMode == pmFast || (m_playMode == pmSlow && m_playDir == pdBackward) ||
+		    (m_playMode == pmPause && m_resyncAfterPause))
 			Empty();
+		m_resyncAfterPause = false;
 
 		DevicePlay();
 		m_playMode = pmPlay;

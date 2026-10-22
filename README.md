@@ -561,6 +561,11 @@ are used. In replay mode, you can control playback with the following keys:
 	Stop/Blue:     Stop replay and end player
 	Back:          Stop replay and open the file menu
 	Prev/Next:     Previous/ next file in playlist
+	Audio:         Select the audio track
+
+A file with several audio tracks starts with the track of the preferred audio language
+(and the Dolby track with "Use Dolby Digital") of VDR's setup, otherwise with the default
+track of the file. The Audio key opens VDR's track menu to select another track.
 
 The fast/slow modes and the positioning need a seekable file. The replay of a local file
 continues at the position, where it was stopped (backed up by 10s). The positions of the last
