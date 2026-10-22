@@ -11,11 +11,14 @@
  */
 
 #include <cstdlib>
+#include <ftw.h>
 #include <string>
+#include <unistd.h>
 
 #include <vdr/interface.h>
 #include <vdr/osdbase.h>
 #include <vdr/plugin.h>
+#include <vdr/recording.h>
 #include <vdr/remote.h>
 #include <vdr/skins.h>
 #include <vdr/videodir.h>
@@ -457,6 +460,11 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 			}
 			break;
 		case kBlue:
+			if (m_shownMenu == ShownMenu::Files) {
+				if (item)
+					DeleteItem(item->Text());
+				return osContinue;
+			}
 			state = osStopReplay;
 			break;
 		case kPlay:
@@ -616,7 +624,7 @@ void cDeviceMenu::FindFileMenu(const std::string &searchPath, FILE *playlist)
 	}
 
 	if (!playlist) {
-		SetHelp( m_playlist.empty() ? "Play File" : "Play PL", "New PL", "Add to PL", NULL);
+		SetHelp( m_playlist.empty() ? "Play File" : "Play PL", "New PL", "Add to PL", trVDR("Button$Delete"));
 //		SetHelp(Control->Player->Running ? NULL : "Set new PL",
 //			Control->Player->Running ? "Play Menu" : "Select PL");
 		Display();
@@ -664,6 +672,104 @@ void cDeviceMenu::PlayMedia(const char *name)
 	} else {
 		LOGERROR("mediaplayer: %s: can't start %s", __FUNCTION__, aim.c_str());
 	}
+}
+
+/**
+ * Number of entries, which couldn't be deleted (see RemoveEntry())
+ *
+ * @ingroup menu
+ */
+static int s_deleteErrors = 0;
+
+/**
+ * Delete an entry of a folder, which is deleted (callback of nftw())
+ *
+ * @param path       path of the entry
+ * @param sb         unused
+ * @param type       type of the entry (FTW_DP for a folder, after its entries)
+ * @param ftwbuf     unused
+ * @return           0 to continue with the next entry
+ *
+ * @ingroup menu
+ */
+static int RemoveEntry(const char *path, [[maybe_unused]] const struct stat *sb, int type, [[maybe_unused]] struct FTW *ftwbuf)
+{
+	if ((type == FTW_DP ? rmdir(path) : unlink(path)) < 0) {
+		LOGERROR("mediaplayer: %s: can't delete %s: %m", __FUNCTION__, path);
+		s_deleteErrors++;
+	}
+
+	return 0;
+}
+
+/**
+ * Get the real path of a folder
+ *
+ * @param path       path of the folder
+ * @return           the canonical path (empty, if it doesn't exist)
+ *
+ * @ingroup menu
+ */
+static std::string RealPath(const std::string &path)
+{
+	char *real = realpath(path.c_str(), nullptr);
+	std::string result = real ? real : "";
+	free(real);
+
+	return result;
+}
+
+/**
+ * Delete a file or a folder with all its entries in the file menu
+ *
+ * To protect the system, only entries in the video directory are deleted. A
+ * symbolic link is deleted itself, not its target, and a folder is only
+ * deleted on the file system of the folder (mounted file systems are kept).
+ *
+ * @param name       name of the file or folder in the shown folder
+ */
+void cDeviceMenu::DeleteItem(const char *name)
+{
+	if (!strcmp(name, "[..]"))
+		return;
+
+	std::string videoDir = RealPath(cVideoDirectory::Name());
+	std::string folder = RealPath(m_path);
+	if (videoDir.empty() || folder.empty() ||
+	    (folder != videoDir && folder.compare(0, videoDir.size() + 1, videoDir + "/"))) {
+		Skins.Message(mtError, tr("Only files in the video directory can be deleted"));
+		return;
+	}
+
+	std::string path = folder + "/" + name;
+	struct stat sb;
+	if (lstat(path.c_str(), &sb) < 0)
+		return;
+
+	bool isFolder = S_ISDIR(sb.st_mode);
+	if (!Interface->Confirm(isFolder ? tr("Delete folder with all files?") : tr("Delete file?")))
+		return;
+
+	s_deleteErrors = 0;
+	if (isFolder)
+		nftw(path.c_str(), RemoveEntry, 16, FTW_DEPTH | FTW_PHYS | FTW_MOUNT);
+	else
+		RemoveEntry(path.c_str(), &sb, FTW_F, nullptr);
+
+	LOGINFO("mediaplayer: deleted %s%s", path.c_str(), s_deleteErrors ? " (with errors)" : "");
+	if (s_deleteErrors)
+		Skins.Message(mtError, tr("Error while deleting!"));
+
+	// VDR rereads the recordings, if a recording was deleted
+	cRecordings::TouchUpdate();
+
+	// select the next entry
+	int current = Current();
+	cOsdItem *next = static_cast<cOsdItem *>(Get(current + 1));
+	if (!next)
+		next = static_cast<cOsdItem *>(Get(current - 1));
+	m_lastItem = next ? next->Text() : "";
+	FindFileMenu(m_path, NULL);
 }
 
 /**

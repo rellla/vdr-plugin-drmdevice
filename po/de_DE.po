@@ -78,6 +78,18 @@ msgstr "Neue Playliste erstellen"
 msgid "Added to Playlist"
 msgstr "Zur Playliste hinzugefügt"
 
+msgid "Only files in the video directory can be deleted"
+msgstr "Nur Dateien im Videoverzeichnis können gelöscht werden"
+
+msgid "Delete folder with all files?"
+msgstr "Ordner mit allen Dateien löschen?"
+
+msgid "Delete file?"
+msgstr "Datei löschen?"
+
+msgid "Error while deleting!"
+msgstr "Fehler beim Löschen!"
+
 msgid "Channel not available!"
 msgstr "Kanal nicht verfügbar!"
 
