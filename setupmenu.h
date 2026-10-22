@@ -14,7 +14,12 @@
 #ifndef __DRMDEVICE_SETUPMENU_H
 #define __DRMDEVICE_SETUPMENU_H
 
+#include <functional>
+#include <string>
+#include <vector>
+
 #include <vdr/menuitems.h>
+#include <vdr/tools.h>
 
 #include "config.h"
 
@@ -136,7 +141,19 @@ private:
 	/** texts of the FFmpeg log level selection (see cDeviceConfig::ConfigLogFFmpegLevel) */
 	const char *m_ffmpegLogLevels[FFMPEG_LOG_LEVELS] = { "info", "verbose", "debug", "trace" };
 
+	/** statistics item, whose text is updated, while the menu is shown */
+	struct sLiveItem {
+		cOsdItem *item;                            ///< the menu item
+		std::function<cString(void)> text;         ///< creates the current text of the item
+	};
+	static constexpr int LIVE_UPDATE_INTERVAL_MS = 1000; ///< update interval of the statistics
+	std::vector<sLiveItem> m_liveItems;                  ///< statistics items of the shown menu
+	cTimeMs m_liveUpdateTimer;                           ///< timer for the next update of the statistics
+
 	inline cOsdItem * CollapsedItem(const char *, int &, const char * = NULL);
+	void AddLiveItem(std::function<cString(void)>);
+	void UpdateLiveItems(void);
+	void AddStatistics(void);
 	void Create(void);
 	void BuildDisplayModeList(void);                    ///< fill the display mode selection
 	void BuildChannelSwitchModeList(void);              ///< fill the channel switch mode selection

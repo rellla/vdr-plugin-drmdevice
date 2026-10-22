@@ -108,6 +108,65 @@ msgstr "anzeigen"
 msgid "hide"
 msgstr "verstecken"
 
+msgid " Device detached"
+msgstr " Device getrennt"
+
+msgid " Video: none"
+msgstr " Video: keins"
+
+#, c-format
+msgid " Video: %s %dx%d%s, %.2f fps"
+msgstr " Video: %s %dx%d%s, %.2f fps"
+
+#, c-format
+msgid " Video decoder: %s (%s)"
+msgstr " Video Dekodierer: %s (%s)"
+
+#, c-format
+msgid " Deinterlacer: %s"
+msgstr " Deinterlacer: %s"
+
+#, c-format
+msgid " Display: %dx%d@%.2f%s, %s"
+msgstr " Anzeige: %dx%d@%.2f%s, %s"
+
+#, c-format
+msgid " Frames duped(%d) dropped(%d) total(%d)"
+msgstr " Frames verdoppelt(%d) verworfen (%d) gesamt (%d)"
+
+msgid " Audio: none"
+msgstr " Audio: keins"
+
+#, c-format
+msgid " Audio: %s"
+msgstr " Audio: %s"
+
+#, c-format
+msgid " Audio: %s, %d Hz, %d channels"
+msgstr " Audio: %s, %d Hz, %d Kanäle"
+
+msgid " Audio output: none"
+msgstr " Audioausgabe: keine"
+
+#, c-format
+msgid " Audio output: passthrough, %d Hz, %d channels"
+msgstr " Audioausgabe: Passthrough, %d Hz, %d Kanäle"
+
+#, c-format
+msgid " Audio output: PCM, %d Hz, %d channels"
+msgstr " Audioausgabe: PCM, %d Hz, %d Kanäle"
+
+#, c-format
+msgid " Audio device: %s"
+msgstr " Audiogerät: %s"
+
+#, c-format
+msgid " OSD: Using %s rendering"
+msgstr " OSD: Benutze %s rendering"
+
+msgid " OSD: Using software rendering"
+msgstr " OSD: Benutze software rendering"
+
 msgid "General"
 msgstr "Allgemeines"
 
@@ -324,21 +383,6 @@ msgstr "  OpenGL OSD Zeitmessung (alles)"
 
 msgid "Statistics"
 msgstr "Statistiken"
-
-#, c-format
-msgid " Frames duped(%d) dropped(%d) total(%d)"
-msgstr " Frames verdoppelt(%d) verworfen (%d) gesamt (%d)"
-
-#, c-format
-msgid " OSD: Using %s rendering"
-msgstr " OSD: Benutze %s rendering"
-
-msgid " OSD: Using software rendering"
-msgstr " OSD: Benutze software rendering"
-
-#, c-format
-msgid " Video decoder: %s (%s)"
-msgstr " Video Dekodierer: %s (%s)"
 
 msgid "Expert settings"
 msgstr "Experteneinstellung"
