@@ -78,6 +78,8 @@ void cDeviceSetupMenu::Create(void)
 		Add(new cMenuEditBoolItem(tr(" Enable HDR"), &m_cVideoEnableHDR, trVDR("no"), trVDR("yes")));
 		Add(new cMenuEditStraItem(tr(" Display mode"), &m_cVideoDisplayMode, m_displayModePtrs.size(), m_displayModePtrs.data()));
 		Add(new cMenuEditStraItem(tr(" Enable fast channel switch"), &m_cVideoChannelSwitchMode, m_channelSwitchModePtrs.size(), m_channelSwitchModePtrs.data()));
+		for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
+			Add(new cMenuEditIntItem(cString::sprintf(tr(" Zoom level %d (/1000)"), i + 1), &m_cZoomLevel[i], 0, cDeviceConfig::ZOOM_MAX, trVDR("off")));
 	}
 
 	//
@@ -310,6 +312,8 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_cVideoEnableHDR          = m_pConfig->ConfigVideoEnableHDR;
 	m_cVideoDisplayMode        = m_pConfig->ConfigVideoDisplayMode;
 	m_cVideoChannelSwitchMode  = m_pConfig->ConfigVideoChannelSwitchMode;
+	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
+		m_cZoomLevel[i] = m_pConfig->ConfigZoomLevel[i];
 
 	//
 	// Audio
@@ -475,6 +479,11 @@ void cDeviceSetupMenu::Store(void)
 		SetupStore("VideoDisplayMode", m_cVideoDisplayMode);
 	SetupStore("VideoChannelSwitchMode", m_pConfig->ConfigVideoChannelSwitchMode = m_cVideoChannelSwitchMode);
 	m_pDevice->SetChannelSwitchMode(static_cast<ChannelSwitchMode>(m_pConfig->ConfigVideoChannelSwitchMode));
+	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
+		SetupStore(cString::sprintf("ZoomLevel%d", i + 1), m_pConfig->ConfigZoomLevel[i] = m_cZoomLevel[i]);
+	// a disabled zoom level can't stay active
+	if (m_pDevice->GetZoomLevel() && !m_pDevice->GetZoom())
+		m_pDevice->SetZoomLevel(0);
 
 	//
 	// Audio

@@ -55,6 +55,7 @@ private:
 	uint8_t *m_pOutputData = nullptr;    ///< pointer to grabbed image
 	int m_outputSize = 0;                ///< size of grabbed data
 	cRect m_outputRect;                  ///< rect of the grabbed data
+	cRect m_cropRect;                    ///< shown part of the grabbed data (empty: all)
 
 	// input (copied from original cDrmBuffer)
 	uint32_t m_width = 0;                               ///< buffer width

@@ -168,3 +168,23 @@ TEST_CASE("cDeviceConfig - CompareCurrentMode", "[config]") {
 	REQUIRE_FALSE(config.CompareCurrentMode(&otherRate));
 	REQUIRE_FALSE(config.CompareCurrentMode(&interlaced));
 }
+
+TEST_CASE("cDeviceConfig - zoom levels", "[config]") {
+	cDeviceConfig config;
+
+	// defaults: 2.39:1 and 2.00:1 on 16:9
+	REQUIRE(config.ConfigZoomLevel[0] == 344);
+	REQUIRE(config.ConfigZoomLevel[1] == 125);
+	REQUIRE(config.ConfigZoomLevel[2] == 0);
+
+	REQUIRE(config.SetupParse("ZoomLevel1", "200"));
+	REQUIRE(config.ConfigZoomLevel[0] == 200);
+	REQUIRE(config.SetupParse("ZoomLevel5", "1000"));
+	REQUIRE(config.ConfigZoomLevel[4] == cDeviceConfig::ZOOM_MAX);
+	REQUIRE(config.SetupParse("zoomlevel3", "-5"));
+	REQUIRE(config.ConfigZoomLevel[2] == 0);
+	REQUIRE_FALSE(config.SetupParse("ZoomLevel0", "1"));
+	REQUIRE_FALSE(config.SetupParse("ZoomLevel6", "1"));
+	REQUIRE_FALSE(config.SetupParse("ZoomLevel10", "1"));
+	REQUIRE_FALSE(config.SetupParse("ZoomLevel", "1"));
+}

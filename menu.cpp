@@ -17,6 +17,7 @@
 #include <vdr/osdbase.h>
 #include <vdr/plugin.h>
 #include <vdr/remote.h>
+#include <vdr/skins.h>
 #include <vdr/videodir.h>
 
 #include "device.h"
@@ -148,6 +149,14 @@ void cDeviceMenu::MainMenu(void)
 	Add(new cOsdItem(hk(tr(" play file / make play list")), osUser8));
 	Add(new cOsdItem(hk(tr(" select play list")), osUser9));
 
+	// The new entries follow the old ones, so the old ones keep their number keys,
+	// which may be used in key macros (e.g. "@drmdevice 8").
+	Add(SeparatorSpace());
+
+	// zoom
+	Add(SeparatorName("Zoom"));
+	Add(m_pZoomItem = new cOsdItem(hk(tr(" Next zoom level"))));
+
 	SetCurrent(Get(current));          // restore selected menu entry
 	Display();
 }
@@ -167,8 +176,20 @@ enum Hotkeys {
 	PIPCHANNELSWITCHBACK,
 	DETACHKEYBASE = 110,
 	DETACHDEVICE,
-	ATTACHDEVICE
+	ATTACHDEVICE,
+	ZOOMKEYBASE = 120,
+	ZOOMNEXT,
+	ZOOMOFF
 };
+
+/**
+ * Select the next zoom level and show it
+ */
+void cDeviceMenu::NextZoomLevel(void)
+{
+	m_pDevice->NextZoomLevel();
+	Skins.QueueMessage(mtInfo, m_pDevice->ZoomLevelString());
+}
 
 /**
  * Handle a key code which was compose by hotkey handling in ProcessKey()
@@ -202,6 +223,14 @@ void cDeviceMenu::HandleHotKey(int code) {
 			break;
 		case ATTACHDEVICE:
 			m_pDevice->Attach();
+			break;
+		// zoom
+		case ZOOMNEXT:
+			NextZoomLevel();
+			break;
+		case ZOOMOFF:
+			m_pDevice->SetZoomLevel(0);
+			Skins.QueueMessage(mtInfo, m_pDevice->ZoomLevelString());
 			break;
 		default:
 			break;
@@ -237,6 +266,10 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 				m_hotkeyState = HotkeyState::Red;
 				return osContinue;
 			}
+			if (key == kGreen) {
+				m_hotkeyState = HotkeyState::Green;
+				return osContinue;
+			}
 			break;
 		case HotkeyState::Blue:              // pip
 			if (k0 <= key && key <= k9) {
@@ -256,9 +289,25 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 			}
 			m_hotkeyState = HotkeyState::Initial;
 			break;
+		case HotkeyState::Green:             // zoom
+			if (k0 <= key && key <= k9) {
+				int hotkeyCode = static_cast<int>(ZOOMKEYBASE) + static_cast<int>(key) - static_cast<int>(k0);
+				m_hotkeyState = HotkeyState::Initial;
+				HandleHotKey(hotkeyCode);
+				return osEnd;
+			}
+			m_hotkeyState = HotkeyState::Initial;
+			break;
 	}
 
 	item = (cOsdItem *) Get(Current());
+
+	// zoom
+	if (key == kOk && m_shownMenu == ShownMenu::Main && item && item == m_pZoomItem) {
+		NextZoomLevel();
+		return osEnd;
+	}
+
 	state = cOsdMenu::ProcessKey(key);
 
 	switch (state) {

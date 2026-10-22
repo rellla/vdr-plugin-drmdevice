@@ -19,6 +19,7 @@ Features
 - UHD support
 - HDR display support
 - Auto-switch display mode to video source (optional)
+- Zoom levels to crop black bars of the broadcast
 - Picture-in-picture support (depending on hardware)
 - Integrated minimalistic media player
 - Grabbing support - video, osd and pip - mpeg2, h264, hevc (8/10bit)
@@ -194,6 +195,20 @@ Setup: /etc/vdr/setup.conf
 		     Caveat: A 576i video stream will always be mapped to default mode.
 		2  = display mode follows video resolution respecting interlaced modes (width, height, refresh rate, interlaced flag)
 		     Same as above, but now the display also chooses an interlaced mode for interlaced input (except for 576i) if available
+
+	drmdevice.ZoomLevel1 = 344
+	drmdevice.ZoomLevel2 = 125
+	drmdevice.ZoomLevel3 = 0
+	drmdevice.ZoomLevel4 = 0
+	drmdevice.ZoomLevel5 = 0
+		0 - 499 = zoom-in factor of the zoom level in 1/10 % (0 = level disabled)
+		The zoom magnifies the picture to crop black bars, which are part of
+		the broadcast. The aspect ratio is kept and the overflow is cropped
+		equally off all sides. The defaults fill a 2.39:1 (+34.4%) and a 2.00:1
+		(+12.5%) picture on a 16:9 screen.
+		The active zoom level is reset with every channel switch and replay
+		start and isn't stored. Select it in the plugin menu, with the key
+		macros or with SVDRP ZOOM.
 
 	drmdevice.VideoChannelSwitchMode = 0
 		0 = fast channel switch is disabled
@@ -372,6 +387,9 @@ SVDRP Commands
 	PIPS         Switch main stream to pip stream and close the pip window.
 
 	PIPP         Swap pip position between normal and alternative.
+	ZOOM [next | 0-5]
+		Select the next zoom level (next) or the given zoom level (0 = off).
+		Without an argument the active zoom level is returned.
 
 
 Keymacros
@@ -390,6 +408,8 @@ Currently supported:
 	@drmdevice Blue 6      Switch main stream to pip channel and close pip
 	@drmdevice Red 1       Detach device
 	@drmdevice Red 2       Attach device
+	@drmdevice Green 1     Next zoom level
+	@drmdevice Green 2     Zoom off
 
 
 OpenGL/ES

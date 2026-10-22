@@ -307,12 +307,17 @@ int cVideoRender::SetVideoBuffer(cDrmBuffer *buf)
 	// fit frame into display
 	sRect fittedRect = ComputeFittedRect(frame, dispX, dispY, dispWidth, dispHeight);
 
+	// zoom into the frame (not into a scaled video), the plane crops the source
+	int cropX, cropY, cropW, cropH;
+	ZoomCropRect(buf->Width(), buf->Height(), m_videoIsScaled ? 0 : m_pDevice->GetZoom(), &cropX, &cropY, &cropW, &cropH);
+
 	// now set the plane parameters
 	videoPlane->SetParams(m_pDrmDevice->CrtcId(), buf->Id(),
 		fittedRect.x, fittedRect.y, fittedRect.w, fittedRect.h,
-		0, 0, buf->Width(), buf->Height());
+		cropX, cropY, cropW, cropH);
 
 	buf->SetSizeOnScreen(fittedRect.x, fittedRect.y, fittedRect.w, fittedRect.h); // remember for grab
+	buf->SetCropRect(cropX, cropY, cropW, cropH);
 
 	return 0;
 }
