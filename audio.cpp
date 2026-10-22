@@ -1178,11 +1178,8 @@ bool cAudioStream::CyclicCall(void)
 
 	int err = m_alsa.WaitUntilReady();
 	if (err < 0) {
-		if (m_alsa.HandleError(err)) {
-			std::lock_guard<std::mutex> lock(m_queueMutex);
-			if (!m_pDevice->IsDraining())
-				m_eventQueue.push_back(BufferUnderrunEvent{AUDIO});
-		}
+		if (m_alsa.HandleError(err))
+			SignalUnderrun();
 		return false;
 	} else if (err == 0) {
 		return true;
@@ -1194,10 +1191,8 @@ bool cAudioStream::CyclicCall(void)
 	if (freeAlsaBufferFrames == -EAGAIN)
 		return true; // ?? is this correct?
 	else if (freeAlsaBufferFrames < 0) {
-		if (m_alsa.HandleError(freeAlsaBufferFrames)) {
-			std::lock_guard<std::mutex> lock(m_queueMutex);
-			m_eventQueue.push_back(BufferUnderrunEvent{AUDIO});
-		}
+		if (m_alsa.HandleError(freeAlsaBufferFrames))
+			SignalUnderrun();
 		return false;
 	}
 
@@ -1214,6 +1209,22 @@ bool cAudioStream::CyclicCall(void)
 	return SendAudio(freeAlsaBufferFrames);
 }
 
+
+/**
+ * Let the state machine buffer again after an underrun of the device
+ *
+ * The output ran empty, so audio and video have to be resynced. An underrun
+ * while the audio is paused (e.g. the pause bursts of the passthrough while
+ * buffering) or while the device is drained doesn't need this.
+ */
+void cAudioStream::SignalUnderrun(void)
+{
+	if (m_paused || m_pDevice->IsDraining())
+		return;
+
+	std::lock_guard<std::mutex> lock(m_queueMutex);
+	m_eventQueue.push_back(BufferUnderrunEvent{AUDIO});
+}
 
 /**
  * Write regular audio data from the ringbuffer to the hardware
@@ -1253,9 +1264,15 @@ bool cAudioStream::SendAudio(int freeAlsaBufferFrames)
 
 	int framesToWrite = m_alsa.BytesToFrames(bytesToWrite);
 	int framesWritten = m_alsa.Write(data, framesToWrite);
-	m_fillLevel.WroteFrames(framesWritten);
-	m_pRingbuffer.ReadAdvance(m_alsa.FramesToBytes(framesWritten));
-	AdvanceSpdifReadPhase(m_alsa.FramesToBytes(framesWritten));
+
+	// a failed write (e.g. an underrun) wrote nothing, the data stays in the ringbuffer
+	if (framesWritten > 0) {
+		m_fillLevel.WroteFrames(framesWritten);
+		m_pRingbuffer.ReadAdvance(m_alsa.FramesToBytes(framesWritten));
+		AdvanceSpdifReadPhase(m_alsa.FramesToBytes(framesWritten));
+	} else if (framesWritten == -EPIPE) {
+		SignalUnderrun();
+	}
 
 	return m_alsa.CheckWrittenFrames(framesWritten, framesToWrite);
 }

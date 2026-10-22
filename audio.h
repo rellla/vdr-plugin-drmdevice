@@ -157,6 +157,7 @@ private:
 
 	void Enqueue(const uint16_t *, int, int64_t);
 	void EnqueueFrame(AVFrame *);
+	void SignalUnderrun(void);
 	bool SendAudio(int);
 	bool SendPause(void);
 	void FillPause(uint8_t *, int);
