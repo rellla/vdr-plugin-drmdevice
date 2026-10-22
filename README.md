@@ -542,6 +542,12 @@ Playback can be started with svdrp or via the main menu. If the mediaplayer is c
 the main menu, you can either choose a previously created playlist, create a new playlist or
 simply play a single file.
 
+Playlists are m3u or m3u8 files, which list one file or url per line. Lines starting with '#'
+are ignored, relative paths are relative to the folder of the playlist. A HLS stream (a m3u8
+url or a local m3u8 file with HLS tags like `#EXT-X-...`) is played by FFmpeg instead. FFmpeg
+only loads the segments of the played audio and video variants. A HLS stream with a duration
+can be positioned, a live stream can't.
+
 In the file menu, the Blue key deletes the file or the folder with all its files under the
 cursor after a confirmation. Only files in VDR's video directory can be deleted. A symbolic
 link is deleted itself (not its target), and the files of a mounted file system in the folder

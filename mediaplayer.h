@@ -124,6 +124,7 @@ private:
 	void PlayFile(const char *);
 	bool OpenFile(const char *);
 	int AddTracks(AVFormatContext *);
+	void UpdateStreamDiscards(void);
 	void SwitchAudioTrack(void);
 	void SwitchSubtitleTrack(void);
 	void CloseSubtitleDecoder(void);
@@ -149,6 +150,7 @@ private:
 	std::atomic<cPlaylistEntry *> m_pCurrentEntry = nullptr; ///< currently played playlist entry (read by the menu)
 
 	char *m_pSource;                                    ///< played file or playlist
+	bool m_isPlaylist = false;                          ///< true, if the source is a m3u playlist (not a HLS stream)
 	int m_entries = 0;                                  ///< number of playlist entries
 	cOutputDevice *m_pDevice;                           ///< pointer to the device
 	std::atomic<bool> m_stopFile = false;               ///< true, if the current file shall be stopped
