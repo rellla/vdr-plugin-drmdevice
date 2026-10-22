@@ -20,11 +20,14 @@
 #include <string>
 
 extern "C" {
+#include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 }
 
 #include <vdr/player.h>
 #include <vdr/tools.h>
+
+#include "subtitle.h"
 
 class cOutputDevice;
 
@@ -89,6 +92,7 @@ public:
 	virtual bool GetFrameNumber(int &, int &);
 	virtual bool GetReplayMode(bool &, bool &, int &);
 	virtual void SetAudioTrack(eTrackType, const tTrackId *);
+	virtual void SetSubtitleTrack(eTrackType, const tTrackId *);
 
 	// playlist
 	void SetEntry(int);
@@ -121,6 +125,10 @@ private:
 	bool OpenFile(const char *);
 	int AddTracks(AVFormatContext *);
 	void SwitchAudioTrack(void);
+	void SwitchSubtitleTrack(void);
+	void CloseSubtitleDecoder(void);
+	void DecodeSubtitle(const AVPacket *);
+	void ProcessSubtitles(void);
 	void CloseFile(void);
 	void ReadPlaylist(const char *);
 
@@ -160,6 +168,10 @@ private:
 	static constexpr int NO_TRACK_REQUEST = -2;         ///< no track change was requested
 	std::atomic<int> m_requestedAudioIdx = NO_TRACK_REQUEST; ///< stream index of the audio track selected by the user
 	bool m_resyncAfterPause = false;                    ///< true, if the audio track changed in pause mode
+	int m_subtitleIdx = -1;                             ///< index of the shown subtitle stream (-1, if none)
+	std::atomic<int> m_requestedSubtitleIdx = NO_TRACK_REQUEST; ///< stream index of the subtitle track selected by VDR or the user (-1: off)
+	AVCodecContext *m_pSubtitleCtx = nullptr;           ///< decoder of the shown subtitle stream
+	cTextSubtitles m_subtitles;                         ///< shows the subtitles
 	int64_t m_startTime = 0;                            ///< start time of the file (AV_TIME_BASE units)
 	std::atomic<int64_t> m_durationMs = 0;              ///< duration of the file in ms (0, if unknown)
 	std::atomic<double> m_fps = DEFAULTFRAMESPERSECOND; ///< frame rate of the file
