@@ -63,8 +63,8 @@ public:
 	/** true, if the PCM device is set up */
 	bool IsRunning(void) { return ((m_pPCMHandle != nullptr) && m_hwSampleRate); }
 	bool IsPassthroughActive(void) { return m_passthroughActive; }   ///< true, if the current audio is passed through
-	void SetPassthroughMask(int mask) { m_passthroughMask = mask; }  ///< set the codecs, which are passed through
-	int GetPassthroughMask(void) const { return m_passthroughMask; } ///< get the codecs, which are passed through
+	void SetPassthroughMask(int mask) { m_passthroughMask = mask; }  ///< set the codecs, which are passed through (or CODEC_PASSTHROUGH_AUTO)
+	int GetPassthroughMask(void);
 	/** automatically append AES to the pass-through device */
 	void SetAutoAES(bool appendAes) { m_appendAES = appendAes; m_aesUnsupported = false; }
 	void SetDownmix(int downMix) { m_downmix = downMix; }            ///< downmix to stereo
@@ -95,7 +95,10 @@ private:
 	long m_mixerMax = 0;                      ///< maximum volume of the mixer element
 	bool m_appendAES;                         ///< flag to automatic append AES
 	bool m_aesUnsupported = false;            ///< true, if the device can't be opened with AES parameters
-	int m_passthroughMask;                    ///< passthrough mask
+	std::atomic<int> m_passthroughMask;       ///< passthrough mask
+	std::atomic<int> m_card = -1;             ///< sound card of the opened device (-1: unknown)
+	std::atomic<int> m_pcmDevice = -1;        ///< pcm device number of the opened device on the sound card
+	std::atomic<int> m_eldMask = -1;          ///< last passthrough mask of the ELD (-1: not read yet)
 	std::atomic<bool> m_passthroughActive = false; ///< set, if passthrough is active
 	unsigned int m_hwSampleRate = 0;          ///< hardware sample rate in Hz
 	unsigned int m_hwNumChannels = 0;         ///< number of hardware channels
@@ -109,6 +112,8 @@ private:
 	char *OpenDevice(const char *);
 	std::string BuildDeviceString(const char *, bool, int, int);
 	bool ReopenDevice(const std::string &);
+	void RememberCard(void);
+	int ReadEldPassthroughMask(void);
 	char *FindDevice(const char *, const char *);
 	bool InitDevice(void);
 	void InitMixer(void);

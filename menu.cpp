@@ -144,6 +144,12 @@ void cDeviceMenu::MainMenu(void)
 
 	Add(SeparatorSpace());
 
+	// audio
+	Add(SeparatorName("Audio"));
+	Add(m_pPassthroughItem = new cOsdItem(hk(m_pDevice->IsPassthroughOn() ? tr(" Switch passthrough off") : tr(" Switch passthrough on"))));
+
+	Add(SeparatorSpace());
+
 	// detach
 	Add(SeparatorName("Detach"));
 	Add(new cOsdItem(hk(tr(" Detach device")), osUser7));
@@ -177,7 +183,9 @@ enum Hotkeys {
 	ATTACHDEVICE,
 	ZOOMKEYBASE = 120,
 	ZOOMNEXT,
-	ZOOMOFF
+	ZOOMOFF,
+	AUDIOKEYBASE = 130,
+	PASSTHROUGHTOGGLE
 };
 
 /**
@@ -187,6 +195,15 @@ void cDeviceMenu::NextZoomLevel(void)
 {
 	m_pDevice->NextZoomLevel();
 	Skins.QueueMessage(mtInfo, m_pDevice->ZoomLevelString());
+}
+
+/**
+ * Switch the passthrough on or off and show it
+ */
+void cDeviceMenu::TogglePassthrough(void)
+{
+	m_pDevice->TogglePassthrough();
+	Skins.QueueMessage(mtInfo, m_pDevice->PassthroughString());
 }
 
 /**
@@ -230,6 +247,10 @@ void cDeviceMenu::HandleHotKey(int code) {
 			m_pDevice->SetZoomLevel(0);
 			Skins.QueueMessage(mtInfo, m_pDevice->ZoomLevelString());
 			break;
+		// audio
+		case PASSTHROUGHTOGGLE:
+			TogglePassthrough();
+			break;
 		default:
 			break;
 	}
@@ -268,6 +289,10 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 				m_hotkeyState = HotkeyState::Green;
 				return osContinue;
 			}
+			if (key == kYellow) {
+				m_hotkeyState = HotkeyState::Yellow;
+				return osContinue;
+			}
 			break;
 		case HotkeyState::Blue:              // pip
 			if (k0 <= key && key <= k9) {
@@ -296,6 +321,15 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 			}
 			m_hotkeyState = HotkeyState::Initial;
 			break;
+		case HotkeyState::Yellow:            // audio
+			if (k0 <= key && key <= k9) {
+				int hotkeyCode = static_cast<int>(AUDIOKEYBASE) + static_cast<int>(key) - static_cast<int>(k0);
+				m_hotkeyState = HotkeyState::Initial;
+				HandleHotKey(hotkeyCode);
+				return osEnd;
+			}
+			m_hotkeyState = HotkeyState::Initial;
+			break;
 	}
 
 	item = (cOsdItem *) Get(Current());
@@ -303,6 +337,12 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 	// zoom
 	if (key == kOk && m_shownMenu == ShownMenu::Main && item && item == m_pZoomItem) {
 		NextZoomLevel();
+		return osEnd;
+	}
+
+	// audio
+	if (key == kOk && m_shownMenu == ShownMenu::Main && item && item == m_pPassthroughItem) {
+		TogglePassthrough();
 		return osEnd;
 	}
 

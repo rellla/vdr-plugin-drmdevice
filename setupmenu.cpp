@@ -24,6 +24,17 @@
 #include "setupmenu.h"
 
 /**
+ * Passthrough modes of the setup menu
+ *
+ * @ingroup menu
+ */
+enum PassthroughMode {
+	PASSTHROUGH_OFF,       ///< decode all audio
+	PASSTHROUGH_MANUAL,    ///< pass the selected codecs through
+	PASSTHROUGH_AUTO       ///< pass the codecs through, which the sink reports in its ELD
+};
+
+/**
  * Create a seperator named item
  *
  * @param label       text inside separator
@@ -89,15 +100,16 @@ void cDeviceSetupMenu::Create(void)
 	if (m_cAudioMenu) {
 		Add(new cMenuEditBoolItem(tr(" Volume control"), &m_cAudioSoftvol, tr("hardware"), tr("software")));
 		Add(new cMenuEditBoolItem(tr(" Enable stereo downmix"), &m_cAudioDownmix, trVDR("no"), trVDR("yes")));
-		Add(new cMenuEditBoolItem(tr(" Enable passthrough"), &m_cAudioPassthroughDefault, trVDR("off"), trVDR("on")));
-		if (m_cAudioPassthroughDefault) {
+		Add(new cMenuEditStraItem(tr(" Passthrough"), &m_cAudioPassthroughMode, 3, m_passthroughModes));
+		if (m_cAudioPassthroughMode == PASSTHROUGH_MANUAL) {
 			Add(new cMenuEditBoolItem(tr("  AC-3 passthrough"), &m_cAudioPassthroughAC3, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  E-AC-3 passthrough"), &m_cAudioPassthroughEAC3, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  DTS passthrough"), &m_cAudioPassthroughDTS, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  DTS-HD passthrough"), &m_cAudioPassthroughDTSHD, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr("  TrueHD passthrough"), &m_cAudioPassthroughTrueHD, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  Disable automatic AES"), &m_cAudioDisableAutoAES, trVDR("no"), trVDR("yes")));
 		}
+		if (m_cAudioPassthroughMode != PASSTHROUGH_OFF)
+			Add(new cMenuEditBoolItem(tr("  Disable automatic AES"), &m_cAudioDisableAutoAES, trVDR("no"), trVDR("yes")));
 		Add(new cMenuEditIntItem(tr(" Audio/Video delay (ms)"), &m_cAudioDelay, -1000, 1000));
 		Add(new cMenuEditBoolItem(tr(" Enable normalize volume"), &m_cAudioNormalize, trVDR("no"), trVDR("yes")));
 		if (m_cAudioNormalize)
@@ -246,7 +258,7 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 	int old_cGeneralMenu = m_cGeneralMenu;
 	int old_cVideoMenu = m_cVideoMenu;
 	int old_cAudioMenu = m_cAudioMenu;
-	int old_cAudioPassthroughDefault = m_cAudioPassthroughDefault;
+	int old_cAudioPassthroughMode = m_cAudioPassthroughMode;
 	int old_cAudioNormalize = m_cAudioNormalize;
 	int old_cAudioCompression = m_cAudioCompression;
 	int old_cAudioFilterMenu = m_cAudioFilterMenu;
@@ -267,7 +279,7 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 		if (old_cGeneralMenu             != m_cGeneralMenu ||
 		    old_cVideoMenu               != m_cVideoMenu ||
 		    old_cAudioMenu               != m_cAudioMenu ||
-		    old_cAudioPassthroughDefault != m_cAudioPassthroughDefault ||
+		    old_cAudioPassthroughMode    != m_cAudioPassthroughMode ||
 		    old_cAudioNormalize          != m_cAudioNormalize ||
 		    old_cAudioCompression        != m_cAudioCompression ||
 		    old_cAudioFilterMenu         != m_cAudioFilterMenu ||
@@ -321,7 +333,11 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_cAudioMenu = 0;
 	m_cAudioSoftvol            = m_pConfig->ConfigAudioSoftvol;
 	m_cAudioDownmix            = m_pConfig->ConfigAudioDownmix;
-	m_cAudioPassthroughDefault = m_pConfig->ConfigAudioPassthroughState;
+	m_passthroughModes[PASSTHROUGH_OFF] = trVDR("off");
+	m_passthroughModes[PASSTHROUGH_MANUAL] = tr("manual");
+	m_passthroughModes[PASSTHROUGH_AUTO] = tr("automatic");
+	m_cAudioPassthroughMode    = !m_pConfig->ConfigAudioPassthroughState ? PASSTHROUGH_OFF :
+	                             m_pConfig->ConfigAudioPassthroughAuto ? PASSTHROUGH_AUTO : PASSTHROUGH_MANUAL;
 	m_cAudioPassthroughAC3     = m_pConfig->ConfigAudioPassthroughMask & CODEC_AC3;
 	m_cAudioPassthroughEAC3    = m_pConfig->ConfigAudioPassthroughMask & CODEC_EAC3;
 	m_cAudioPassthroughDTS     = m_pConfig->ConfigAudioPassthroughMask & CODEC_DTS;
@@ -500,12 +516,14 @@ void cDeviceSetupMenu::Store(void)
 	                                      | (m_cAudioPassthroughDTS ? CODEC_DTS : 0)
 	                                      | (m_cAudioPassthroughTrueHD ? CODEC_TRUEHD : 0)
 	                                      | (m_cAudioPassthroughDTSHD ? CODEC_DTSHD : 0);
-	m_pConfig->ConfigAudioPassthroughState = m_cAudioPassthroughDefault;
-	if (m_pConfig->ConfigAudioPassthroughState) {
-		SetupStore("AudioPassthrough", m_pConfig->ConfigAudioPassthroughMask);
-	} else {
-		SetupStore("AudioPassthrough", -m_pConfig->ConfigAudioPassthroughMask);
-	}
+	m_pConfig->ConfigAudioPassthroughState = m_cAudioPassthroughMode != PASSTHROUGH_OFF;
+	// switching the passthrough off keeps the automatic mode for the passthrough toggle
+	if (m_cAudioPassthroughMode != PASSTHROUGH_OFF)
+		m_pConfig->ConfigAudioPassthroughAuto = m_cAudioPassthroughMode == PASSTHROUGH_AUTO;
+	// the automatic mode is stored as an additional bit, the sign is the on/off state
+	int passthrough = m_pConfig->ConfigAudioPassthroughMask | (m_pConfig->ConfigAudioPassthroughAuto ? CODEC_PASSTHROUGH_AUTO : 0);
+	SetupStore("AudioPassthrough", m_pConfig->ConfigAudioPassthroughState ? passthrough : -passthrough);
+	m_pDevice->SetPassthroughOn(m_pConfig->ConfigAudioPassthroughState);
 	SetupStore("AudioDisableAutoAES", m_pConfig->ConfigAudioDisableAutoAES = m_cAudioDisableAutoAES);
 	SetupStore("AudioDelay", m_pConfig->ConfigVideoAudioDelayMs = m_cAudioDelay);
 	SetupStore("AudioNormalize", m_pConfig->ConfigAudioNormalize = m_cAudioNormalize);
@@ -619,7 +637,6 @@ void cDeviceSetupMenu::Store(void)
 		return;
 
 	m_pDevice->SetEnableHdr(m_pConfig->ConfigVideoEnableHDR);
-	m_pDevice->SetPassthroughMask(m_pConfig->ConfigAudioPassthroughState ? m_pConfig->ConfigAudioPassthroughMask : 0);
 
 	// the audio stream is recreated on an attach, so don't store its pointer in the menu
 	cAudioStream *audio = m_pDevice->Audio();

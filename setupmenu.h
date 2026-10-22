@@ -57,7 +57,7 @@ protected:
 	int m_cAudioMenu;
 	int m_cAudioSoftvol;
 	int m_cAudioDownmix;
-	int m_cAudioPassthroughDefault;
+	int m_cAudioPassthroughMode;
 	int m_cAudioPassthroughAC3;
 	int m_cAudioPassthroughEAC3;
 	int m_cAudioPassthroughDTS;
@@ -129,6 +129,7 @@ private:
 
 	std::vector<std::string> m_displayMode;            ///< texts of the display mode selection
 	std::vector<const char *> m_displayModePtrs;       ///< pointers to m_displayMode for cMenuEditStraItem
+	const char *m_passthroughModes[3];                 ///< texts of the passthrough mode selection
 	std::vector<std::string> m_channelSwitchMode;      ///< texts of the channel switch mode selection
 	std::vector<const char *> m_channelSwitchModePtrs; ///< pointers to m_channelSwitchMode for cMenuEditStraItem
 	static constexpr int FFMPEG_LOG_LEVELS = 4;        ///< number of the FFmpeg log levels

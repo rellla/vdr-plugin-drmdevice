@@ -15,7 +15,8 @@ Features
 - Software fallback for decoding and deinterlacing
 - Optional GPU accelerated OSD composing (OpenGL/ES)
 - Audio decoding with alsa (PCM)
-- Audio passthrough support (AC3, E-AC3, DTS)
+- Audio passthrough support (AC3, E-AC3, DTS, TrueHD, DTS-HD), optionally
+  with the formats reported by the HDMI sink
 - UHD support
 - HDR display support
 - Auto-switch display mode to video source (optional)
@@ -224,12 +225,24 @@ Setup: /etc/vdr/setup.conf
 		Use FFmpeg downmix of AC-3/EAC-3 audio to stereo.
 
 	drmdevice.AudioPassthrough = 0
-		0 = none, 4 = AC-3, 8 = EAC-3, 16 = DTS, 32 = TrueHD, 64 = DTS-HD
+		0 = none, 4 = AC-3, 8 = EAC-3, 16 = DTS, 32 = TrueHD, 64 = DTS-HD,
+		128 = automatic
 
 		For AC-3/EAC-3/DTS/TrueHD/DTS-HD the passthrough device is used and the
 		audio stream is passed undecoded to the output device.
 		Add the values above: e.g. 12 = AC-3 + EAC-3
 		negating the value disables passthrough but remembers the setting
+		automatic (128, "Passthrough: automatic" in the setup menu): the codecs
+		are taken from the ELD of the HDMI sink (TV or AV receiver), which
+		tells the formats the sink can decode. The other codec bits are
+		ignored. The ELD is read again with every codec change and channel
+		switch, so a receiver, which is switched on later, is recognized.
+		Without an ELD (e.g. no HDMI device or the sink is off), the audio is
+		decoded. If the ELD is wrong (e.g. an AV receiver behind a TV, which
+		only reports its own formats), use the manual selection.
+		The passthrough can be switched on and off in the plugin menu, with
+		the key macro "@drmdevice Yellow 1" or with SVDRP PASS. This isn't
+		stored, the setup value is the default at startup.
 		TrueHD and DTS-HD Master Audio need a device with 8 channels and 192kHz
 		(HDMI), DTS-HD High Resolution Audio needs 192kHz. DTS-HD is only
 		recognized by the mediaplayer, otherwise (and if the device doesn't
@@ -387,6 +400,9 @@ SVDRP Commands
 	PIPS         Switch main stream to pip stream and close the pip window.
 
 	PIPP         Swap pip position between normal and alternative.
+	PASS [on | off | toggle]
+		Switch the audio passthrough on or off (not stored).
+		Without an argument the passthrough state is returned.
 	ZOOM [next | 0-5]
 		Select the next zoom level (next) or the given zoom level (0 = off).
 		Without an argument the active zoom level is returned.
@@ -410,6 +426,7 @@ Currently supported:
 	@drmdevice Red 2       Attach device
 	@drmdevice Green 1     Next zoom level
 	@drmdevice Green 2     Zoom off
+	@drmdevice Yellow 1    Switch the audio passthrough on/off
 
 
 OpenGL/ES

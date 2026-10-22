@@ -97,6 +97,7 @@ bool cOutputDevice::Initialize(void)
 
 	m_pipUseAlt = m_pConfig->ConfigPipUseAlt;
 	m_channelSwitchMode = static_cast<ChannelSwitchMode>(m_pConfig->ConfigVideoChannelSwitchMode);
+	m_passthroughOn = m_pConfig->ConfigAudioPassthroughState;
 
 	m_initialized = true;
 
@@ -1336,13 +1337,53 @@ void cOutputDevice::SetScreenSize(int width, int height)
  ********************************************************************/
 
 /**
- * Set the passthrough mask (called from setup menu or conf)
+ * Get the passthrough setting for the audio stream
+ *
+ * @return     CODEC_* bit mask of the setup, CODEC_PASSTHROUGH_AUTO for the
+ *             automatic passthrough or 0, if the passthrough is switched off
  */
-void cOutputDevice::SetPassthroughMask(int mask)
+int cOutputDevice::GetPassthroughSetting(void)
 {
-	m_pAudio->SetPassthroughMask(mask);
+	if (!m_passthroughOn)
+		return 0;
+
+	return m_pConfig->ConfigAudioPassthroughAuto ? static_cast<int>(CODEC_PASSTHROUGH_AUTO) : m_pConfig->ConfigAudioPassthroughMask;
+}
+
+/**
+ * Switch the audio passthrough on or off
+ *
+ * Switched on, the passthrough mode of the setup (manual or automatic) is used.
+ * This is also used for the passthrough toggle, which isn't stored, so the setup
+ * value stays the default at startup.
+ *
+ * @param on           true to switch the passthrough on
+ */
+void cOutputDevice::SetPassthroughOn(bool on)
+{
+	m_passthroughOn = on;
+	LOGDEBUG("device: %s: passthrough %s", __FUNCTION__, on ? "on" : "off");
+
+	// in detached state the setting is applied with the attach
+	if (IsDetached())
+		return;
+
+	m_pAudio->SetPassthroughMask(GetPassthroughSetting());
 	if (m_pAudioDecoder)
-		m_pAudioDecoder->SetPassthroughMask(mask);
+		m_pAudioDecoder->UpdatePassthroughMask();
+}
+
+/**
+ * Describe the passthrough state for the user
+ *
+ * @return     e.g. "Passthrough: automatic" or "Passthrough: off"
+ */
+cString cOutputDevice::PassthroughString(void)
+{
+	if (!m_passthroughOn)
+		return tr("Passthrough: off");
+
+	return m_pConfig->ConfigAudioPassthroughAuto ? tr("Passthrough: automatic") : tr("Passthrough: manual");
 }
 
 /**
@@ -1978,6 +2019,7 @@ void cOutputDevice::LeaveState(State state)
 			break;
 		case DETACHED:
 			m_pAudio = new cAudioStream(this);
+			m_pAudio->SetPassthroughMask(GetPassthroughSetting());  // the passthrough may have been toggled
 			m_pRender = new cVideoRender(this);
 			m_pGrab = new cGrabber(m_pRender);
 			m_pVideoStream = new cMainVideoStream(m_pRender, m_pHardwareDevice->GetQuirks(), m_pRender->GetMainOutputBuffer(), m_pConfig, std::bind(&cVideoRender::PushMainFrame, m_pRender, std::placeholders::_1));

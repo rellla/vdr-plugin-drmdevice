@@ -348,6 +348,8 @@ static const char *SVDRPHelpText[] = {
 	"PIPP\n" "        Pip swap positions.\n",
 	"ZOOM [next | 0-5]\n" "    Select the next zoom level (next) or the given level (0 = off).\n"
 	"    Without an argument the active zoom level is returned.\n",
+	"PASS [on | off | toggle]\n" "    Switch the audio passthrough on or off (not stored).\n"
+	"    Without an argument the passthrough state is returned.\n",
 	NULL
 };
 
@@ -434,6 +436,24 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 		int zoom = m_pDevice->GetZoom();
 		return zoom ? cString::sprintf("Zoom level %d (+%d.%d%%)", m_pDevice->GetZoomLevel(), zoom / 10, zoom % 10)
 		            : cString("Zoom off");
+	}
+
+	// audio passthrough
+	if (!strcasecmp(command, "PASS")) {
+		LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
+		if (option && !strcasecmp(option, "on")) {
+			m_pDevice->SetPassthroughOn(true);
+		} else if (option && !strcasecmp(option, "off")) {
+			m_pDevice->SetPassthroughOn(false);
+		} else if (option && !strcasecmp(option, "toggle")) {
+			m_pDevice->TogglePassthrough();
+		} else if (option && *option) {
+			reply_code = 501;
+			return cString::sprintf("Invalid argument '%s'", option);
+		}
+		if (!m_pDevice->IsPassthroughOn())
+			return "Passthrough: off";
+		return m_pDevice->Config()->ConfigAudioPassthroughAuto ? "Passthrough: automatic" : "Passthrough: manual";
 	}
 
 	// pip
