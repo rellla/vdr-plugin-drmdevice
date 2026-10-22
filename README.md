@@ -22,7 +22,7 @@ Features
 - Auto-switch display mode to video source (optional)
 - Zoom levels to crop black bars of the broadcast
 - Picture-in-picture support (depending on hardware)
-- Integrated minimalistic media player
+- Integrated media player with audio track selection and text subtitles
 - Grabbing support - video, osd and pip - mpeg2, h264, hevc (8/10bit)
 - Detach/Attach support (release display, audio and GPU resources, but keep VDR running)
 - Many adjustable (expert) settings via setup menu
@@ -562,10 +562,17 @@ are used. In replay mode, you can control playback with the following keys:
 	Back:          Stop replay and open the file menu
 	Prev/Next:     Previous/ next file in playlist
 	Audio:         Select the audio track
+	Subtitles:     Select the subtitle track
 
 A file with several audio tracks starts with the track of the preferred audio language
 (and the Dolby track with "Use Dolby Digital") of VDR's setup, otherwise with the default
 track of the file. The Audio key opens VDR's track menu to select another track.
+
+Text subtitles of a file (e.g. SubRip, ASS/SSA or mov_text) are shown like VDR's subtitles:
+they are selected according to VDR's subtitle setup ("Display subtitles" and the subtitle
+languages) and with the Subtitles key, and they are drawn with the subtitle offset and
+transparencies of the setup. ASS styles and positions aren't used. Bitmap subtitles (e.g.
+DVB or PGS subtitles) aren't shown by the mediaplayer.
 
 The fast/slow modes and the positioning need a seekable file. The replay of a local file
 continues at the position, where it was stopped (backed up by 10s). The positions of the last
