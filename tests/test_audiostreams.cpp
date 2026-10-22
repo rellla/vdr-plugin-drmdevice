@@ -11,6 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cstring>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -618,4 +619,44 @@ TEST_CASE("Passthrough codecs of the ELD", "[spdif]") {
 		eld[4] = (3 << 5) | 17;
 		REQUIRE(GetPassthroughMaskFromEld(eld.data(), eld.size()) == 0);
 	}
+}
+
+TEST_CASE("DVD LPCM", "[audiostreams]") {
+	const AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_PCM_DVD);
+	if (!codec)
+		SKIP("FFmpeg has no pcm_dvd decoder");
+
+	AVCodecContext *ctx = avcodec_alloc_context3(codec);
+	REQUIRE(ctx);
+	ctx->pkt_timebase = { 1, 90000 };
+	REQUIRE(avcodec_open2(ctx, codec, nullptr) == 0);
+
+	// the packet starts with the LPCM header after the sub stream header:
+	// frame number, 16 bit / 48kHz / 2 channels, dynamic range
+	std::vector<uint8_t> data = { 0x00, 0x01, 0x80 };
+	for (int i = 0; i < 4; i++) {
+		uint16_t left = static_cast<uint16_t>(i * 1000);
+		uint16_t right = static_cast<uint16_t>(-i * 1000);
+		data.insert(data.end(), { uint8_t(left >> 8), uint8_t(left), uint8_t(right >> 8), uint8_t(right) });
+	}
+
+	AVPacket *pkt = av_packet_alloc();
+	REQUIRE(av_new_packet(pkt, data.size()) == 0);
+	memcpy(pkt->data, data.data(), data.size());
+	pkt->pts = 90000;
+	REQUIRE(avcodec_send_packet(ctx, pkt) == 0);
+
+	AVFrame *frame = av_frame_alloc();
+	REQUIRE(avcodec_receive_frame(ctx, frame) == 0);
+	REQUIRE(frame->sample_rate == 48000);
+	REQUIRE(frame->ch_layout.nb_channels == 2);
+	REQUIRE(frame->nb_samples == 4);
+	REQUIRE(frame->pts == 90000);
+	const int16_t *samples = reinterpret_cast<const int16_t *>(frame->data[0]);
+	REQUIRE(samples[2] == 1000);
+	REQUIRE(samples[3] == -1000);
+
+	av_frame_free(&frame);
+	av_packet_free(&pkt);
+	avcodec_free_context(&ctx);
 }
