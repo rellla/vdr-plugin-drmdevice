@@ -100,6 +100,11 @@ public:
 	void SetTimebase(AVRational timebase) { m_timebase = timebase; }           ///< set the timebase of the pts values
 	void SetDownmix(int downMix) { m_alsa.SetDownmix(downMix); }               ///< downmix to stereo
 	int GetPassthroughMask(void) { return m_alsa.GetPassthroughMask(); }       ///< get the codecs, which are passed through (read from the ELD in auto mode)
+	/** codecs of the last read ELD (-1: not read yet) */
+	int GetEldPassthroughMask(void) const { return m_alsa.GetEldPassthroughMask(); }
+	/** name of the used alsa device */
+	const std::string &GetDeviceName(void) const { return m_alsa.GetDeviceName(); }
+	cDeviceConfig *Config(void) { return m_pConfig; }                          ///< get the config
 
 	void DropSamplesOlderThanPtsMs(int64_t);
 	void ClockDriftCompensation(void);

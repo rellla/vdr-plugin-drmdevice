@@ -199,6 +199,42 @@ int cDeviceConfig::GetDecoderNeedsMaxPackets(void)
 }
 
 /**
+ * Set the properties of the played video stream (called by the decoding thread)
+ *
+ * @param info         properties of the video stream
+ */
+void cDeviceConfig::SetVideoStreamInfo(const sVideoStreamInfo &info)
+{
+	std::lock_guard<std::mutex> lock(m_streamInfoMutex);
+	m_videoStreamInfo = info;
+}
+
+/** Get a copy of the properties of the played video stream (for the statistics) */
+sVideoStreamInfo cDeviceConfig::GetVideoStreamInfo(void)
+{
+	std::lock_guard<std::mutex> lock(m_streamInfoMutex);
+	return m_videoStreamInfo;
+}
+
+/**
+ * Set the properties of the played audio stream (called by the decoding thread)
+ *
+ * @param info         properties of the audio stream
+ */
+void cDeviceConfig::SetAudioStreamInfo(const sAudioStreamInfo &info)
+{
+	std::lock_guard<std::mutex> lock(m_streamInfoMutex);
+	m_audioStreamInfo = info;
+}
+
+/** Get a copy of the properties of the played audio stream (for the statistics) */
+sAudioStreamInfo cDeviceConfig::GetAudioStreamInfo(void)
+{
+	std::lock_guard<std::mutex> lock(m_streamInfoMutex);
+	return m_audioStreamInfo;
+}
+
+/**
  * Return true, if the given mode is equal to the current display mode
  *
  * @param newMode      mode to compare
