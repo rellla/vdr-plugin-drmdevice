@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <mutex>
 
+#include "codec_audio.h"
 #include "config.h"
 #include "logger.h"
 
@@ -48,7 +49,8 @@ bool cDeviceConfig::SetupParse(const char *name, const char *value)
 	// Audio
 	} else if (!strcasecmp(name, "AudioSoftvol"))          { ConfigAudioSoftvol = atoi(value);
 	} else if (!strcasecmp(name, "AudioDownmix"))          { ConfigAudioDownmix = atoi(value);
-	} else if (!strcasecmp(name, "AudioPassthrough"))      { ConfigAudioPassthroughMask = abs(atoi(value));
+	} else if (!strcasecmp(name, "AudioPassthrough"))      { ConfigAudioPassthroughMask = abs(atoi(value)) & CODEC_PASSTHROUGH_ALL;
+	                                                         ConfigAudioPassthroughAuto = abs(atoi(value)) & CODEC_PASSTHROUGH_AUTO;
 	                                                         ConfigAudioPassthroughState = atoi(value) > 0;
 	} else if (!strcasecmp(name, "AudioDisableAutoAES"))   { ConfigAudioDisableAutoAES = atoi(value);
 	// replaced by AudioDisableAutoAES: the automatic AES is enabled by default now, the stored default (0) is ignored

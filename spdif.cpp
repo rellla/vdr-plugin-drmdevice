@@ -23,6 +23,7 @@ extern "C" {
 #include <libavutil/mem.h>
 }
 
+#include "codec_audio.h"
 #include "logger.h"
 #include "misc.h"
 #include "spdif.h"
@@ -211,6 +212,67 @@ void FillPauseBursts(uint8_t *buffer, int size, const std::vector<uint16_t> &pau
 		size -= bytes;
 		phase = 0;
 	}
+}
+
+/**
+ * Get the codecs, which can be passed through, from the ELD of an HDMI sink
+ *
+ * The HDMI driver provides the ELD (EDID-like data) of the connected sink. It
+ * contains the short audio descriptors (SADs) of the sink's EDID, which list
+ * the audio formats, the sink (TV or AV receiver) can decode.
+ *
+ * @param eld       ELD data (version 2)
+ * @param size      size of the ELD data in bytes
+ * @return          CODEC_* bit mask of the codecs, which the sink can decode
+ *                  (0, if the ELD is empty or invalid)
+ */
+int GetPassthroughMaskFromEld(const uint8_t *eld, int size)
+{
+	// header: version (byte 0), length of the baseline block in 4 byte units (byte 2)
+	// baseline block: monitor name length (byte 4), number of SADs (byte 5),
+	// monitor name (from byte 20), SADs with 3 bytes each (after the monitor name)
+	static constexpr int ELD_VERSION = 2;
+	static constexpr int ELD_HEADER_SIZE = 4;
+	static constexpr int ELD_MONITOR_NAME_OFFSET = 20;
+	static constexpr int ELD_MAX_MONITOR_NAME_LENGTH = 16;
+	static constexpr int SAD_SIZE = 3;
+
+	if (!eld || size < ELD_MONITOR_NAME_OFFSET || (eld[0] >> 3) != ELD_VERSION)
+		return 0;
+
+	int eldSize = std::min(size, ELD_HEADER_SIZE + eld[2] * 4);
+	int monitorNameLength = eld[4] & 0x1F;
+	int sadCount = eld[5] >> 4;
+	int sadOffset = ELD_MONITOR_NAME_OFFSET + monitorNameLength;
+
+	if (monitorNameLength > ELD_MAX_MONITOR_NAME_LENGTH || sadOffset + sadCount * SAD_SIZE > eldSize)
+		return 0;
+
+	int mask = 0;
+	for (int i = 0; i < sadCount; i++) {
+		// audio format code of CTA-861
+		switch ((eld[sadOffset + i * SAD_SIZE] >> 3) & 0x0F) {
+			case 2:                 // AC-3
+				mask |= CODEC_AC3;
+				break;
+			case 7:                 // DTS
+				mask |= CODEC_DTS;
+				break;
+			case 10:                // Enhanced AC-3
+				mask |= CODEC_EAC3;
+				break;
+			case 11:                // DTS-HD (decodes the DTS core, too)
+				mask |= CODEC_DTS | CODEC_DTSHD;
+				break;
+			case 12:                // MAT (Dolby TrueHD)
+				mask |= CODEC_TRUEHD;
+				break;
+			default:
+				break;
+		}
+	}
+
+	return mask;
 }
 
 /*****************************************************************************

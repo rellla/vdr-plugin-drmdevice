@@ -36,6 +36,7 @@ bool IsDtsHdProfile(int);
 int GetIEC958SampleRateCode(int, int, bool);
 std::vector<uint16_t> BuildPauseBurst(int);
 void FillPauseBursts(uint8_t *, int, const std::vector<uint16_t> &, int);
+int GetPassthroughMaskFromEld(const uint8_t *, int);
 
 /**
  * IEC 61937 Bitstream Muxer

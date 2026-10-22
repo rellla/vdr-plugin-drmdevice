@@ -33,7 +33,8 @@ typedef enum {
 	Initial,       ///< no hotkey prefix pressed
 	Blue,          ///< blue was pressed, a number selects a pip function
 	Red,           ///< red was pressed, a number selects a detach/attach function
-	Green          ///< green was pressed, a number selects a zoom function
+	Green,         ///< green was pressed, a number selects a zoom function
+	Yellow         ///< yellow was pressed, a number selects an audio function
 } HotkeyState;
 
 /**
@@ -51,7 +52,7 @@ enum class ShownMenu {
 /**
  * Plugin Main Menu
  *
- * Main menu with the pip, zoom, detach and mediaplayer functions, and the
+ * Main menu with the pip, zoom, audio, detach and mediaplayer functions, and the
  * mediaplayer's file and playlist menus.
  *
  * @ingroup menu
@@ -73,7 +74,9 @@ private:
 	HotkeyState m_hotkeyState = HotkeyState::Initial;   ///< current hotkey state
 	void HandleHotKey(int);
 	cOsdItem *m_pZoomItem = nullptr;                    ///< main menu item, which selects the next zoom level
+	cOsdItem *m_pPassthroughItem = nullptr;             ///< main menu item, which toggles the passthrough
 	void NextZoomLevel(void);
+	void TogglePassthrough(void);
 
 	// mediaplayer
 	void PlayListMenu(void);
