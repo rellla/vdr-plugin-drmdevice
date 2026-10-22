@@ -188,7 +188,10 @@ public:
 	// Audio
 	int GetVideoAudioDelayMs(void) { return m_pConfig->ConfigVideoAudioDelayMs; }             ///< get the configured video/audio delay
 	int GetMinBufferFillLevelThresholdMs(void) { return MIN_BUFFER_FILL_LEVEL_THRESHOLD_MS; } ///< get the minimum buffer fill level to start playback
-	void SetPassthroughMask(int);
+	void SetPassthroughOn(bool);
+	bool IsPassthroughOn(void) const { return m_passthroughOn; }                              ///< true, if the passthrough is switched on
+	void TogglePassthrough(void) { SetPassthroughOn(!m_passthroughOn); }                      ///< switch the passthrough on or off (not stored)
+	cString PassthroughString(void);
 	void ResetChannelId(void);
 
 	// Logging, statistics
@@ -283,6 +286,7 @@ private:
 	std::atomic<ChannelSwitchMode> m_channelSwitchMode = CHANNEL_SWITCH_AVSYNC;
 	bool m_logPlaybackStart = true;                 ///< log the duration until the playback started
 	std::atomic<int> m_zoomLevel = 0;               ///< active zoom level (0 = off, reset with every new content)
+	std::atomic<bool> m_passthroughOn = false;      ///< passthrough is switched on (setup or toggle)
 
 	std::atomic<PlaybackMode> m_playbackMode = NONE; ///< current playback mode
 	int m_audioChannelID = -1;       ///< current audio channel ID
@@ -316,6 +320,7 @@ private:
 	int64_t GetFirstAudioPtsMsToPlay();
 	int64_t GetFirstVideoPtsMsToPlay();
 	int GetBufferFillLevelThresholdMs();
+	int GetPassthroughSetting(void);
 	void SetDrain(bool);
 };
 

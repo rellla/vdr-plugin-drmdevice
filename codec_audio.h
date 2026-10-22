@@ -49,6 +49,8 @@ enum PassthroughMask {
 	CODEC_DTSHD  = (1 << 6), ///< DTS-HD bit mask
 	/** all codecs, which can be passed through */
 	CODEC_PASSTHROUGH_ALL = CODEC_AC3 | CODEC_EAC3 | CODEC_DTS | CODEC_TRUEHD | CODEC_DTSHD,
+	/** pass the codecs through, which the sink reports in its ELD (instead of the codec bits) */
+	CODEC_PASSTHROUGH_AUTO = (1 << 7),
 };
 
 /**
@@ -72,7 +74,7 @@ public:
 	void Close(void);
 	void Decode(const AVPacket *);
 	void FlushBuffers(void);
-	void SetPassthroughMask(int);
+	void UpdatePassthroughMask(void);
 	void RetryPassthrough(void);
 	AVCodecID GetCodecId() const { return m_codecId; }  ///< get the current codec id
 
@@ -82,7 +84,7 @@ private:
 	AVCodecID m_codecId = AV_CODEC_ID_NONE;     ///< current codec id
 	AVFrame *m_pFrame;                          ///< decoded ffmpeg audio frame
 	int64_t m_lastPts = AV_NOPTS_VALUE;         ///< last seen PTS
-	int m_passthroughMask;                      ///< passthrough mask to be set
+	std::atomic<int> m_passthroughMask;         ///< codecs, which are passed through
 	int m_currentPassthroughMask = 0;           ///< current passthrough mask
 	int m_currentSampleRate = 0;                ///< current sample rate
 	int m_currentNumChannels = 0;               ///< current number of channels

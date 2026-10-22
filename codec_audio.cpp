@@ -94,6 +94,9 @@ void cAudioDecoder::Open(AVCodecID codecId, AVCodecParameters *par, AVRational t
 
 	m_codecId = codecId;
 
+	// the sink may have been switched on or off meanwhile (automatic passthrough)
+	m_passthroughMask = m_pAudio->GetPassthroughMask() & CODEC_PASSTHROUGH_ALL;
+
 	switch (codecId) {
 	case AV_CODEC_ID_AC3:
 		if (!(codec = avcodec_find_decoder_by_name("ac3_fixed")))
@@ -372,6 +375,7 @@ void cAudioDecoder::FlushBuffers(void)
  *
  * If the passthrough of a codec failed (e.g. the receiver was off), the codec is
  * decoded until the next codec change. This allows a new try with the next packet.
+ * With the automatic passthrough, the codecs of the sink are read again.
  */
 void cAudioDecoder::RetryPassthrough(void)
 {
@@ -380,18 +384,20 @@ void cAudioDecoder::RetryPassthrough(void)
 	if (m_passthroughFailed || m_dtshdFailed)
 		LOGDEBUG2(L_SOUND, "audiocodec: %s: try the passthrough again", __FUNCTION__);
 
+	m_passthroughMask = m_pAudio->GetPassthroughMask() & CODEC_PASSTHROUGH_ALL;
+
 	m_passthroughFailed = false;
 	m_dtshdFailed = false;
 }
 
 /**
- * Set audio pass-through mask
+ * Update the codecs, which are passed through, from the audio stream
  *
- * @param mask         codec mask to enable (AC-3, E-AC-3, DTS, TrueHD, DTS-HD)
+ * Called after the passthrough setting of the audio stream was changed.
  */
-void cAudioDecoder::SetPassthroughMask(int mask)
+void cAudioDecoder::UpdatePassthroughMask(void)
 {
-	m_passthroughMask = mask & CODEC_PASSTHROUGH_ALL;
+	m_passthroughMask = m_pAudio->GetPassthroughMask() & CODEC_PASSTHROUGH_ALL;
 	m_passthroughFailed = false; // try again with the new settings
 	m_dtshdFailed = false;
 }

@@ -23,6 +23,15 @@ msgstr "Zoom aus"
 msgid "Zoom %d (+%d.%d%%)"
 msgstr "Zoom %d (+%d.%d%%)"
 
+msgid "Passthrough: off"
+msgstr "Passthrough: aus"
+
+msgid "Passthrough: automatic"
+msgstr "Passthrough: automatisch"
+
+msgid "Passthrough: manual"
+msgstr "Passthrough: manuell"
+
 #. TRANSLATORS: note the trailing blank!
 msgid "Jump: "
 msgstr "Springen: "
@@ -56,6 +65,12 @@ msgstr " Vorhandene Playliste auswählen"
 
 msgid " Next zoom level"
 msgstr " Nächste Zoomstufe"
+
+msgid " Switch passthrough off"
+msgstr " Passthrough ausschalten"
+
+msgid " Switch passthrough on"
+msgstr " Passthrough einschalten"
 
 msgid "New Playlist"
 msgstr "Neue Playliste erstellen"
@@ -115,8 +130,8 @@ msgstr ""
 msgid " Enable stereo downmix"
 msgstr " Audio auf Stereo herunterrechnen"
 
-msgid " Enable passthrough"
-msgstr " Aktiviere Passthrough"
+msgid " Passthrough"
+msgstr " Passthrough"
 
 msgid "  AC-3 passthrough"
 msgstr "  Aktiviere AC-3 Passthrough"
@@ -364,6 +379,12 @@ msgstr " Verschiedene Einstellungen"
 
 msgid " Show channel switch duration"
 msgstr " Zeige Kanalwechseldauer"
+
+msgid "manual"
+msgstr "manuell"
+
+msgid "automatic"
+msgstr "automatisch"
 
 #, c-format
 msgid "default %dx%d@%.2f%s"

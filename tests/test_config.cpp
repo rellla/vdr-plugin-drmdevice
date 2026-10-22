@@ -44,6 +44,30 @@ TEST_CASE("cDeviceConfig - Audio passthrough", "[config]") {
 	}
 }
 
+TEST_CASE("cDeviceConfig - Automatic passthrough", "[config]") {
+	cDeviceConfig config;
+	const int mask = CODEC_AC3 | CODEC_DTS;
+
+	SECTION("The automatic mode is an additional bit") {
+		REQUIRE(config.SetupParse("AudioPassthrough", std::to_string(mask | CODEC_PASSTHROUGH_AUTO).c_str()));
+		REQUIRE(config.ConfigAudioPassthroughMask == mask);
+		REQUIRE(config.ConfigAudioPassthroughAuto);
+		REQUIRE(config.ConfigAudioPassthroughState);
+	}
+
+	SECTION("The automatic mode is kept, if the passthrough is off") {
+		REQUIRE(config.SetupParse("AudioPassthrough", std::to_string(-CODEC_PASSTHROUGH_AUTO).c_str()));
+		REQUIRE(config.ConfigAudioPassthroughMask == 0);
+		REQUIRE(config.ConfigAudioPassthroughAuto);
+		REQUIRE_FALSE(config.ConfigAudioPassthroughState);
+	}
+
+	SECTION("Without the bit the passthrough is manual") {
+		REQUIRE(config.SetupParse("AudioPassthrough", std::to_string(mask).c_str()));
+		REQUIRE_FALSE(config.ConfigAudioPassthroughAuto);
+	}
+}
+
 TEST_CASE("cDeviceConfig - Passthrough of all codecs", "[config]") {
 	cDeviceConfig config;
 	const int mask = CODEC_AC3 | CODEC_EAC3 | CODEC_DTS | CODEC_TRUEHD | CODEC_DTSHD;

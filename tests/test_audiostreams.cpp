@@ -10,6 +10,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -23,6 +24,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 }
 
+#include "../codec_audio.h"
 #include "../pes.h"
 #include "../spdif.h"
 
@@ -545,4 +547,75 @@ TEST_CASE("Pause bursts", "[spdif]") {
         for (uint8_t byte : buffer)
             REQUIRE(byte == 0);
     }
+}
+
+/**
+ * Build an ELD (version 2) with the given monitor name and short audio descriptors
+ */
+static std::vector<uint8_t> BuildEld(const std::string &monitorName, const std::vector<std::array<uint8_t, 3>> &sads)
+{
+	std::vector<uint8_t> eld(20, 0);
+	eld[0] = 2 << 3;                                     // ELD version 2
+	eld[4] = (3 << 5) | monitorName.size();              // CEA-861-D, monitor name length
+	eld[5] = sads.size() << 4;                           // number of SADs
+	eld.insert(eld.end(), monitorName.begin(), monitorName.end());
+	for (const auto &sad : sads)
+		eld.insert(eld.end(), sad.begin(), sad.end());
+	while (eld.size() % 4)
+		eld.push_back(0);
+	eld[2] = (eld.size() - 4) / 4;                       // baseline block length
+	return eld;
+}
+
+TEST_CASE("Passthrough codecs of the ELD", "[spdif]") {
+	// SAD byte 0: audio format code << 3 | (channels - 1)
+	const std::array<uint8_t, 3> lpcm = { (1 << 3) | 7, 0x7F, 0x07 };
+	const std::array<uint8_t, 3> ac3 = { (2 << 3) | 5, 0x07, 0x50 };
+	const std::array<uint8_t, 3> dts = { (7 << 3) | 5, 0x06, 0xC0 };
+	const std::array<uint8_t, 3> eac3 = { (10 << 3) | 7, 0x07, 0x01 };
+	const std::array<uint8_t, 3> dtshd = { (11 << 3) | 7, 0x7E, 0x03 };
+	const std::array<uint8_t, 3> mat = { (12 << 3) | 7, 0x54, 0x01 };
+
+	SECTION("a TV with AC-3 and E-AC-3") {
+		std::vector<uint8_t> eld = BuildEld("TV", { lpcm, ac3, eac3 });
+		REQUIRE(GetPassthroughMaskFromEld(eld.data(), eld.size()) == (CODEC_AC3 | CODEC_EAC3));
+	}
+
+	SECTION("an AV receiver with all formats") {
+		std::vector<uint8_t> eld = BuildEld("AV RECEIVER", { lpcm, ac3, dts, eac3, dtshd, mat });
+		REQUIRE(GetPassthroughMaskFromEld(eld.data(), eld.size()) == CODEC_PASSTHROUGH_ALL);
+	}
+
+	SECTION("DTS-HD includes the DTS core") {
+		std::vector<uint8_t> eld = BuildEld("AVR", { dtshd });
+		REQUIRE(GetPassthroughMaskFromEld(eld.data(), eld.size()) == (CODEC_DTS | CODEC_DTSHD));
+	}
+
+	SECTION("only PCM") {
+		std::vector<uint8_t> eld = BuildEld("MONITOR", { lpcm });
+		REQUIRE(GetPassthroughMaskFromEld(eld.data(), eld.size()) == 0);
+	}
+
+	SECTION("an empty ELD (no sink connected)") {
+		std::vector<uint8_t> eld(128, 0);
+		REQUIRE(GetPassthroughMaskFromEld(eld.data(), eld.size()) == 0);
+		REQUIRE(GetPassthroughMaskFromEld(nullptr, 0) == 0);
+	}
+
+	SECTION("a truncated ELD is ignored") {
+		std::vector<uint8_t> eld = BuildEld("TV", { ac3, eac3 });
+		REQUIRE(GetPassthroughMaskFromEld(eld.data(), eld.size() - 4) == 0);
+		// the baseline length limits the SADs
+		eld[2] = 4;
+		REQUIRE(GetPassthroughMaskFromEld(eld.data(), eld.size()) == 0);
+	}
+
+	SECTION("a wrong version or monitor name length is ignored") {
+		std::vector<uint8_t> eld = BuildEld("TV", { ac3 });
+		eld[0] = 1 << 3;
+		REQUIRE(GetPassthroughMaskFromEld(eld.data(), eld.size()) == 0);
+		eld[0] = 2 << 3;
+		eld[4] = (3 << 5) | 17;
+		REQUIRE(GetPassthroughMaskFromEld(eld.data(), eld.size()) == 0);
+	}
 }

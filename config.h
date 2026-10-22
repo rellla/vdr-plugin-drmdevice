@@ -86,6 +86,7 @@ public:
 	bool ConfigAudioDownmix = false;            ///< config ffmpeg audio downmix
 	int ConfigAudioPassthroughMask = 0;         ///< config audio pass-through mask
 	bool ConfigAudioPassthroughState = false;   ///< flag audio-passthrough on/off
+	bool ConfigAudioPassthroughAuto = false;    ///< pass the codecs through, which the sink reports in its ELD
 	int ConfigAudioDisableAutoAES = 0;          ///< don't append the AES parameters to the passthrough device
 	int ConfigVideoAudioDelayMs = 0;            ///< config audio delay
 	bool ConfigAudioNormalize = false;          ///< config use normalize volume
