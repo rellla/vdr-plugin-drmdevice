@@ -1854,3 +1854,20 @@ TEST_CASE("cReassemblyBufferAudio - ADTS frame length smaller than the header", 
         REQUIRE(buffer.GetSize() <= 6); // only the last bytes, which could contain a partial sync word, are kept
     }
 }
+
+TEST_CASE("DVD audio sub streams", "[pes]") {
+	// AC-3, DTS and LPCM sub stream ids of a DVD
+	REQUIRE(IsDvdAudioSubStream(0x80));
+	REQUIRE(IsDvdAudioSubStream(0x87));
+	REQUIRE(IsDvdAudioSubStream(0x88));
+	REQUIRE(IsDvdAudioSubStream(0xA0));
+	REQUIRE(IsDvdLpcmSubStream(0xA0));
+	REQUIRE(IsDvdLpcmSubStream(0xA7));
+	REQUIRE_FALSE(IsDvdLpcmSubStream(0x80));
+
+	// stream ids of live TV and recordings
+	REQUIRE_FALSE(IsDvdAudioSubStream(0xBD));
+	REQUIRE_FALSE(IsDvdAudioSubStream(0xC0));
+	REQUIRE_FALSE(IsDvdAudioSubStream(0x00));
+	REQUIRE_FALSE(IsDvdLpcmSubStream(0xBD));
+}

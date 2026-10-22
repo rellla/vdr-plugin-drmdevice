@@ -25,6 +25,7 @@ Features
 - Integrated media player with audio track selection and text subtitles
 - Grabbing support - video, osd and pip - mpeg2, h264, hevc (8/10bit)
 - Detach/Attach support (release display, audio and GPU resources, but keep VDR running)
+- Output for the dvd plugin (incl. LPCM audio)
 - Many adjustable (expert) settings via setup menu
 
 
@@ -588,6 +589,15 @@ DVB or PGS subtitles) aren't shown by the mediaplayer.
 The fast/slow modes and the positioning need a seekable file. The replay of a local file
 continues at the position, where it was stopped (backed up by 10s). The positions of the last
 100 files are stored in the file "resume" in the plugin's cache directory.
+
+
+DVD plugin
+----------
+The [dvd plugin](https://github.com/vdr-projects/vdr-plugin-dvd) plays through this device.
+The DVD audio (AC-3, DTS, LPCM and MPEG audio) is played like the audio of a recording,
+AC-3 and DTS can be passed through. The sub stream header of the DVD audio is removed, the
+LPCM audio is decoded by FFmpeg's pcm_dvd decoder. The subpictures (subtitles and menu
+buttons) are drawn by VDR's SPU decoder on the OSD, the menus are shown as still pictures.
 
 
 Hints for Raspberry Pi 4/5
