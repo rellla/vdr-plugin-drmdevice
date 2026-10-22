@@ -1,0 +1,75 @@
+VDR Plugin 'drmdevice' Revision History
+---------------------------------------
+
+drmdevice is the continuation of softhddevice-drm-gles. For the changes up to
+softhddevice-drm-gles 1.7.3 see the git history of
+https://github.com/rellla/vdr-plugin-softhddevice-drm-gles
+
+2026-10-12: Version 2.0.0
+
+- Renamed the plugin from softhddevice-drm-gles to drmdevice. The functionality
+  is identical to softhddevice-drm-gles 1.7.3.
+- The plugin is now loaded with -P drmdevice, the setup.conf entries are named
+  drmdevice.*, the SVDRP commands are sent with PLUG drmdevice and the key
+  macros use @drmdevice. Existing configurations have to be adapted.
+- Renamed the source files and classes (e.g. softhddevice.cpp -> device.cpp).
+
+2026-10-20: Version 2.0.1
+
+- Started the playback nearly at the end of the a/v-sync corridor and increased
+  the size of the drm queue (fixes frame drops with some HD live streams on the
+  Raspberry Pi 4).
+- Fixed the detection of video buffer underruns (underruns on 576i channels).
+- Fixed crashes with corrupted streams (e.g. bad reception) in the PES
+  reassembly and in the H.264 parser (endless loop, wrong height, RBSP length).
+- Fixed crashes in detached state, e.g. at VDR shutdown, if VDR was started
+  detached (-D) or detached via SVDRP or the plugin menu.
+- Fixed deadlocks, if the pip stream is torn down on a detach.
+- Fixed crashes, memory and resource leaks in the menu, the mediaplayer, the
+  video stream, the audio filter graph, the drm device, the OpenGL/ES OSD and
+  the device tree parsing.
+- Fixed buffer overflows in the software render paths.
+- Fixed the pixel format fallback and the extradata handling of the video
+  decoder.
+- Fixed the hardware mixer volume for mixer elements with a large volume range
+  and the soft volume on partial writes.
+- Skip the audio channel mapping, if ALSA reports unknown channel positions.
+- Fixed the command line and SVDRP handling: -w is also accepted without
+  OpenGL/ES support, -x is listed in the help text, the SVDRP help lists PIPP
+  and PLAY needs an url and an attached plugin.
+- Fixed the default minimum mastering luminance of the HDR metadata
+  (0.005 cd/m^2 instead of 0.004 cd/m^2).
+- Only the main stream changes the display mode, the pip stream doesn't anymore.
+- Don't lose video packets, if the packet queue is full (end of a recording,
+  still pictures).
+- Send IEC 61937 pause bursts instead of NULL data bursts while paused in
+  passthrough mode.
+- FFmpeg messages are filtered by their log level now. Added the setup option
+  "FFmpeg log level" (LogFFmpegLevel) to raise the level of the FFmpeg debug
+  logs to verbose, debug or trace.
+- Fixed the build against VDR 2.4 and link all used FFmpeg libraries
+  explicitly.
+- Fixed many compiler and cppcheck warnings, removed unused code.
+- Added unit tests and regression tests for the fixed bugs, the CI builds with
+  gcc and clang against several VDR versions and runs the tests.
+
+2026-10-20: Version 2.0.2
+
+- Fixed the detection of AC-3 streams with bsid 10, which were treated as
+  E-AC-3.
+- Reopen the audio decoder, if the audio codec changes within the same PES
+  stream id (e.g. a switch between an AC-3 and an E-AC-3 track).
+- Always drop the ALSA PCM before changing the hw params (silent audio after a
+  change from E-AC-3 to AC-3 in passthrough mode).
+- Require the exact sample rate and channel count for the passthrough and
+  decode the audio, if the device doesn't offer them (e.g. E-AC-3 needs
+  192kHz).
+- With the "auto append AES" option, the IEC 958 channel status is set
+  according to the current format (non-audio flag and sample rate) instead of
+  once at startup.
+
+2026-10-20: Version 2.0.3
+
+- Fixed the doxygen configuration and all doxygen warnings, complemented the
+  source documentation. The CI fails on new doxygen warnings.
+- The source documentation is always rebuilt with make srcdoc.
