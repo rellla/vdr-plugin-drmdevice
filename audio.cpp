@@ -1206,7 +1206,46 @@ bool cAudioStream::CyclicCall(void)
 		return SendPause();
 	}
 
+	if (m_alsa.IsPassthroughActive() && m_spdifBurstSize > 0 && !m_pRingbuffer.UsedBytes())
+		return BridgeBitstreamGap(freeAlsaBufferFrames);
+
 	return SendAudio(freeAlsaBufferFrames);
+}
+
+/**
+ * Bridge a gap of the bitstream with pause bursts
+ *
+ * The bitstream ran dry during the playback (e.g. the audio packets came late).
+ * An underrun of the device would let the receiver lose the lock to the bitstream
+ * and it would need some time to lock again. So a pause burst is sent, before
+ * the device runs empty: the receiver stays locked and only the missing audio is
+ * silent.
+ *
+ * The buffered audio doesn't reach the playback start anymore, so the state
+ * machine buffers again and resyncs audio and video, like after an underrun in
+ * PCM mode. Meanwhile the paused audio sends pause bursts.
+ *
+ * @param freeAlsaBufferFrames     number of frames that can be written to the hardware
+ *
+ * @retval true      a pause burst was written
+ * @retval false     the device still has enough data or the burst couldn't be written
+ */
+bool cAudioStream::BridgeBitstreamGap(int freeAlsaBufferFrames)
+{
+	int burstFrames = m_alsa.BytesToFrames(m_spdifBurstSize);
+	int queuedFrames = m_alsa.GetBufferSizeFrames() - freeAlsaBufferFrames;
+
+	// wait, until the device has at most one burst left and there is space for a full burst
+	if (queuedFrames > burstFrames || freeAlsaBufferFrames < burstFrames)
+		return false;
+
+	if (!m_bitstreamGap) {
+		m_bitstreamGap = true;
+		LOGDEBUG2(L_SOUND, "audio: %s: the bitstream ran dry, send pause bursts", __FUNCTION__);
+		SignalUnderrun();
+	}
+
+	return SendPause();
 }
 
 
@@ -1267,6 +1306,7 @@ bool cAudioStream::SendAudio(int freeAlsaBufferFrames)
 
 	// a failed write (e.g. an underrun) wrote nothing, the data stays in the ringbuffer
 	if (framesWritten > 0) {
+		m_bitstreamGap = false;
 		m_fillLevel.WroteFrames(framesWritten);
 		m_pRingbuffer.ReadAdvance(m_alsa.FramesToBytes(framesWritten));
 		AdvanceSpdifReadPhase(m_alsa.FramesToBytes(framesWritten));

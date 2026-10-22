@@ -146,6 +146,7 @@ private:
 
 	int64_t m_inputPts = AV_NOPTS_VALUE;    ///< pts clock (last pts in ringbuffer)
 	std::atomic<bool> m_paused = true;      ///< audio is paused
+	bool m_bitstreamGap = false;            ///< true, if a gap of the bitstream is bridged with pause bursts
 	std::atomic<int64_t> m_trickSpeedPts = AV_NOPTS_VALUE; ///< pts of the last received (undecoded) packet during audio-only trickspeed
 	std::atomic<double> m_trickspeedFactor = 0;   ///< current trickspeed factor for AdvanceTrickSpeedPts()
 	std::atomic<bool> m_trickspeed = false;       ///< true, if trickspeed is active
@@ -164,6 +165,7 @@ private:
 	void SignalUnderrun(void);
 	bool SendAudio(int);
 	bool SendPause(void);
+	bool BridgeBitstreamGap(int);
 	void FillPause(uint8_t *, int);
 	void AdvanceSpdifReadPhase(int);
 	void RebuildPauseBurst(int);
