@@ -232,7 +232,7 @@ Setup: /etc/vdr/setup.conf
 		+n or -n ms
 		delay audio or delay video
 
-	drmdeviceize = 0
+	drmdevice.AudioNormalize = 0
 		0 = off, 1 = enable audio normalize
 
 	drmdevice.AudioMaxNormalize = 0
