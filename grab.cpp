@@ -49,6 +49,7 @@
 
 extern "C" {
 #include <libavutil/imgutils.h>
+#include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
 }
 
@@ -508,6 +509,7 @@ void cGrabBuffer::Set(cDrmBuffer *src)
 	}
 
 	m_outputRect.Set(src->GetScreenRect().Point(), src->GetScreenRect().Size());
+	m_cropRect.Set(src->GetCropRect().Point(), src->GetCropRect().Size());
 
 	LOGDEBUG2(L_GRAB, "%s: %s: Set input buffer: %dx%d pixFmt %u modifier 0x%" PRIx64 " num planes %d with %dx%d at %d|%d",
 		m_identifier, __FUNCTION__, m_width, m_height, m_pixFmt, m_modifier, m_numPlanes, m_outputRect.Width(), m_outputRect.Height(), m_outputRect.X(), m_outputRect.Y());
@@ -545,6 +547,11 @@ uint8_t *cGrabBuffer::ConvertToRgb(int *size)
 		return NULL;
 	}
 
+	// only the shown part of the buffer is converted (zoom)
+	cRect crop(0, 0, srcW, srcH);
+	if (!m_cropRect.IsEmpty() && m_cropRect.Right() < srcW && m_cropRect.Bottom() < srcH)
+		crop = m_cropRect;
+
 	int dstBufsize = 0;
 	struct SwsContext *swsCtx;
 	int ret;
@@ -556,7 +563,7 @@ uint8_t *cGrabBuffer::ConvertToRgb(int *size)
 	}
 
 	// convert yuv to rgb
-	swsCtx = sws_getContext(srcW, srcH, srcPixFmt,
+	swsCtx = sws_getContext(crop.Width(), crop.Height(), srcPixFmt,
 	                        dstW, dstH, dstPixFmt,
 	                        SWS_BILINEAR, NULL, NULL, NULL);
 	if (!swsCtx) {
@@ -634,8 +641,23 @@ uint8_t *cGrabBuffer::ConvertToRgb(int *size)
 		}
 	}
 
+	// skip the cropped part
+	const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(srcPixFmt);
+	for (int i = 0; desc && i < static_cast<int>(desc->nb_components); i++) {
+		const AVComponentDescriptor *comp = &desc->comp[i];
+		bool chroma = (i == 1 || i == 2) && !(desc->flags & AV_PIX_FMT_FLAG_RGB);
+		int cropX = chroma ? crop.X() >> desc->log2_chroma_w : crop.X();
+		int cropY = chroma ? crop.Y() >> desc->log2_chroma_h : crop.Y();
+		// several components share a plane (e.g. UV in NV12), move each plane once
+		bool first = true;
+		for (int j = 0; j < i; j++)
+			first &= desc->comp[j].plane != comp->plane;
+		if (first && srcData[comp->plane])
+			srcData[comp->plane] += cropY * srcLinesize[comp->plane] + cropX * comp->step;
+	}
+
 	// scale image
-	sws_scale(swsCtx, (const uint8_t * const*)srcData, srcLinesize, 0, srcH, dstData, dstLinesize);
+	sws_scale(swsCtx, (const uint8_t * const*)srcData, srcLinesize, 0, crop.Height(), dstData, dstLinesize);
 
 	sws_freeContext(swsCtx);
 	*size = dstBufsize;

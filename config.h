@@ -64,6 +64,9 @@ enum ChannelSwitchMode {
  */
 class cDeviceConfig {
 public:
+	static constexpr int ZOOM_LEVELS = 5;       ///< number of zoom levels
+	static constexpr int ZOOM_MAX = 499;        ///< maximum zoom-in factor (1/10 %)
+
 	//
 	// setup.conf parameters
 	//
@@ -75,6 +78,8 @@ public:
 	int ConfigVideoEnableHDR = 0;               ///< enable HDR
 	int ConfigVideoDisplayMode = CONFIG_DISPLAY_MODE_DEFAULT; ///< display mode (enum ConfigDisplayModes)
 	int ConfigVideoChannelSwitchMode = CHANNEL_SWITCH_AVSYNC; ///< channel switch mode (enum ChannelSwitchMode)
+	/** zoom-in factor of the zoom levels in 1/10 % (0 = level disabled): +34.4% fills 2.39:1, +12.5% fills 2.00:1 on 16:9 */
+	int ConfigZoomLevel[ZOOM_LEVELS] = { 344, 125, 0, 0, 0 };
 
 	// Audio
 	bool ConfigAudioSoftvol = false;            ///< config use software volume

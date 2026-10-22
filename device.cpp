@@ -862,6 +862,9 @@ void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool li
 	LOGGER->SetChannelSwitchStartTime(now);
 	LOGDEBUG2(L_AV_SYNC, "TRACE: channel switch");
 
+	// the zoom is chosen for the content
+	m_zoomLevel = 0;
+
 	// the receiver may have been switched on meanwhile
 	if (!IsDetached())
 		m_pAudioDecoder->RetryPassthrough();
@@ -884,6 +887,9 @@ void cOutputDevice::Replaying([[maybe_unused]]const cControl *control,
 	auto now = std::chrono::steady_clock::now();
 	LOGGER->SetChannelSwitchStartTime(now);
 	LOGDEBUG2(L_AV_SYNC, "TRACE: replay start");
+
+	// the zoom is chosen for the content
+	m_zoomLevel = 0;
 
 	// the receiver may have been switched on meanwhile
 	if (!IsDetached())
@@ -926,6 +932,80 @@ void cOutputDevice::SetEnableHdr(bool enable)
 {
     m_pRender->SetEnableHdr(enable);
 };
+
+/**
+ * Get the zoom-in factor of the active zoom level
+ *
+ * @return       zoom-in factor in 1/10 % (0 = no zoom)
+ */
+int cOutputDevice::GetZoom(void)
+{
+	int level = m_zoomLevel;
+
+	if (level < 1 || level > cDeviceConfig::ZOOM_LEVELS)
+		return 0;
+
+	return m_pConfig->ConfigZoomLevel[level - 1];
+}
+
+/**
+ * Select a zoom level
+ *
+ * The zoom level is reset with every channel switch and replay start.
+ *
+ * @param level  zoom level (1 - 5) or 0 to disable the zoom
+ *
+ * @return       false, if the level doesn't exist or is disabled in the setup
+ */
+bool cOutputDevice::SetZoomLevel(int level)
+{
+	if (level < 0 || level > cDeviceConfig::ZOOM_LEVELS ||
+	    (level > 0 && !m_pConfig->ConfigZoomLevel[level - 1]))
+		return false;
+
+	m_zoomLevel = level;
+	LOGDEBUG("device: %s: zoom level %d (+%d.%d%%)", __FUNCTION__, level, GetZoom() / 10, GetZoom() % 10);
+
+	return true;
+}
+
+/**
+ * Select the next zoom level
+ *
+ * Cycles through the zoom levels, which are enabled in the setup, and
+ * disables the zoom after the last one.
+ *
+ * @return       the new zoom level (0 = off)
+ */
+int cOutputDevice::NextZoomLevel(void)
+{
+	int level = m_zoomLevel + 1;
+
+	while (level <= cDeviceConfig::ZOOM_LEVELS && !m_pConfig->ConfigZoomLevel[level - 1])
+		level++;
+
+	if (level > cDeviceConfig::ZOOM_LEVELS)
+		level = 0;
+
+	SetZoomLevel(level);
+
+	return level;
+}
+
+/**
+ * Describe the active zoom level for the user
+ *
+ * @return       e.g. "Zoom 1 (+34.4%)" or "Zoom off"
+ */
+cString cOutputDevice::ZoomLevelString(void)
+{
+	int zoom = GetZoom();
+
+	if (!zoom)
+		return tr("Zoom off");
+
+	return cString::sprintf(tr("Zoom %d (+%d.%d%%)"), GetZoomLevel(), zoom / 10, zoom % 10);
+}
 
 /**
  * Trigger a display mode change event if the mode changed
