@@ -225,6 +225,7 @@ public:
 	void SetDisablePip(void) { m_disablePip = true; }   ///< disable pip (workaround option)
 	bool PipIsEnabled(void);
 	void PipEnable(void);
+	bool PipEnableChannel(int);
 	void PipDisable(void);
 	void PipToggle(void);
 	void PipChannelChange(int);

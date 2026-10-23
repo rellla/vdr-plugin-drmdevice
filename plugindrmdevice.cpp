@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <libintl.h>
 
+#include <vdr/channels.h>
 #include <vdr/player.h>
 #include <vdr/plugin.h>
 #include <vdr/remote.h>
@@ -338,7 +339,9 @@ static const char *SVDRPHelpText[] = {
 	"STAT\n" "        Get attached/detached status.\n"
 	"    ATTACHED -> 910\n"
 	"    DETACHED -> 911\n",
-	"PION\n" "        Enable picture-in-picture.\n",
+	"PION [channel]\n" "    Enable picture-in-picture. The channel (number, channel ID or name)\n"
+	"    is shown, otherwise the current channel. If pip is enabled, it\n"
+	"    switches to the given channel.\n",
 	"PIOF\n" "        Disable picture-in-picture.\n",
 	"PITO\n" "        Toggle picture-in-picture.\n",
 	"PIPU\n" "        Pip channel up.\n",
@@ -362,6 +365,35 @@ static const char *SVDRPHelpText[] = {
 const char **cPluginDrmDevice::SVDRPHelpPages(void)
 {
 	return SVDRPHelpText;
+}
+
+/**
+ * Find a channel like VDR's SVDRP command CHAN does
+ *
+ * @param channel   channel number, channel ID (e.g. "S19.2E-1-1019-10301") or
+ *                  channel name (not case sensitive)
+ *
+ * @return          channel number (0, if there is no such channel)
+ *
+ * @ingroup plugin
+ */
+static int FindChannelNumber(const char *channel)
+{
+	LOCK_CHANNELS_READ;
+	const cChannel *found = nullptr;
+
+	char *end;
+	long number = strtol(channel, &end, 10);
+	if (!*end && number > 0)
+		found = Channels->GetByNumber(number);
+	else if (!(found = Channels->GetByChannelID(tChannelID::FromString(channel)))) {
+		for (const cChannel *c = Channels->First(); c && !found; c = Channels->Next(c)) {
+			if (!c->GroupSep() && !strcasecmp(c->Name(), channel))
+				found = c;
+		}
+	}
+
+	return found && !found->GroupSep() ? found->Number() : 0;
 }
 
 /**
@@ -460,6 +492,19 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 	if (m_pDevice->UsePip()) {
 		if (!strcasecmp(command, "PION")) {
 			LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
+			if (option && *option) {
+				int channelNum = FindChannelNumber(option);
+				if (!channelNum) {
+					reply_code = 550;
+					return cString::sprintf("Unknown channel '%s'", option);
+				}
+				if (!m_pDevice->PipEnableChannel(channelNum)) {
+					reply_code = 550;
+					return cString::sprintf("Channel %d can't be received", channelNum);
+				}
+				return cString::sprintf("Pip shows channel %d", channelNum);
+			}
+
 			if (m_pDevice->PipIsEnabled())
 				return "Pip is already enabled";
 
