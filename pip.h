@@ -62,6 +62,7 @@ public:
 	virtual ~cPipHandler(void);
 
 	void Enable(void);
+	bool EnableChannel(int);
 	void Disable(void);
 	void Toggle(void);
 	void ChannelChange(int);

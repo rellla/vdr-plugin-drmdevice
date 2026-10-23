@@ -387,7 +387,13 @@ SVDRP Commands
 		910 -> ATTACHED
 		911 -> DETACHED
 
-	PION         Enable picture-in-picture.
+	PION [channel]
+		Enable picture-in-picture. With a channel (number, channel ID or
+		name, like VDR's CHAN command) the pip window shows this channel,
+		otherwise the current channel. If pip is already enabled, it
+		switches to the given channel. E.g. from a script:
+			svdrpsend PLUG drmdevice PION 73
+			svdrpsend PLUG drmdevice PIOF
 
 	PIOF         Disable picture-in-picture.
 
