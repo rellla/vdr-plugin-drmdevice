@@ -210,7 +210,7 @@ int cPipHandler::Start(int channelNum)
 		cPipReceiver *receiver = new cPipReceiver(channel->Vpid(), m_pDevice);
 		device->AttachReceiver(receiver);
 		m_pPipReceiver = receiver;
-		m_pPipChannel = channel;
+		m_pipChannelId = channel->GetChannelID();
 		m_pipChannelNum = channelNum;
 
 		LOGDEBUG("piphandler: %s: New receiver for channel (%d) %s", __FUNCTION__, channel->Number(), channel->Name());
@@ -237,14 +237,13 @@ void cPipHandler::Stop(void)
 	if (!m_pPipReceiver)
 		return;
 
-	LOGDEBUG("piphandler: %s: deleting receiver for channel (%d) %s", __FUNCTION__, m_pPipChannel->Number(), m_pPipChannel->Name());
+	LOGDEBUG("piphandler: %s: deleting receiver for channel %d", __FUNCTION__, m_pipChannelNum);
 
 	// both, PiP decoding and render thread are halted and resumed in ResetPipStream
 	m_pDevice->ResetPipStream();
 
 	delete m_pPipReceiver;
 	m_pPipReceiver = nullptr;
-	m_pPipChannel = nullptr;
 }
 
 /**
@@ -279,34 +278,52 @@ void cPipHandler::HandleChannelChange(int direction)
 	if (!m_active)
 		return;
 
-	const cChannel *channel = m_pPipChannel;
-	const cChannel *first = m_pPipChannel;
+	const tChannelID firstId = m_pipChannelId;
+	tChannelID channelId = firstId;
 
 	Stop();
 
-	while (first) {
-		bool ndr;
+	while (true) {
+		int channelNum = 0;
+		bool reachedFirst = false;
 
+		// search the next channel, which a device provides, with the channels lock
 		{
 			LOCK_CHANNELS_READ;
-			channel = direction > 0 ? Channels->Next(channel) : Channels->Prev(channel);
-			if (!channel && Setup.ChannelsWrap)
-				channel = direction > 0 ? Channels->First() : Channels->Last();
+			const cChannel *channel = Channels->GetByChannelID(channelId);   // nullptr, if it was deleted
+
+			while (channel) {
+				channel = direction > 0 ? Channels->Next(channel) : Channels->Prev(channel);
+				if (!channel && Setup.ChannelsWrap)
+					channel = direction > 0 ? Channels->First() : Channels->Last();
+				if (!channel)       // no wrap around at the end of the channel list
+					break;
+
+				reachedFirst = channel->GetChannelID() == firstId;
+
+				bool ndr;
+				cDevice *device = channel->GroupSep() ? nullptr : m_pDevice->GetDevice(channel, 0, false, true);
+				if (device && device->ProvidesChannel(channel, 0, &ndr) && !ndr) {
+					channelNum = channel->Number();
+					channelId = channel->GetChannelID();
+					break;
+				}
+
+				if (reachedFirst)
+					break;
+			}
 		}
 
-		if (!channel)       // no wrap around at the end of the channel list
-			break;
-
-		cDevice *device = m_pDevice->GetDevice(channel, 0, false, true);
-
-		if (!channel->GroupSep() && device && device->ProvidesChannel(channel, 0, &ndr) && !ndr &&
-		    !Start(channel->Number()))
+		if (channelNum && !Start(channelNum))
 			return;
 
-		if (channel == first) {
+		if (reachedFirst) {
 			Skins.Message(mtError, tr("Channel not available!"));
 			break;
 		}
+
+		if (!channelNum)    // end of the channel list
+			break;
 	}
 
 	// no channel is shown, so don't show the (frozen) pip window anymore
@@ -430,11 +447,15 @@ void cPipHandler::ChannelSwap(bool closePip)
 	if (!m_active)
 		return;
 
-	const cChannel *channel = m_pPipChannel;
-	if (!channel)
-		return;
+	int channelNum;
+	{
+		LOCK_CHANNELS_READ;
+		const cChannel *channel = Channels->GetByChannelID(m_pipChannelId);
+		if (!channel)       // the pip channel was deleted
+			return;
 
-	int channelNum = channel->Number();
+		channelNum = channel->Number();
+	}
 
 	Stop();
 	// shows the current channel (the old main channel), the pip window is closed, if it can't
