@@ -94,6 +94,7 @@ private:
 	snd_mixer_elem_t *m_pMixerElem = nullptr; ///< alsa mixer element
 
 	snd_pcm_uframes_t m_bufferSizeFrames = 0; ///< alsa buffer size in frames
+	snd_pcm_uframes_t m_periodSizeFrames = 0; ///< alsa period size in frames (snd_pcm_wait() waits for one free period)
 	long m_mixerMin = 0;                      ///< minimum volume of the mixer element
 	long m_mixerMax = 0;                      ///< maximum volume of the mixer element
 	bool m_appendAES;                         ///< flag to automatic append AES

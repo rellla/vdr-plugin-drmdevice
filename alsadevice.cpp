@@ -585,6 +585,7 @@ int cAlsaDevice::Setup(int channels, int sample_rate, bool passthrough, int down
 	snd_pcm_hw_params_get_buffer_time(hwparams, &bufferTimeUs, 0);
 
 	m_bufferSizeFrames = bufferSize;
+	m_periodSizeFrames = periodSize;
 
 	auto alsaMap = GetChannelLayoutAsArray();
 	std::string channelMapString;
@@ -617,12 +618,27 @@ int cAlsaDevice::Setup(int channels, int sample_rate, bool passthrough, int down
  * Wait until data can be written or read to/from the device
  * (Timeout is 150ms currently)
  *
+ * snd_pcm_set_params() sets the start threshold to the full buffer and the
+ * wakeup threshold to one period. A bitstream is written in complete bursts,
+ * which don't fit exactly into the buffer (e.g. 3 AC-3 bursts of 1536 frames
+ * leave 192 of 4800 frames free). Then the pcm neither starts by itself nor
+ * gets a period free, so it is started here instead of waiting for the timeout.
+ *
  * @return 0, if timeout occured
  *         1, if device is ready
  *         negative error code, in case of an error
  */
 int cAlsaDevice::WaitUntilReady(void)
 {
+	if (snd_pcm_state(m_pPCMHandle) == SND_PCM_STATE_PREPARED) {
+		snd_pcm_sframes_t avail = snd_pcm_avail_update(m_pPCMHandle);
+		if (avail >= 0 && (snd_pcm_uframes_t)avail < m_periodSizeFrames) {
+			LOGDEBUG2(L_SOUND, "audio: %s: start with %lu of %lu frames buffered", __FUNCTION__,
+				(unsigned long)(m_bufferSizeFrames - avail), (unsigned long)m_bufferSizeFrames);
+			snd_pcm_start(m_pPCMHandle);
+		}
+	}
+
 	// check, if the alsa device is ready for input
 	int ret = snd_pcm_wait(m_pPCMHandle, 150);
 	if (ret < 0)
