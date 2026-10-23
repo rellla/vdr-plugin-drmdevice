@@ -13,6 +13,7 @@
 #define __DRMDEVICE_PIP_RECEIVER_H
 
 #include <atomic>
+#include <functional>
 #include <mutex>
 
 #include <vdr/receiver.h>
@@ -65,6 +66,7 @@ public:
 	void Enable(void);
 	bool EnableChannel(int);
 	void Disable(void);
+	void Detach(const std::function<void(void)> &);
 	void Toggle(void);
 	void ChannelChange(int);
 	void ChannelSwap(bool);

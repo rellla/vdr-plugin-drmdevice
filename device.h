@@ -218,7 +218,7 @@ public:
 	// Pip
 	int PlayPipVideo(const uchar *, int);
 	void SetDrmCanDisplayPip(bool canDisplay) { m_drmCanDisplayPip = canDisplay; }     ///< set, if the drm device has a plane for pip
-	bool UsePip(void) { return m_drmCanDisplayPip && !m_disablePip && m_pPipHandler; } ///< true, if pip can be used
+	bool UsePip(void) { return m_drmCanDisplayPip && !m_disablePip && !IsDetached(); } ///< true, if pip can be used
 	void ResetPipStream(void);
 	void ToggleRenderPipPosition(void) { m_pipUseAlt = !m_pipUseAlt; }  ///< toggle the pip position (normal/alternative)
 	// wrapper functions
@@ -237,6 +237,7 @@ public:
 
 	// state transitioning functions
 	void TriggerEvent(const Event&);
+	void TriggerDetachEvent(void);
 	bool VideoArrivedInAudioOnlyPlayback(void);
 	bool TryResetPipStream(void);
 
@@ -296,7 +297,7 @@ private:
 
 	cVideoStream *m_pPipStream = nullptr; ///< pointer to pip video stream (nullptr, if detached)
 	cReassemblyBufferVideo m_pipReassemblyBuffer; ///< pip pes reassembly buffer
-	cPipHandler *m_pPipHandler = nullptr; ///< pointer to pip handler (nullptr, if detached)
+	cPipHandler *m_pPipHandler = nullptr; ///< pointer to pip handler (exists also in detached state)
 	std::mutex m_sizeMutex;          ///< mutex to lock screen size (which is accessed by different threads)
 	std::atomic<bool> m_receivedAudio = false; ///< flag if audio packets have been received
 	std::atomic<bool> m_receivedVideo = false; ///< flag if video packets have been received
