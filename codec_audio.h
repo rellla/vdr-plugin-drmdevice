@@ -70,7 +70,8 @@ class cAudioDecoder {
 public:
 	cAudioDecoder(cAudioStream *);
 	~cAudioDecoder(void);
-	void Open(AVCodecID, AVCodecParameters * = nullptr, AVRational = { .num = 1, .den = PTSTICKS });
+	bool Open(AVCodecID, AVCodecParameters * = nullptr, AVRational = { .num = 1, .den = PTSTICKS });
+	bool OpenFailed(void);
 	void Close(void);
 	void Decode(const AVPacket *);
 	void FlushBuffers(void);
