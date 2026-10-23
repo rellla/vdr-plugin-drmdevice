@@ -1,0 +1,173 @@
+VDR Plugin 'drmdevice' Revision History
+---------------------------------------
+
+drmdevice is the continuation of softhddevice-drm-gles. For the changes up to
+softhddevice-drm-gles 1.7.3 see the git history of
+https://github.com/rellla/vdr-plugin-softhddevice-drm-gles
+
+2026-10-12: Version 2.0.0
+
+- Renamed the plugin from softhddevice-drm-gles to drmdevice. The functionality
+  is identical to softhddevice-drm-gles 1.7.3.
+- The plugin is now loaded with -P drmdevice, the setup.conf entries are named
+  drmdevice.*, the SVDRP commands are sent with PLUG drmdevice and the key
+  macros use @drmdevice. Existing configurations have to be adapted.
+- Renamed the source files and classes (e.g. softhddevice.cpp -> device.cpp).
+
+2026-10-20: Version 2.0.1
+
+- Started the playback nearly at the end of the a/v-sync corridor and increased
+  the size of the drm queue (fixes frame drops with some HD live streams on the
+  Raspberry Pi 4).
+- Fixed the detection of video buffer underruns (underruns on 576i channels).
+- Fixed crashes with corrupted streams (e.g. bad reception) in the PES
+  reassembly and in the H.264 parser (endless loop, wrong height, RBSP length).
+- Fixed crashes in detached state, e.g. at VDR shutdown, if VDR was started
+  detached (-D) or detached via SVDRP or the plugin menu.
+- Fixed deadlocks, if the pip stream is torn down on a detach.
+- Fixed crashes, memory and resource leaks in the menu, the mediaplayer, the
+  video stream, the audio filter graph, the drm device, the OpenGL/ES OSD and
+  the device tree parsing.
+- Fixed buffer overflows in the software render paths.
+- Fixed the pixel format fallback and the extradata handling of the video
+  decoder.
+- Fixed the hardware mixer volume for mixer elements with a large volume range
+  and the soft volume on partial writes.
+- Skip the audio channel mapping, if ALSA reports unknown channel positions.
+- Fixed the command line and SVDRP handling: -w is also accepted without
+  OpenGL/ES support, -x is listed in the help text, the SVDRP help lists PIPP
+  and PLAY needs an url and an attached plugin.
+- Fixed the default minimum mastering luminance of the HDR metadata
+  (0.005 cd/m^2 instead of 0.004 cd/m^2).
+- Only the main stream changes the display mode, the pip stream doesn't anymore.
+- Don't lose video packets, if the packet queue is full (end of a recording,
+  still pictures).
+- Send IEC 61937 pause bursts instead of NULL data bursts while paused in
+  passthrough mode.
+- FFmpeg messages are filtered by their log level now. Added the setup option
+  "FFmpeg log level" (LogFFmpegLevel) to raise the level of the FFmpeg debug
+  logs to verbose, debug or trace.
+- Fixed the build against VDR 2.4 and link all used FFmpeg libraries
+  explicitly.
+- Fixed many compiler and cppcheck warnings, removed unused code.
+- Added unit tests and regression tests for the fixed bugs, the CI builds with
+  gcc and clang against several VDR versions and runs the tests.
+
+2026-10-20: Version 2.0.2
+
+- Fixed the detection of AC-3 streams with bsid 10, which were treated as
+  E-AC-3.
+- Reopen the audio decoder, if the audio codec changes within the same PES
+  stream id (e.g. a switch between an AC-3 and an E-AC-3 track).
+- Always drop the ALSA PCM before changing the hw params (silent audio after a
+  change from E-AC-3 to AC-3 in passthrough mode).
+- Require the exact sample rate and channel count for the passthrough and
+  decode the audio, if the device doesn't offer them (e.g. E-AC-3 needs
+  192kHz).
+- With the "auto append AES" option, the IEC 958 channel status is set
+  according to the current format (non-audio flag and sample rate) instead of
+  once at startup.
+
+2026-10-20: Version 2.0.3
+
+- Fixed the doxygen configuration and all doxygen warnings, complemented the
+  source documentation. The CI fails on new doxygen warnings.
+- The source documentation is always rebuilt with make srcdoc.
+
+2026-10-23: Version 2.0.4
+
+- Mediaplayer: a media file is replayed like a VDR recording. The play modes
+  (play, pause, fast and slow motion forward and backward), the trick speeds,
+  the keys (incl. Setup.SkipSeconds, Setup.MultiSpeedMode and the time search)
+  and the replay display (mode, remaining time) work like VDR's replay
+  control. Prev/Next play the previous/next title of a playlist, Back opens
+  the file menu with the played file selected. The keys are documented in the
+  README.
+- Mediaplayer: the replay of a local file continues at the position, where
+  it was stopped (backed up by 10s). The positions of the last 100 files are
+  stored in the file "resume" in the plugin's cache directory.
+- Mediaplayer: all packets are sent in the 90kHz timebase of VDR (fixes the
+  a/v sync and the trick speeds of other containers than MPEG-TS).
+- Mediaplayer: the cover art of an audio file isn't taken as video stream.
+- Mediaplayer: the random play is seeded only once (titles, which started
+  within the same second, got the same random number).
+- Mediaplayer: the playlist menu is updated by the main thread (the osd isn't
+  thread safe).
+
+2026-10-23: Version 2.0.5
+
+- Added TrueHD passthrough (AudioPassthrough bit 32) and DTS-HD passthrough
+  (Master Audio and High Resolution Audio, AudioPassthrough bit 64). TrueHD
+  and DTS-HD Master Audio need a device with 8 channels and 192kHz (HDMI).
+  DTS-HD is only recognized by the mediaplayer, otherwise the DTS core is
+  passed through.
+- A bitstream is sent with the sample rate of the stream (e.g. 44.1kHz from
+  the mediaplayer), E-AC-3 with four times the rate.
+- The automatic AES parameters (IEC 60958 channel status) are enabled by
+  default. The option is replaced by "Disable automatic AES"
+  (AudioDisableAutoAES). A device, which doesn't accept AES parameters, is
+  used without them.
+- The spdif bursts are kept intact: audio is dropped in complete bursts, a
+  burst gets the pts of its first packet, a flush resets the spdif muxer.
+- A muted bitstream is replaced by pause bursts instead of zeros, so the
+  receiver keeps the sync.
+- A failed passthrough is tried again with every channel switch and replay
+  start (e.g. the receiver was switched on meanwhile).
+- Fixed the DTS frame size check and the reassembly of DTS and AAC frames,
+  the DTS-HD extension substream is kept with its core frame.
+- Unit tests with real audio streams of all codecs.
+
+2026-10-23: Version 2.0.6
+
+- Fixed a hang, if a skin stored an image while detached (the OpenGL thread
+  waited endlessly for the renderer). The image cache is cleaned up with the
+  OpenGL thread.
+- The EGL surface, context and display are freed with the renderer (they
+  leaked with every detach/attach).
+- After a detach or attach by SVDRP an open menu is closed, so the next menu
+  key opens the menu again.
+- The hotkeys of the plugin menu (key macros) are only accepted in the main
+  menu, the color keys of the mediaplayer menus work again.
+- The clock drift correction isn't reset at its output limit anymore.
+- Fixed a data race of the log string helpers and an overflow of the osd
+  colors of a screenshot.
+- README: fixed the name of the AudioNormalize setup entry.
+
+2026-10-25: Version 2.1.0
+
+- Zoom levels to crop black bars of the broadcast (ZoomLevel1-5). The zoom is
+  selected in the plugin menu, with the key macros "@drmdevice Green 1/2",
+  with SVDRP ZOOM or with the Blue key in the mediaplayer.
+- Automatic audio passthrough with the codecs, which the HDMI sink reports in
+  its ELD (AudioPassthrough bit 128). The passthrough can be switched on and
+  off in the plugin menu, with the key macro "@drmdevice Yellow 1" and with
+  SVDRP PASS (not stored).
+- Mediaplayer: the audio track can be selected (Audio key), text subtitles
+  (SubRip, ASS/SSA, mov_text) are shown (Subtitles key), files and folders
+  in the video directory can be deleted in the file menu (Blue key, not a
+  recording, which is recorded or replayed), HLS streams are played.
+- Output for the dvd plugin: the DVD audio (AC-3, DTS, LPCM) is played, AC-3
+  and DTS can be passed through.
+- The setup menu lists its sections, OK opens a section. In a section, OK
+  stores the settings and Back discards the changes.
+- The setup menu shows the played video and audio stream, the display mode,
+  the audio output and the passthrough state in the statistics, which are
+  updated every second.
+- SVDRP PION shows the given channel (number, channel ID or name) in the
+  pip window.
+- The SVDRP commands reply with the codes of VDR's commands (501 invalid
+  argument, 550 not executed, 554 failed).
+- Passthrough: a gap of the bitstream is bridged with pause bursts and an
+  underrun resyncs audio and video, the ringbuffer isn't dropped after a
+  failed write anymore (the receiver lost the lock and the audio fell out).
+- Passthrough: the audio device is started, when a bitstream nearly filled
+  its buffer (every start was delayed by 150ms and logged an error).
+- The playback starts with the buffered data, if a player waits for empty
+  buffers (fixes a hang of the dvd plugin before a still picture).
+- An audio codec, which can't be decoded, is dropped instead of aborting
+  VDR. The audio decoder of the mediaplayer leaked with every file.
+- Pip: the pip functions are serialized, a pip window without a channel is
+  closed, a channel without video isn't shown.
+- Pip: fixed crashes with SVDRP pip commands during a detach, with an
+  external player in detached state and with a deleted pip channel. The pip
+  channel is only used with the channels lock.
