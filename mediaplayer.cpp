@@ -626,11 +626,15 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 
 	DeviceClear();
 	m_staleStc = m_pDevice->GetSTC();
-	m_pDevice->SetMediaStreams(audioIdx >= 0, videoIdx >= 0);
 
-	if (audioIdx >= 0)
-		m_pDevice->SetAudioCodec(format->streams[audioIdx]->codecpar->codec_id,
-			format->streams[audioIdx]->codecpar, PES_TIMEBASE);
+	// audio, which can't be decoded, is dropped
+	if (audioIdx >= 0 && !m_pDevice->SetAudioCodec(format->streams[audioIdx]->codecpar->codec_id,
+	                                               format->streams[audioIdx]->codecpar, PES_TIMEBASE)) {
+		LOGERROR("mediaplayer: %s: the audio of '%s' can't be decoded, play it without audio", __FUNCTION__, url);
+		audioIdx = m_audioIdx = -1;
+	}
+
+	m_pDevice->SetMediaStreams(audioIdx >= 0, videoIdx >= 0);
 
 	if (videoIdx >= 0)
 		m_pDevice->SetVideoCodec(videoCodec->id, format->streams[videoIdx]->codecpar, PES_TIMEBASE);
@@ -786,8 +790,14 @@ void cDrmDevicePlayer::SwitchAudioTrack(void)
 	else if (m_pPacket && m_pPacket->stream_index != m_videoIdx)
 		av_packet_free(&m_pPacket);
 
+	// audio, which can't be decoded, is dropped
 	AVStream *stream = m_pFormat->streams[audioIdx];
-	m_pDevice->SetAudioCodec(stream->codecpar->codec_id, stream->codecpar, PES_TIMEBASE);
+	if (!m_pDevice->SetAudioCodec(stream->codecpar->codec_id, stream->codecpar, PES_TIMEBASE)) {
+		LOGERROR("mediaplayer: %s: the audio track can't be decoded, play without audio", __FUNCTION__);
+		m_audioIdx = -1;
+		UpdateStreamDiscards();
+		m_pDevice->SetMediaStreams(false, m_videoIdx >= 0);
+	}
 }
 
 /**
