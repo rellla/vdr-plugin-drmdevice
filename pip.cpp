@@ -25,15 +25,15 @@
  *
  * Only the video pid is handled
  *
- * @param channel    channel to receive
+ * @param vpid       video pid of the channel
  * @param device     pointer to cOutputDevice object
  */
-cPipReceiver::cPipReceiver(const cChannel *channel, cOutputDevice *device)
+cPipReceiver::cPipReceiver(int vpid, cOutputDevice *device)
 	: cReceiver(NULL, MINPRIORITY),
 	  m_pDevice(device)
 {
 	LOGDEBUG("pipreceiver: %s", __FUNCTION__);
-	AddPid(channel->Vpid());
+	AddPid(vpid);
 }
 
 /**
@@ -190,14 +190,11 @@ int cPipHandler::Start(int channelNum)
 	if (!channelNum)
 		channelNum = m_pDevice->CurrentChannel();
 
-	const cChannel *channel;
-	cDevice *device;
-	cPipReceiver *receiver;
-
-	{
-		LOCK_CHANNELS_READ;
-		channel = Channels->GetByNumber(channelNum);
-	}
+	// A channel is only valid with the channels lock (it may be changed or
+	// deleted by another thread), so keep it until the receiver is attached.
+	// VDR also switches a channel with the channels lock (cChannels::SwitchTo()).
+	LOCK_CHANNELS_READ;
+	const cChannel *channel = Channels->GetByNumber(channelNum);
 
 	// the pip receiver only handles the video pid
 	if (channel && !channel->Vpid()) {
@@ -205,13 +202,12 @@ int cPipHandler::Start(int channelNum)
 		return -1;
 	}
 
-	// cDevice::GetDevice() dereferences the channel
-	device = channel ? m_pDevice->GetDevice(channel, 0, false) : nullptr;
+	cDevice *device = channel ? m_pDevice->GetDevice(channel, 0, false) : nullptr;
 
 	if (channelNum && channel && device) {
 		Stop();
 		device->SwitchChannel(channel, false);
-		receiver = new cPipReceiver(channel, m_pDevice);
+		cPipReceiver *receiver = new cPipReceiver(channel->Vpid(), m_pDevice);
 		device->AttachReceiver(receiver);
 		m_pPipReceiver = receiver;
 		m_pPipChannel = channel;
