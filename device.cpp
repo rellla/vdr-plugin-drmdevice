@@ -388,7 +388,8 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 	if (IsDetached())
 		return size;
 
-	m_receivedAudio = true;
+	// audio, which can't be decoded, is dropped: the playback starts with the video only
+	m_receivedAudio = !m_pAudioDecoder->OpenFailed();
 
 	// Special audio-only trickspeed handling:
 	// Advance the pts and block the thread depending on the pts difference and trickspeed factor.
@@ -1468,10 +1469,12 @@ void cOutputDevice::GetStats(int *duped, int *dropped, int *counter)
  * @param codecId       audio codec id
  * @param par           audio codec parameters
  * @param timebase      timebase
+ *
+ * @retval false        the codec can't be decoded
  */
-void cOutputDevice::SetAudioCodec(enum AVCodecID codecId, AVCodecParameters * par, AVRational timebase)
+bool cOutputDevice::SetAudioCodec(enum AVCodecID codecId, AVCodecParameters * par, AVRational timebase)
 {
-	m_pAudioDecoder->Open(codecId, par, timebase);
+	return m_pAudioDecoder->Open(codecId, par, timebase);
 }
 
 /**

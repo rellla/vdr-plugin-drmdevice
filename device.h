@@ -198,7 +198,7 @@ public:
 	void GetStats(int *, int *, int *);
 
 	// Mediaplayer
-	void SetAudioCodec(enum AVCodecID, AVCodecParameters *, AVRational);
+	bool SetAudioCodec(enum AVCodecID, AVCodecParameters *, AVRational);
 	void SetVideoCodec(enum AVCodecID, AVCodecParameters *, AVRational);
 	void SetMediaStreams(bool, bool);
 	int PlayAudioPkts(AVPacket *);
