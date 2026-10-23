@@ -14,7 +14,9 @@
  * @license{AGPL-3.0-or-later}
  */
 
+#include <algorithm>
 #include <cstdlib>
+#include <iterator>
 #include <libintl.h>
 
 #include <vdr/channels.h>
@@ -423,8 +425,10 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 	// attach/detach
 	if (!strcasecmp(command, "DETA")) {
 		LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
-		if (m_pDevice->IsDetached())
+		if (m_pDevice->IsDetached()) {
+			reply_code = 550;
 			return "DRMDevice is already detached";
+		}
 
 		// the menu isn't shown any more, but VDR would close it with the next menu key
 		m_closeMenu = true;
@@ -433,8 +437,10 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 	}
 	if (!strcasecmp(command, "ATTA")) {
 		LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
-		if (!m_pDevice->IsDetached())
+		if (!m_pDevice->IsDetached()) {
+			reply_code = 550;
 			return "DRMDevice is not detached";
+		}
 
 		m_pDevice->Attach();
 		// a menu, which was opened while detached, was never shown
@@ -460,9 +466,13 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 		} else if (option && *option) {
 			char *end;
 			long level = strtol(option, &end, 10);
-			if (*end || level < 0 || level > cDeviceConfig::ZOOM_LEVELS || !m_pDevice->SetZoomLevel(static_cast<int>(level))) {
+			if (*end || level < 0 || level > cDeviceConfig::ZOOM_LEVELS) {
 				reply_code = 501;
-				return cString::sprintf("Invalid or disabled zoom level '%s'", option);
+				return cString::sprintf("Invalid zoom level '%s'", option);
+			}
+			if (!m_pDevice->SetZoomLevel(static_cast<int>(level))) {
+				reply_code = 550;
+				return cString::sprintf("Zoom level %ld is disabled in the setup", level);
 			}
 		}
 		int zoom = m_pDevice->GetZoom();
@@ -489,7 +499,15 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 	}
 
 	// pip
-	if (m_pDevice->UsePip()) {
+	static const char *const pipCommands[] = { "PION", "PIOF", "PITO", "PIPU", "PIPD", "PIPC", "PIPS", "PIPP" };
+	bool isPipCommand = std::any_of(std::begin(pipCommands), std::end(pipCommands),
+		[command](const char *pipCommand) { return !strcasecmp(command, pipCommand); });
+	if (isPipCommand && !m_pDevice->UsePip()) {
+		reply_code = 550;
+		return m_pDevice->IsDetached() ? "DRMDevice is detached" : "Pip isn't available";
+	}
+
+	if (isPipCommand) {
 		if (!strcasecmp(command, "PION")) {
 			LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
 			if (option && *option) {
@@ -499,22 +517,30 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 					return cString::sprintf("Unknown channel '%s'", option);
 				}
 				if (!m_pDevice->PipEnableChannel(channelNum)) {
-					reply_code = 550;
+					reply_code = 554;
 					return cString::sprintf("Channel %d can't be received", channelNum);
 				}
 				return cString::sprintf("Pip shows channel %d", channelNum);
 			}
 
-			if (m_pDevice->PipIsEnabled())
+			if (m_pDevice->PipIsEnabled()) {
+				reply_code = 550;
 				return "Pip is already enabled";
+			}
 
 			m_pDevice->PipEnable();
+			if (!m_pDevice->PipIsEnabled()) {
+				reply_code = 554;
+				return "The current channel can't be received for pip";
+			}
 			return "Pip was enabled";
 		}
 		if (!strcasecmp(command, "PIOF")) {
 			LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
-			if (!m_pDevice->PipIsEnabled())
+			if (!m_pDevice->PipIsEnabled()) {
+				reply_code = 550;
 				return "Pip isn't enabled";
+			}
 
 			m_pDevice->PipDisable();
 			return "Pip was disabled";
@@ -523,6 +549,10 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 			LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
 			if (!m_pDevice->PipIsEnabled()) {
 				m_pDevice->PipEnable();
+				if (!m_pDevice->PipIsEnabled()) {
+					reply_code = 554;
+					return "The current channel can't be received for pip";
+				}
 				return "Pip was enabled";
 			} else {
 				m_pDevice->PipDisable();
@@ -531,40 +561,50 @@ cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, 
 		}
 		if (!strcasecmp(command, "PIPU")) {
 			LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
-			if (!m_pDevice->PipIsEnabled())
+			if (!m_pDevice->PipIsEnabled()) {
+				reply_code = 550;
 				return "Pip isn't enabled";
+			}
 
 			m_pDevice->PipChannelChange(1);
 			return "Pip channel up";
 		}
 		if (!strcasecmp(command, "PIPD")) {
 			LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
-			if (!m_pDevice->PipIsEnabled())
+			if (!m_pDevice->PipIsEnabled()) {
+				reply_code = 550;
 				return "Pip isn't enabled";
+			}
 
 			m_pDevice->PipChannelChange(-1);
 			return "Pip channel down";
 		}
 		if (!strcasecmp(command, "PIPC")) {
 			LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
-			if (!m_pDevice->PipIsEnabled())
+			if (!m_pDevice->PipIsEnabled()) {
+				reply_code = 550;
 				return "Pip isn't enabled";
+			}
 
 			m_pDevice->PipChannelSwap(false);
 			return "Pip swap channels";
 		}
 		if (!strcasecmp(command, "PIPS")) {
 			LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
-			if (!m_pDevice->PipIsEnabled())
+			if (!m_pDevice->PipIsEnabled()) {
+				reply_code = 550;
 				return "Pip isn't enabled";
+			}
 
 			m_pDevice->PipChannelSwap(true);
 			return "Pip switch main stream to pip channel and close pip";
 		}
 		if (!strcasecmp(command, "PIPP")) {
 			LOGDEBUG("plugin: %s: SVDRPCommand: %s %s", __FUNCTION__, command, option);
-			if (!m_pDevice->PipIsEnabled())
+			if (!m_pDevice->PipIsEnabled()) {
+				reply_code = 550;
 				return "Pip isn't enabled";
+			}
 
 			m_pDevice->PipSwapPosition();
 			return "Pip swap position";

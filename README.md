@@ -415,6 +415,14 @@ SVDRP Commands
 		Select the next zoom level (next) or the given zoom level (0 = off).
 		Without an argument the active zoom level is returned.
 
+Reply codes:
+	900      the command was executed (STAT: 910 attached, 911 detached)
+	501      invalid argument (e.g. a missing url or an unknown zoom level)
+	550      the command wasn't executed: e.g. the device is already detached,
+	         pip isn't enabled or available, a disabled zoom level
+	554      the command failed: e.g. the channel can't be received for pip
+	500      unknown command (sent by VDR)
+
 
 Keymacros
 ---------
