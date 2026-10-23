@@ -356,7 +356,9 @@ bool cOutputDevice::SetPlayMode(ePlayMode play_mode)
 		// External players like mpv (vdr-plugin-mpv) want to acquire DRM/ALSA
 		// so we release it here and set a flag. As soon as the next SetPlayMode arrives
 		// we then can attach again before changing to the new playmode.
-		m_pPipHandler->Disable();
+		// The pip handler doesn't exist, if the device is already detached.
+		if (m_pPipHandler)
+			m_pPipHandler->Disable();
 		TriggerEvent(DetachEvent{});
 		m_externalPlayerActive = true;
 		break;
