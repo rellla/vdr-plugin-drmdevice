@@ -13,6 +13,7 @@
 #define __DRMDEVICE_PIP_RECEIVER_H
 
 #include <atomic>
+#include <mutex>
 
 #include <vdr/receiver.h>
 
@@ -78,6 +79,7 @@ private:
 	int m_pipChannelNum = 0;                ///< current pip channel number
 	const cChannel *m_pPipChannel = nullptr; ///< current pip channel
 	std::atomic<bool> m_active = false;     ///< true, if pip is active
+	std::mutex m_mutex;                     ///< serializes the functions, which start or stop pip (main and SVDRP thread)
 
 	int Start(int);
 	void Stop(void);

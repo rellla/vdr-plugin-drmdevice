@@ -193,6 +193,12 @@ int cPipHandler::Start(int channelNum)
 		channel = Channels->GetByNumber(channelNum);
 	}
 
+	// the pip receiver only handles the video pid
+	if (channel && !channel->Vpid()) {
+		LOGERROR("piphandler: %s: channel %d has no video", __FUNCTION__, channelNum);
+		return -1;
+	}
+
 	// cDevice::GetDevice() dereferences the channel
 	device = channel ? m_pDevice->GetDevice(channel, 0, false) : nullptr;
 
@@ -276,7 +282,7 @@ void cPipHandler::HandleChannelChange(int direction)
 
 	Stop();
 
-	while (channel) {
+	while (first) {
 		bool ndr;
 
 		{
@@ -291,16 +297,18 @@ void cPipHandler::HandleChannelChange(int direction)
 
 		cDevice *device = m_pDevice->GetDevice(channel, 0, false, true);
 
-		if (!channel->GroupSep() && device && device->ProvidesChannel(channel, 0, &ndr) && !ndr) {
-			Start(channel->Number());
+		if (!channel->GroupSep() && device && device->ProvidesChannel(channel, 0, &ndr) && !ndr &&
+		    !Start(channel->Number()))
 			return;
-		}
 
 		if (channel == first) {
 			Skins.Message(mtError, tr("Channel not available!"));
 			break;
 		}
 	}
+
+	// no channel is shown, so don't show the (frozen) pip window anymore
+	m_pDevice->SetRenderPipActive(false);
 }
 
 /*****************************************************************************
@@ -314,6 +322,8 @@ void cPipHandler::HandleChannelChange(int direction)
  */
 void cPipHandler::Enable(void)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	if (m_active)
 		return;
 
@@ -334,6 +344,8 @@ void cPipHandler::Enable(void)
  */
 bool cPipHandler::EnableChannel(int channelNum)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	bool wasActive = m_active;
 
 	if (Start(channelNum))
@@ -350,6 +362,8 @@ bool cPipHandler::EnableChannel(int channelNum)
  */
 void cPipHandler::Disable(void)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	if (!m_active)
 		return;
 
@@ -361,6 +375,8 @@ void cPipHandler::Disable(void)
  */
 void cPipHandler::Toggle(void)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	HandleEnable(!m_active);
 }
 
@@ -371,6 +387,8 @@ void cPipHandler::Toggle(void)
  */
 void cPipHandler::ChannelChange(int direction)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	if (!m_active)
 		return;
 
@@ -387,6 +405,8 @@ void cPipHandler::ChannelChange(int direction)
  */
 void cPipHandler::ChannelSwap(bool closePip)
 {
+	std::unique_lock<std::mutex> lock(m_mutex);
+
 	if (!m_active)
 		return;
 
@@ -394,14 +414,20 @@ void cPipHandler::ChannelSwap(bool closePip)
 	if (!channel)
 		return;
 
-	Stop();
-	if (!closePip)
-		Start(0); // resets the pip channel to the current channel
+	int channelNum = channel->Number();
 
-	LOGDEBUG("piphandler: %s: switch main stream to %d", __FUNCTION__, channel->Number());
+	Stop();
+	// shows the current channel (the old main channel), the pip window is closed, if it can't
+	if (closePip || Start(0))
+		m_pDevice->SetRenderPipActive(false);
+
+	// the channel switch doesn't need the pip handler
+	lock.unlock();
+
+	LOGDEBUG("piphandler: %s: switch main stream to %d", __FUNCTION__, channelNum);
 	{
 		LOCK_CHANNELS_READ;
-		Channels->SwitchTo(channel->Number());
+		Channels->SwitchTo(channelNum);
 	}
 }
 
