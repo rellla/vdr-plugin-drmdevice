@@ -16,6 +16,7 @@
 #include <functional>
 #include <mutex>
 
+#include <vdr/channels.h>
 #include <vdr/receiver.h>
 
 class cOutputDevice;
@@ -79,7 +80,7 @@ private:
 	cOutputDevice *m_pDevice;               ///< pointer to device
 	cPipReceiver *m_pPipReceiver = nullptr; ///< pointer to pip receiver
 	int m_pipChannelNum = 0;                ///< current pip channel number
-	const cChannel *m_pPipChannel = nullptr; ///< current pip channel
+	tChannelID m_pipChannelId;              ///< current pip channel (a channel pointer is only valid with the channels lock)
 	std::atomic<bool> m_active = false;     ///< true, if pip is active
 	std::mutex m_mutex;                     ///< serializes the functions, which start or stop pip (main and SVDRP thread)
 
