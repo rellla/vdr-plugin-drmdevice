@@ -71,6 +71,7 @@ cOutputDevice::~cOutputDevice(void)
 	m_initialized = false; // not necessary, just for documentation
 
 	delete m_pEventHandler;
+	delete m_pPipHandler;
 	delete m_pHardwareDevice;
 	delete m_pSpuDecoder;
 }
@@ -90,6 +91,7 @@ bool cOutputDevice::Initialize(void)
 	m_pSpuDecoder = new cDvbSpuDecoder();
 	m_pHardwareDevice = new cHardwareDevice();
 	m_pEventHandler = new cEventHandler(m_pStateMachine.get());
+	m_pPipHandler = new cPipHandler(this);
 
 	auto channelSwitchStartTime = std::chrono::steady_clock::now();
 	LOGGER->SetChannelSwitchStartTime(channelSwitchStartTime);
@@ -121,9 +123,7 @@ int cOutputDevice::Start(void)
 void cOutputDevice::Stop(void)
 {
 	LOGDEBUG("device: %s", __FUNCTION__);
-	if (m_pPipHandler)
-		m_pPipHandler->Disable();
-	TriggerEvent(DetachEvent{});
+	TriggerDetachEvent();
 }
 
 /*********************************************************************
@@ -356,10 +356,7 @@ bool cOutputDevice::SetPlayMode(ePlayMode play_mode)
 		// External players like mpv (vdr-plugin-mpv) want to acquire DRM/ALSA
 		// so we release it here and set a flag. As soon as the next SetPlayMode arrives
 		// we then can attach again before changing to the new playmode.
-		// The pip handler doesn't exist, if the device is already detached.
-		if (m_pPipHandler)
-			m_pPipHandler->Disable();
-		TriggerEvent(DetachEvent{});
+		TriggerDetachEvent();
 		m_externalPlayerActive = true;
 		break;
 	default:
@@ -1598,8 +1595,7 @@ void cOutputDevice::Detach(void)
 		MakePrimaryDevice(false);
 	}
 
-	m_pPipHandler->Disable();
-	TriggerEvent(DetachEvent{});
+	TriggerDetachEvent();
 }
 
 /**
@@ -1695,6 +1691,9 @@ bool cOutputDevice::TryResetPipStream(void)
  */
 void cOutputDevice::ResetPipStreamLocked(void)
 {
+	if (!m_pPipStream)   // detached
+		return;
+
 	m_pPipStream->Halt();
 
 	m_pPipStream->CancelFilterThread();
@@ -1747,6 +1746,9 @@ void cOutputDevice::SetRenderPipSize(void)
 {
 	auto lock = m_pStateMachine->Lock();
 
+	if (!m_pRender)   // detached
+		return;
+
 	m_pRender->Halt();
 	m_pRender->SetPipSize(m_pipUseAlt);
 	m_pRender->Resume();
@@ -1756,6 +1758,9 @@ void cOutputDevice::SetRenderPipSize(void)
 void cOutputDevice::SetRenderPipActive(bool active)
 {
 	auto lock = m_pStateMachine->Lock();
+
+	if (!m_pRender)   // detached
+		return;
 
 	m_pRender->Halt();
 	m_pRender->SetPipActive(active);
@@ -2027,6 +2032,17 @@ void cOutputDevice::TriggerEvent(const Event &event)
 }
 
 /**
+ * Stop pip and detach the device
+ *
+ * The pip handler stays locked until the device is detached, so another
+ * thread (e.g. an SVDRP command) can't start pip in between.
+ */
+void cOutputDevice::TriggerDetachEvent(void)
+{
+	m_pPipHandler->Detach([this] { TriggerEvent(DetachEvent{}); });
+}
+
+/**
  * Actions to be performed when leaving a state
  *
  * These are only executed when the state actually changes.
@@ -2083,7 +2099,6 @@ void cOutputDevice::LeaveState(State state)
 			m_pVideoStream->StartDecoder(); // starts decoding thread
 			m_pPipStream = new cPipVideoStream(m_pRender, m_pHardwareDevice->GetQuirks(), m_pRender->GetPipOutputBuffer(), m_pConfig, std::bind(&cVideoRender::PushPipFrame, m_pRender, std::placeholders::_1));
 			m_pPipStream->StartDecoder(); // starts decoding thread
-			m_pPipHandler = new cPipHandler(this);
 			// Audio is init lazily (includes starting thread)
 
 			break;
@@ -2158,9 +2173,6 @@ void cOutputDevice::EnterState(State state)
 
 			break;
 		case DETACHED:
-			delete m_pPipHandler;
-			m_pPipHandler = nullptr;
-
 			// resume the previously stopped threads
 			m_pVideoStream->Resume();
 			m_pRender->Resume();
