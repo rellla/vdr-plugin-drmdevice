@@ -1722,6 +1722,8 @@ bool cOutputDevice::PipIsEnabled(void)
 
 /** Enable pip (see cPipHandler::Enable()) */
 void cOutputDevice::PipEnable(void) { m_pPipHandler->Enable(); };
+/** Show the given channel in the pip window (see cPipHandler::EnableChannel()) */
+bool cOutputDevice::PipEnableChannel(int channelNum) { return m_pPipHandler->EnableChannel(channelNum); };
 /** Disable pip (see cPipHandler::Disable()) */
 void cOutputDevice::PipDisable(void) { m_pPipHandler->Disable(); };
 /** Toggle pip (see cPipHandler::Toggle()) */

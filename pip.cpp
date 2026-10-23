@@ -321,6 +321,31 @@ void cPipHandler::Enable(void)
 }
 
 /**
+ * Show the given channel in the pip window
+ *
+ * If pip is off, it is started with the channel, otherwise the pip window
+ * switches to the channel. If the channel can't be received, a shown pip
+ * window keeps its channel.
+ *
+ * @param channelNum     number of the channel
+ *
+ * @retval true          the channel is shown
+ * @retval false         no device can receive the channel
+ */
+bool cPipHandler::EnableChannel(int channelNum)
+{
+	bool wasActive = m_active;
+
+	if (Start(channelNum))
+		return false;
+
+	if (!wasActive)
+		m_pDevice->SetRenderPipActive(true);
+
+	return true;
+}
+
+/**
  * Stop picture-in-picture
  */
 void cPipHandler::Disable(void)
