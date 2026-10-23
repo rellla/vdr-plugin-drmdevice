@@ -32,7 +32,7 @@ class cOutputDevice;
  */
 class cPipReceiver : public cReceiver {
 public:
-	cPipReceiver(const cChannel *, cOutputDevice *);
+	cPipReceiver(int, cOutputDevice *);
 	virtual ~cPipReceiver(void);
 
 protected:
