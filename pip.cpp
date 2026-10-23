@@ -163,9 +163,8 @@ cPipHandler::cPipHandler(cOutputDevice *device)
 
 cPipHandler::~cPipHandler(void)
 {
-	// The handler is deleted by the state machine on a detach, which holds the state
-	// machine lock and has halted the render thread. So don't use Stop(), which locks
-	// both again in ResetPipStream(). The pip stream is destroyed by the device anyway.
+	// The handler is deleted with the device, which is detached then, so pip is
+	// already stopped by Detach(). Don't use Stop(), the pip stream doesn't exist.
 	m_active = false;
 	delete m_pPipReceiver;
 }
@@ -177,10 +176,17 @@ cPipHandler::~cPipHandler(void)
  *                      0 switches to the current main stream channel
  *
  * @retval 0     pip was enabled
- * @retval -1    pip wasn't enabled, no device for channel available
+ * @retval -1    pip wasn't enabled, no device for channel available or the
+ *               output device is detached
  */
 int cPipHandler::Start(int channelNum)
 {
+	// the pip stream only exists in attached state
+	if (m_pDevice->IsDetached()) {
+		LOGDEBUG("piphandler: %s: the device is detached", __FUNCTION__);
+		return -1;
+	}
+
 	if (!channelNum)
 		channelNum = m_pDevice->CurrentChannel();
 
@@ -368,6 +374,24 @@ void cPipHandler::Disable(void)
 		return;
 
 	HandleEnable(false);
+}
+
+/**
+ * Stop picture-in-picture and detach the output device
+ *
+ * The handler stays locked while the device is detached, so no other thread
+ * can start pip in between. Start() refuses to start pip in detached state.
+ *
+ * @param detach         function, which detaches the output device
+ */
+void cPipHandler::Detach(const std::function<void(void)> &detach)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	if (m_active)
+		HandleEnable(false);
+
+	detach();
 }
 
 /**
