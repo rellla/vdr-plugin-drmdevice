@@ -101,6 +101,7 @@ private:
 	cSpdifMuxer m_spdif;                        ///< spdif muxer
 
 
+	void CloseCodec(void);
 	bool ShouldTryPassthrough(void);
 	int Passthrough(const AVPacket *);
 	void DecodePCM(const AVPacket *);

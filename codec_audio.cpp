@@ -91,6 +91,9 @@ void cAudioDecoder::Open(AVCodecID codecId, AVCodecParameters *par, AVRational t
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
+	// the mediaplayer opens the decoder for every file and audio track without closing it
+	CloseCodec();
+
 	const AVCodec *codec;
 
 	m_codecId = codecId;
@@ -146,6 +149,16 @@ void cAudioDecoder::Close(void)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
+	CloseCodec();
+}
+
+/**
+ * Close the codec and the spdif muxer
+ *
+ * Must be called with the decoder mutex.
+ */
+void cAudioDecoder::CloseCodec(void)
+{
 	if (!m_pAudioCtx)
 		return;
 
