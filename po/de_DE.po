@@ -309,26 +309,26 @@ msgstr " 13500 Hz Frequenzverstärkung"
 msgid " 17200 Hz band gain"
 msgstr " 17200 Hz Frequenzverstärkung"
 
-msgid "video scaling factor (%)"
+msgid "Video scaling factor (%)"
 msgstr "Skalierung (%)"
 
-msgid "video left (%)"
+msgid "Video left (%)"
 msgstr "Abstand links (%)"
 
-msgid "video top (%)"
+msgid "Video top (%)"
 msgstr "Abstand oben (%)"
 
-msgid "use alternative position as default"
+msgid "Use alternative position as default"
 msgstr "Benutze Alternativposition"
 
-msgid "alternative video scaling factor (%)"
-msgstr "alt. Skalierung (%)"
+msgid "Alternative video scaling factor (%)"
+msgstr "Alt. Skalierung (%)"
 
-msgid "alternative video left (%)"
-msgstr "alt. Abstand links (%)"
+msgid "Alternative video left (%)"
+msgstr "Alt. Abstand links (%)"
 
-msgid "alternative video top (%)"
-msgstr "alt. Abstand rechts (%)"
+msgid "Alternative video top (%)"
+msgstr "Alt. Abstand oben (%)"
 
 msgid "Enable logging"
 msgstr "Aktiviere Logs"
