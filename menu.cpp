@@ -11,12 +11,17 @@
  */
 
 #include <cstdlib>
+#include <ftw.h>
 #include <string>
+#include <unistd.h>
 
 #include <vdr/interface.h>
+#include <vdr/menu.h>
 #include <vdr/osdbase.h>
 #include <vdr/plugin.h>
+#include <vdr/recording.h>
 #include <vdr/remote.h>
+#include <vdr/skins.h>
 #include <vdr/videodir.h>
 
 #include "device.h"
@@ -148,6 +153,20 @@ void cDeviceMenu::MainMenu(void)
 	Add(new cOsdItem(hk(tr(" play file / make play list")), osUser8));
 	Add(new cOsdItem(hk(tr(" select play list")), osUser9));
 
+	// The new entries follow the old ones, so the old ones keep their number keys,
+	// which may be used in key macros (e.g. "@drmdevice 8").
+	Add(SeparatorSpace());
+
+	// zoom
+	Add(SeparatorName("Zoom"));
+	Add(m_pZoomItem = new cOsdItem(hk(tr(" Next zoom level"))));
+
+	Add(SeparatorSpace());
+
+	// audio
+	Add(SeparatorName("Audio"));
+	Add(m_pPassthroughItem = new cOsdItem(hk(m_pDevice->IsPassthroughOn() ? tr(" Switch passthrough off") : tr(" Switch passthrough on"))));
+
 	SetCurrent(Get(current));          // restore selected menu entry
 	Display();
 }
@@ -167,8 +186,31 @@ enum Hotkeys {
 	PIPCHANNELSWITCHBACK,
 	DETACHKEYBASE = 110,
 	DETACHDEVICE,
-	ATTACHDEVICE
+	ATTACHDEVICE,
+	ZOOMKEYBASE = 120,
+	ZOOMNEXT,
+	ZOOMOFF,
+	AUDIOKEYBASE = 130,
+	PASSTHROUGHTOGGLE
 };
+
+/**
+ * Select the next zoom level and show it
+ */
+void cDeviceMenu::NextZoomLevel(void)
+{
+	m_pDevice->NextZoomLevel();
+	Skins.QueueMessage(mtInfo, m_pDevice->ZoomLevelString());
+}
+
+/**
+ * Switch the passthrough on or off and show it
+ */
+void cDeviceMenu::TogglePassthrough(void)
+{
+	m_pDevice->TogglePassthrough();
+	Skins.QueueMessage(mtInfo, m_pDevice->PassthroughString());
+}
 
 /**
  * Handle a key code which was compose by hotkey handling in ProcessKey()
@@ -202,6 +244,18 @@ void cDeviceMenu::HandleHotKey(int code) {
 			break;
 		case ATTACHDEVICE:
 			m_pDevice->Attach();
+			break;
+		// zoom
+		case ZOOMNEXT:
+			NextZoomLevel();
+			break;
+		case ZOOMOFF:
+			m_pDevice->SetZoomLevel(0);
+			Skins.QueueMessage(mtInfo, m_pDevice->ZoomLevelString());
+			break;
+		// audio
+		case PASSTHROUGHTOGGLE:
+			TogglePassthrough();
 			break;
 		default:
 			break;
@@ -237,6 +291,14 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 				m_hotkeyState = HotkeyState::Red;
 				return osContinue;
 			}
+			if (key == kGreen) {
+				m_hotkeyState = HotkeyState::Green;
+				return osContinue;
+			}
+			if (key == kYellow) {
+				m_hotkeyState = HotkeyState::Yellow;
+				return osContinue;
+			}
 			break;
 		case HotkeyState::Blue:              // pip
 			if (k0 <= key && key <= k9) {
@@ -256,9 +318,40 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 			}
 			m_hotkeyState = HotkeyState::Initial;
 			break;
+		case HotkeyState::Green:             // zoom
+			if (k0 <= key && key <= k9) {
+				int hotkeyCode = static_cast<int>(ZOOMKEYBASE) + static_cast<int>(key) - static_cast<int>(k0);
+				m_hotkeyState = HotkeyState::Initial;
+				HandleHotKey(hotkeyCode);
+				return osEnd;
+			}
+			m_hotkeyState = HotkeyState::Initial;
+			break;
+		case HotkeyState::Yellow:            // audio
+			if (k0 <= key && key <= k9) {
+				int hotkeyCode = static_cast<int>(AUDIOKEYBASE) + static_cast<int>(key) - static_cast<int>(k0);
+				m_hotkeyState = HotkeyState::Initial;
+				HandleHotKey(hotkeyCode);
+				return osEnd;
+			}
+			m_hotkeyState = HotkeyState::Initial;
+			break;
 	}
 
 	item = (cOsdItem *) Get(Current());
+
+	// zoom
+	if (key == kOk && m_shownMenu == ShownMenu::Main && item && item == m_pZoomItem) {
+		NextZoomLevel();
+		return osEnd;
+	}
+
+	// audio
+	if (key == kOk && m_shownMenu == ShownMenu::Main && item && item == m_pPassthroughItem) {
+		TogglePassthrough();
+		return osEnd;
+	}
+
 	state = cOsdMenu::ProcessKey(key);
 
 	switch (state) {
@@ -370,6 +463,11 @@ eOSState cDeviceMenu::ProcessKey(eKeys key)
 			}
 			break;
 		case kBlue:
+			if (m_shownMenu == ShownMenu::Files) {
+				if (item)
+					DeleteItem(item->Text());
+				return osContinue;
+			}
 			state = osStopReplay;
 			break;
 		case kPlay:
@@ -529,7 +627,7 @@ void cDeviceMenu::FindFileMenu(const std::string &searchPath, FILE *playlist)
 	}
 
 	if (!playlist) {
-		SetHelp( m_playlist.empty() ? "Play File" : "Play PL", "New PL", "Add to PL", NULL);
+		SetHelp( m_playlist.empty() ? "Play File" : "Play PL", "New PL", "Add to PL", trVDR("Button$Delete"));
 //		SetHelp(Control->Player->Running ? NULL : "Set new PL",
 //			Control->Player->Running ? "Play Menu" : "Select PL");
 		Display();
@@ -577,6 +675,182 @@ void cDeviceMenu::PlayMedia(const char *name)
 	} else {
 		LOGERROR("mediaplayer: %s: can't start %s", __FUNCTION__, aim.c_str());
 	}
+}
+
+/**
+ * Number of entries, which couldn't be deleted (see RemoveEntry())
+ *
+ * @ingroup menu
+ */
+static int s_deleteErrors = 0;
+
+/**
+ * Delete an entry of a folder, which is deleted (callback of nftw())
+ *
+ * @param path       path of the entry
+ * @param sb         unused
+ * @param type       type of the entry (FTW_DP for a folder, after its entries)
+ * @param ftwbuf     unused
+ * @return           0 to continue with the next entry
+ *
+ * @ingroup menu
+ */
+static int RemoveEntry(const char *path, [[maybe_unused]] const struct stat *sb, int type, [[maybe_unused]] struct FTW *ftwbuf)
+{
+	if ((type == FTW_DP ? rmdir(path) : unlink(path)) < 0) {
+		LOGERROR("mediaplayer: %s: can't delete %s: %m", __FUNCTION__, path);
+		s_deleteErrors++;
+	}
+
+	return 0;
+}
+
+/**
+ * Check, if a recording is recorded or replayed by VDR at the moment
+ *
+ * @param path       path of a recording folder (".rec")
+ *
+ * @ingroup menu
+ */
+static bool IsRecordingInUse(const char *path)
+{
+	const char *replaying = cReplayControl::NowReplaying();
+
+	return cRecordControls::GetRecordControl(path) || (replaying && !strcmp(path, replaying));
+}
+
+/**
+ * Set by FindRecordingInUse(), if a recording in the checked folder is in use
+ *
+ * @ingroup menu
+ */
+static bool s_recordingInUse = false;
+
+/**
+ * Check a folder entry for a recording in use (callback of nftw())
+ *
+ * @param path       path of the entry
+ * @param sb         unused
+ * @param type       type of the entry
+ * @param ftwbuf     unused
+ * @return           0 to continue, 1 to stop, if a recording in use was found
+ *
+ * @ingroup menu
+ */
+static int FindRecordingInUse(const char *path, [[maybe_unused]] const struct stat *sb, int type, [[maybe_unused]] struct FTW *ftwbuf)
+{
+	if (type == FTW_D && IsRecordingInUse(path)) {
+		s_recordingInUse = true;
+		return 1;
+	}
+
+	return 0;
+}
+
+/**
+ * Check, if a file or folder belongs to a recording, which is recorded or replayed
+ *
+ * The recording may be the folder itself, a folder in it or the folder,
+ * which contains the file or folder.
+ *
+ * @param path       path of the file or folder (as VDR knows the recordings,
+ *                   below the video directory)
+ * @param isFolder   true, if the path is a folder
+ *
+ * @ingroup menu
+ */
+static bool ContainsRecordingInUse(const std::string &path, bool isFolder)
+{
+	// a recording, which contains the path
+	for (size_t pos = path.find(".rec"); pos != std::string::npos; pos = path.find(".rec", pos + 1)) {
+		size_t end = pos + 4;
+		if ((end == path.size() || path[end] == '/') && IsRecordingInUse(path.substr(0, end).c_str()))
+			return true;
+	}
+
+	// a recording in the folder
+	s_recordingInUse = false;
+	if (isFolder)
+		nftw(path.c_str(), FindRecordingInUse, 16, FTW_PHYS | FTW_MOUNT);
+
+	return s_recordingInUse;
+}
+
+/**
+ * Get the real path of a folder
+ *
+ * @param path       path of the folder
+ * @return           the canonical path (empty, if it doesn't exist)
+ *
+ * @ingroup menu
+ */
+static std::string RealPath(const std::string &path)
+{
+	char *real = realpath(path.c_str(), nullptr);
+	std::string result = real ? real : "";
+	free(real);
+
+	return result;
+}
+
+/**
+ * Delete a file or a folder with all its entries in the file menu
+ *
+ * To protect the system, only entries in the video directory are deleted. A
+ * symbolic link is deleted itself, not its target, and a folder is only
+ * deleted on the file system of the folder (mounted file systems are kept).
+ *
+ * @param name       name of the file or folder in the shown folder
+ */
+void cDeviceMenu::DeleteItem(const char *name)
+{
+	if (!strcmp(name, "[..]"))
+		return;
+
+	std::string videoDir = RealPath(cVideoDirectory::Name());
+	std::string folder = RealPath(m_path);
+	if (videoDir.empty() || folder.empty() ||
+	    (folder != videoDir && folder.compare(0, videoDir.size() + 1, videoDir + "/"))) {
+		Skins.Message(mtError, tr("Only files in the video directory can be deleted"));
+		return;
+	}
+
+	std::string path = folder + "/" + name;
+	struct stat sb;
+	if (lstat(path.c_str(), &sb) < 0)
+		return;
+
+	bool isFolder = S_ISDIR(sb.st_mode);
+
+	// VDR records into it or plays it: VDR deletes such a recording itself (Recordings menu)
+	if (ContainsRecordingInUse(m_path + "/" + name, isFolder)) {
+		Skins.Message(mtError, tr("Recording in use (recorded or replayed)!"));
+		return;
+	}
+
+	if (!Interface->Confirm(isFolder ? tr("Delete folder with all files?") : tr("Delete file?")))
+		return;
+
+	s_deleteErrors = 0;
+	if (isFolder)
+		nftw(path.c_str(), RemoveEntry, 16, FTW_DEPTH | FTW_PHYS | FTW_MOUNT);
+	else
+		RemoveEntry(path.c_str(), &sb, FTW_F, nullptr);
+
+	LOGINFO("mediaplayer: deleted %s%s", path.c_str(), s_deleteErrors ? " (with errors)" : "");
+	if (s_deleteErrors)
+		Skins.Message(mtError, tr("Error while deleting!"));
+
+	// VDR rereads the recordings, if a recording was deleted
+	cRecordings::TouchUpdate();
+
+	// select the next entry
+	int current = Current();
+	cOsdItem *next = static_cast<cOsdItem *>(Get(current + 1));
+	if (!next)
+		next = static_cast<cOsdItem *>(Get(current - 1));
+	m_lastItem = next ? next->Text() : "";
+	FindFileMenu(m_path, NULL);
 }
 
 /**

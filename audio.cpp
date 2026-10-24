@@ -1178,11 +1178,8 @@ bool cAudioStream::CyclicCall(void)
 
 	int err = m_alsa.WaitUntilReady();
 	if (err < 0) {
-		if (m_alsa.HandleError(err)) {
-			std::lock_guard<std::mutex> lock(m_queueMutex);
-			if (!m_pDevice->IsDraining())
-				m_eventQueue.push_back(BufferUnderrunEvent{AUDIO});
-		}
+		if (m_alsa.HandleError(err))
+			SignalUnderrun();
 		return false;
 	} else if (err == 0) {
 		return true;
@@ -1194,10 +1191,8 @@ bool cAudioStream::CyclicCall(void)
 	if (freeAlsaBufferFrames == -EAGAIN)
 		return true; // ?? is this correct?
 	else if (freeAlsaBufferFrames < 0) {
-		if (m_alsa.HandleError(freeAlsaBufferFrames)) {
-			std::lock_guard<std::mutex> lock(m_queueMutex);
-			m_eventQueue.push_back(BufferUnderrunEvent{AUDIO});
-		}
+		if (m_alsa.HandleError(freeAlsaBufferFrames))
+			SignalUnderrun();
 		return false;
 	}
 
@@ -1211,9 +1206,64 @@ bool cAudioStream::CyclicCall(void)
 		return SendPause();
 	}
 
+	if (m_alsa.IsPassthroughActive() && m_spdifBurstSize > 0 && !m_pRingbuffer.UsedBytes())
+		return BridgeBitstreamGap(freeAlsaBufferFrames);
+
 	return SendAudio(freeAlsaBufferFrames);
 }
 
+/**
+ * Bridge a gap of the bitstream with pause bursts
+ *
+ * The bitstream ran dry during the playback (e.g. the audio packets came late).
+ * An underrun of the device would let the receiver lose the lock to the bitstream
+ * and it would need some time to lock again. So a pause burst is sent, before
+ * the device runs empty: the receiver stays locked and only the missing audio is
+ * silent.
+ *
+ * The buffered audio doesn't reach the playback start anymore, so the state
+ * machine buffers again and resyncs audio and video, like after an underrun in
+ * PCM mode. Meanwhile the paused audio sends pause bursts.
+ *
+ * @param freeAlsaBufferFrames     number of frames that can be written to the hardware
+ *
+ * @retval true      a pause burst was written
+ * @retval false     the device still has enough data or the burst couldn't be written
+ */
+bool cAudioStream::BridgeBitstreamGap(int freeAlsaBufferFrames)
+{
+	int burstFrames = m_alsa.BytesToFrames(m_spdifBurstSize);
+	int queuedFrames = m_alsa.GetBufferSizeFrames() - freeAlsaBufferFrames;
+
+	// wait, until the device has at most one burst left and there is space for a full burst
+	if (queuedFrames > burstFrames || freeAlsaBufferFrames < burstFrames)
+		return false;
+
+	if (!m_bitstreamGap) {
+		m_bitstreamGap = true;
+		LOGDEBUG2(L_SOUND, "audio: %s: the bitstream ran dry, send pause bursts", __FUNCTION__);
+		SignalUnderrun();
+	}
+
+	return SendPause();
+}
+
+
+/**
+ * Let the state machine buffer again after an underrun of the device
+ *
+ * The output ran empty, so audio and video have to be resynced. An underrun
+ * while the audio is paused (e.g. the pause bursts of the passthrough while
+ * buffering) or while the device is drained doesn't need this.
+ */
+void cAudioStream::SignalUnderrun(void)
+{
+	if (m_paused || m_pDevice->IsDraining())
+		return;
+
+	std::lock_guard<std::mutex> lock(m_queueMutex);
+	m_eventQueue.push_back(BufferUnderrunEvent{AUDIO});
+}
 
 /**
  * Write regular audio data from the ringbuffer to the hardware
@@ -1253,9 +1303,16 @@ bool cAudioStream::SendAudio(int freeAlsaBufferFrames)
 
 	int framesToWrite = m_alsa.BytesToFrames(bytesToWrite);
 	int framesWritten = m_alsa.Write(data, framesToWrite);
-	m_fillLevel.WroteFrames(framesWritten);
-	m_pRingbuffer.ReadAdvance(m_alsa.FramesToBytes(framesWritten));
-	AdvanceSpdifReadPhase(m_alsa.FramesToBytes(framesWritten));
+
+	// a failed write (e.g. an underrun) wrote nothing, the data stays in the ringbuffer
+	if (framesWritten > 0) {
+		m_bitstreamGap = false;
+		m_fillLevel.WroteFrames(framesWritten);
+		m_pRingbuffer.ReadAdvance(m_alsa.FramesToBytes(framesWritten));
+		AdvanceSpdifReadPhase(m_alsa.FramesToBytes(framesWritten));
+	} else if (framesWritten == -EPIPE) {
+		SignalUnderrun();
+	}
 
 	return m_alsa.CheckWrittenFrames(framesWritten, framesToWrite);
 }

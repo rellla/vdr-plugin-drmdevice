@@ -15,11 +15,14 @@
  */
 
 #include <algorithm>
+#include <cctype>
 #include <cinttypes>
 #include <cstdlib>
 #include <fstream>
 #include <random>
 #include <string>
+#include <utility>
+#include <vector>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -27,9 +30,11 @@ extern "C" {
 }
 
 #include <vdr/config.h>
+#include <vdr/i18n.h>
 #include <vdr/player.h>
 #include <vdr/plugin.h>
 #include <vdr/remux.h>
+#include <vdr/skins.h>
 
 #include "audio.h"
 #include "device.h"
@@ -122,15 +127,166 @@ static void RescaleToPesTimebase(AVPacket *pkt, AVRational timebase, int64_t sta
 }
 
 /**
- * Returns true, if the playlist is a m3u playlist
+ * Check, if an audio codec is passed in a Dolby track
+ *
+ * Like in VDR, the formats, which can be passed through, are Dolby tracks.
+ * They are preferred, if Setup.CurrentDolby is set.
+ *
+ * @param codecId         codec of the audio stream
+ *
+ * @ingroup mediaplayer
+ */
+static bool IsDolbyTrack(AVCodecID codecId)
+{
+	return codecId == AV_CODEC_ID_AC3 || codecId == AV_CODEC_ID_EAC3 ||
+	       codecId == AV_CODEC_ID_TRUEHD || codecId == AV_CODEC_ID_DTS;
+}
+
+/**
+ * Describe an audio stream for the track menu
+ *
+ * @param stream          audio stream
+ * @return                e.g. "AC-3 5.1" or "AAC stereo - Commentary"
+ *
+ * @ingroup mediaplayer
+ */
+static std::string AudioTrackDescription(const AVStream *stream)
+{
+	const AVCodecParameters *par = stream->codecpar;
+	std::string description;
+
+	switch (par->codec_id) {
+		case AV_CODEC_ID_AC3:    description = "AC-3"; break;
+		case AV_CODEC_ID_EAC3:   description = "E-AC-3"; break;
+		case AV_CODEC_ID_TRUEHD: description = "TrueHD"; break;
+		case AV_CODEC_ID_DTS:    description = "DTS"; break;
+		case AV_CODEC_ID_MP2:    description = "MP2"; break;
+		case AV_CODEC_ID_MP3:    description = "MP3"; break;
+		default: {
+			const AVCodecDescriptor *desc = avcodec_descriptor_get(par->codec_id);
+			description = desc ? desc->name : "?";
+			std::transform(description.begin(), description.end(), description.begin(), ::toupper);
+			break;
+		}
+	}
+
+	switch (par->ch_layout.nb_channels) {
+		case 0:  break;
+		case 1:  description += " mono"; break;
+		case 2:  description += " stereo"; break;
+		case 6:  description += " 5.1"; break;
+		case 8:  description += " 7.1"; break;
+		default: description += " " + std::to_string(par->ch_layout.nb_channels) + "ch"; break;
+	}
+
+	const AVDictionaryEntry *title = av_dict_get(stream->metadata, "title", nullptr, 0);
+	if (title && *title->value)
+		description += std::string(" - ") + title->value;
+
+	return description;
+}
+
+/**
+ * Get the language of a stream
+ *
+ * @param stream          the stream
+ * @return                ISO 639-2 language code or an empty string
+ *
+ * @ingroup mediaplayer
+ */
+static const char *StreamLanguage(const AVStream *stream)
+{
+	const AVDictionaryEntry *language = av_dict_get(stream->metadata, "language", nullptr, 0);
+
+	return language && strcmp(language->value, "und") ? language->value : "";
+}
+
+/**
+ * Check, if a stream contains text subtitles, which can be shown
+ *
+ * @param stream          the stream
+ *
+ * @ingroup mediaplayer
+ */
+static bool IsTextSubtitle(const AVStream *stream)
+{
+	if (stream->codecpar->codec_type != AVMEDIA_TYPE_SUBTITLE)
+		return false;
+
+	const AVCodecDescriptor *desc = avcodec_descriptor_get(stream->codecpar->codec_id);
+
+	return desc && (desc->props & AV_CODEC_PROP_TEXT_SUB) && avcodec_find_decoder(stream->codecpar->codec_id);
+}
+
+/**
+ * Describe a subtitle stream for the track menu
+ *
+ * @param stream          subtitle stream
+ * @return                the title of the stream or the codec
+ *
+ * @ingroup mediaplayer
+ */
+static std::string SubtitleTrackDescription(const AVStream *stream)
+{
+	const AVDictionaryEntry *title = av_dict_get(stream->metadata, "title", nullptr, 0);
+	if (title && *title->value)
+		return title->value;
+
+	const AVCodecDescriptor *desc = avcodec_descriptor_get(stream->codecpar->codec_id);
+	std::string description = desc ? desc->name : "";
+	if (stream->disposition & AV_DISPOSITION_FORCED)
+		description += " (forced)";
+
+	return description;
+}
+
+/**
+ * Check, if a source is a stream on a server (e.g. http://...)
+ *
+ * @param source          file or url
+ *
+ * @ingroup mediaplayer
+ */
+static bool IsUrl(const char *source)
+{
+	return strstr(source, "://") != nullptr;
+}
+
+/**
+ * Check, if a local m3u/m3u8 file is a HLS manifest
+ *
+ * A HLS manifest contains HLS tags (\#EXT-X-...), a playlist only lists files.
+ *
+ * @param path            local m3u/m3u8 file
+ *
+ * @ingroup mediaplayer
+ */
+static bool IsHlsManifest(const char *path)
+{
+	std::ifstream file(path);
+	std::string line;
+
+	while (std::getline(file, line)) {
+		if (!line.compare(0, 7, "#EXT-X-"))
+			return true;
+	}
+
+	return false;
+}
+
+/**
+ * Returns true, if the source is a m3u playlist, which is played by the mediaplayer
+ *
+ * A m3u/m3u8 file on a server or with HLS tags is a HLS stream, which is
+ * played by FFmpeg.
  *
  * @param source          file or playlist to be played
  *
  * @ingroup mediaplayer
  */
-static bool IsM3UPlaylist(char *source)
+static bool IsM3UPlaylist(const char *source)
 {
-	return (strcasestr(source, ".M3U") && !strcasestr(source, ".M3U8"));
+	return strcasestr(source, ".M3U") && !IsUrl(source) && !IsHlsManifest(source);
 }
 
 /**
@@ -179,7 +335,8 @@ cDrmDevicePlayer::cDrmDevicePlayer(const char *url, cOutputDevice *device)
 	m_pSource = (char *) malloc(1 + strlen(url));
 	strcpy(m_pSource, url);
 
-	if (IsM3UPlaylist(m_pSource)) {
+	m_isPlaylist = IsM3UPlaylist(m_pSource);
+	if (m_isPlaylist) {
 		ReadPlaylist(m_pSource);
 		m_pCurrentEntry = m_pFirstEntry;
 	} else
@@ -235,7 +392,7 @@ void cDrmDevicePlayer::Action(void)
 	LOGDEBUG2(L_MEDIA, "mediaplayer: %s:", __FUNCTION__);
 	m_noModify = false;
 
-	if (IsM3UPlaylist(m_pSource)) {
+	if (m_isPlaylist) {
 		while (m_pCurrentEntry && Running()) {
 			PlayFile(m_pCurrentEntry.load()->GetPath().c_str());
 
@@ -273,10 +430,26 @@ void cDrmDevicePlayer::ReadPlaylist(const char *playlist)
 		return;
 	}
 
+	// relative paths are relative to the folder of the playlist
+	std::string folder = playlist;
+	folder.resize(folder.find_last_of('/') + 1);
+
+	bool firstLine = true;
 	while (!inputFile.eof()) {
 		std::string s;
 		getline(inputFile, s);
+
+		// UTF-8 byte order mark and DOS line endings
+		if (firstLine && !s.compare(0, 3, "\xEF\xBB\xBF"))
+			s.erase(0, 3);
+		firstLine = false;
+		if (s.size() && s.back() == '\r')
+			s.pop_back();
+
 		if (s.size() && s.compare(0, 1, "#")) {
+			if (s[0] != '/' && !IsUrl(s.c_str()))
+				s = folder + s;
+
 			cPlaylistEntry *entry = new cPlaylistEntry(s);
 
 			if (!lastEntry)
@@ -374,8 +547,16 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 	const AVCodec *videoCodec;
 #endif
 	AVFormatContext *format = avformat_alloc_context();
-	if (avformat_open_input(&format, url, NULL, NULL) != 0) {
-		LOGERROR("mediaplayer: %s: Could not open file '%s'", __FUNCTION__, url);
+	AVDictionary *options = nullptr;
+
+	// the segments of a local HLS manifest may be on a server
+	if (!IsUrl(url) && strcasestr(url, ".M3U"))
+		av_dict_set(&options, "protocol_whitelist", "file,http,https,tcp,tls,crypto,data", 0);
+
+	int err = avformat_open_input(&format, url, NULL, &options);
+	av_dict_free(&options);
+	if (err != 0) {
+		LOGERROR("mediaplayer: %s: Could not open file '%s': %s", __FUNCTION__, url, av_err2str(err));
 		return false;
 	}
 #ifdef MEDIA_DEBUG
@@ -387,13 +568,9 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 		return false;
 	}
 
-	int audioIdx = -1;
-	for (unsigned int i = 0; i < format->nb_streams; i++) {
-		if (format->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-			audioIdx = i;
-			break;
-		}
-	}
+	bool hasAudio = false;
+	for (unsigned int i = 0; i < format->nb_streams; i++)
+		hasAudio |= format->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO;
 
 	int videoIdx = av_find_best_stream(format, AVMEDIA_TYPE_VIDEO, -1, -1, &videoCodec, 0);
 
@@ -401,7 +578,7 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 	if (videoIdx >= 0 && (format->streams[videoIdx]->disposition & AV_DISPOSITION_ATTACHED_PIC))
 		videoIdx = -1;
 
-	if (audioIdx < 0 && videoIdx < 0) {
+	if (!hasAudio && videoIdx < 0) {
 		LOGERROR("mediaplayer: %s: no audio or video stream in file '%s'", __FUNCTION__, url);
 		avformat_close_input(&format);
 		return false;
@@ -412,12 +589,20 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 
 	LOCK_THREAD;
 
+	// VDR may select the tracks already while they are added
+	m_requestedAudioIdx = NO_TRACK_REQUEST;
+	m_requestedSubtitleIdx = NO_TRACK_REQUEST;
+	m_resyncAfterPause = false;
+	int audioIdx = AddTracks(format);
+
 	m_pFormat = format;
 	m_audioIdx = audioIdx;
 	m_videoIdx = videoIdx;
 	m_startTime = format->start_time != AV_NOPTS_VALUE ? format->start_time : 0;
 	m_durationMs = format->duration > 0 ? format->duration / (AV_TIME_BASE / 1000) : 0;
-	m_seekable = format->pb && (format->pb->seekable & AVIO_SEEKABLE_NORMAL);
+	// a HLS stream with a duration (no live stream) is seekable by the demuxer
+	m_seekable = (format->pb && (format->pb->seekable & AVIO_SEEKABLE_NORMAL)) ||
+	             (format->duration > 0 && !strcmp(format->iformat->name, "hls"));
 
 	m_fps = DEFAULTFRAMESPERSECOND;
 	if (videoIdx >= 0) {
@@ -441,14 +626,20 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 
 	DeviceClear();
 	m_staleStc = m_pDevice->GetSTC();
-	m_pDevice->SetMediaStreams(audioIdx >= 0, videoIdx >= 0);
 
-	if (audioIdx >= 0)
-		m_pDevice->SetAudioCodec(format->streams[audioIdx]->codecpar->codec_id,
-			format->streams[audioIdx]->codecpar, PES_TIMEBASE);
+	// audio, which can't be decoded, is dropped
+	if (audioIdx >= 0 && !m_pDevice->SetAudioCodec(format->streams[audioIdx]->codecpar->codec_id,
+	                                               format->streams[audioIdx]->codecpar, PES_TIMEBASE)) {
+		LOGERROR("mediaplayer: %s: the audio of '%s' can't be decoded, play it without audio", __FUNCTION__, url);
+		audioIdx = m_audioIdx = -1;
+	}
+
+	m_pDevice->SetMediaStreams(audioIdx >= 0, videoIdx >= 0);
 
 	if (videoIdx >= 0)
 		m_pDevice->SetVideoCodec(videoCodec->id, format->streams[videoIdx]->codecpar, PES_TIMEBASE);
+
+	UpdateStreamDiscards();
 
 	std::lock_guard<std::mutex> lock(m_fileMutex);
 	std::string path = url;
@@ -458,6 +649,269 @@ bool cDrmDevicePlayer::OpenFile(const char *url)
 	m_fileTitle = entry ? entry->OsdItemString() : path.substr(path.find_last_of('/') + 1);
 
 	return true;
+}
+
+/**
+ * Tell VDR the audio tracks of a file and select one
+ *
+ * The audio track is selected like VDR does with the tracks of a recording:
+ * the preferred audio language of the setup and, with Setup.CurrentDolby,
+ * the Dolby tracks are preferred. Otherwise the default track of the file is
+ * played. The user can select another track with the Audio key.
+ *
+ * @param format    format context of the file
+ * @return          stream index of the selected audio track (-1, if none)
+ */
+int cDrmDevicePlayer::AddTracks(AVFormatContext *format)
+{
+	DeviceClrAvailableTracks();
+
+	int numAudio = 0;
+	int numDolby = 0;
+	std::vector<std::pair<eTrackType, int>> tracks;           // track type and stream index
+
+	for (unsigned int i = 0; i < format->nb_streams && i < 0xFFFF; i++) {
+		AVStream *stream = format->streams[i];
+		if (stream->codecpar->codec_type != AVMEDIA_TYPE_AUDIO)
+			continue;
+
+		bool dolby = IsDolbyTrack(stream->codecpar->codec_id);
+		eTrackType type = dolby ? ttDolby : ttAudio;
+		int index = dolby ? numDolby : numAudio;
+		if (type + index > (dolby ? ttDolbyLast : ttAudioLast))
+			continue;
+
+		(dolby ? numDolby : numAudio)++;
+		DeviceSetAvailableTrack(type, index, i + 1, StreamLanguage(stream), AudioTrackDescription(stream).c_str());
+		tracks.emplace_back(eTrackType(type + index), i);
+	}
+
+	// VDR selects the subtitle track according to its subtitle setup
+	int numSubtitles = 0;
+	for (unsigned int i = 0; i < format->nb_streams && i < 0xFFFF && ttSubtitle + numSubtitles <= ttSubtitleLast; i++) {
+		AVStream *stream = format->streams[i];
+		if (IsTextSubtitle(stream))
+			DeviceSetAvailableTrack(ttSubtitle, numSubtitles++, i + 1, StreamLanguage(stream), SubtitleTrackDescription(stream).c_str());
+	}
+
+	if (tracks.empty())
+		return -1;
+
+	// the default track of the file, if no language is preferred
+	int audioIdx = av_find_best_stream(format, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
+	eTrackType selected = ttNone;
+	for (auto &track : tracks) {
+		if (track.second == audioIdx)
+			selected = track.first;
+	}
+	if (selected == ttNone) {
+		selected = tracks.front().first;
+		audioIdx = tracks.front().second;
+	}
+
+	// like cDevice::EnsureAudioTrack()
+	int languagePreference = -1;
+	for (int pass = 0; pass < 2; pass++) {
+		// with Setup.CurrentDolby the Dolby tracks are checked first, so they win at the same preference
+		bool dolby = (pass == 0) == static_cast<bool>(Setup.CurrentDolby);
+		for (auto &track : tracks) {
+			if (IS_DOLBY_TRACK(track.first) != dolby)
+				continue;
+			if (I18nIsPreferredLanguage(Setup.AudioLanguages, StreamLanguage(format->streams[track.second]), languagePreference)) {
+				selected = track.first;
+				audioIdx = track.second;
+			}
+		}
+	}
+
+	DeviceSetCurrentAudioTrack(selected);
+	LOGDEBUG2(L_MEDIA, "mediaplayer: %s: %zu audio tracks, play stream %d", __FUNCTION__, tracks.size(), audioIdx);
+
+	return audioIdx;
+}
+
+/**
+ * Let the demuxer drop the streams, which aren't played
+ *
+ * E.g. a HLS stream has variants with different bitrates, the demuxer only
+ * loads the segments of the played variants then.
+ *
+ * Must be called with the thread lock.
+ */
+void cDrmDevicePlayer::UpdateStreamDiscards(void)
+{
+	for (unsigned int i = 0; i < m_pFormat->nb_streams; i++) {
+		int idx = static_cast<int>(i);
+		bool played = idx == m_audioIdx || idx == m_videoIdx || idx == m_subtitleIdx;
+		m_pFormat->streams[i]->discard = played ? AVDISCARD_DEFAULT : AVDISCARD_ALL;
+	}
+}
+
+/**
+ * Select the audio track (called by VDR, e.g. from the track menu)
+ *
+ * The track is switched by the player thread.
+ *
+ * @param type      track type
+ * @param trackId   track (the id is the stream index + 1)
+ */
+void cDrmDevicePlayer::SetAudioTrack([[maybe_unused]] eTrackType type, const tTrackId *trackId)
+{
+	if (trackId && trackId->id)
+		m_requestedAudioIdx = trackId->id - 1;
+}
+
+/**
+ * Switch to the audio track, which the user selected
+ *
+ * In normal play mode the file is read again from the current position, so
+ * the new track starts at once (like cDvbPlayer). In pause mode this is done,
+ * when the playback continues.
+ *
+ * Must be called with the thread lock.
+ */
+void cDrmDevicePlayer::SwitchAudioTrack(void)
+{
+	int audioIdx = m_requestedAudioIdx.exchange(NO_TRACK_REQUEST);
+
+	if (audioIdx == NO_TRACK_REQUEST || audioIdx == m_audioIdx || audioIdx < 0 ||
+	    audioIdx >= static_cast<int>(m_pFormat->nb_streams) ||
+	    m_pFormat->streams[audioIdx]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO)
+		return;
+
+	LOGDEBUG2(L_MEDIA, "mediaplayer: %s: switch from stream %d to %d", __FUNCTION__, m_audioIdx, audioIdx);
+
+	m_audioIdx = audioIdx;
+	UpdateStreamDiscards();
+	if (m_seekable && m_playMode == pmPlay)
+		Empty();
+	else if (m_seekable && m_playMode == pmPause)
+		m_resyncAfterPause = true;
+	else if (m_pPacket && m_pPacket->stream_index != m_videoIdx)
+		av_packet_free(&m_pPacket);
+
+	// audio, which can't be decoded, is dropped
+	AVStream *stream = m_pFormat->streams[audioIdx];
+	if (!m_pDevice->SetAudioCodec(stream->codecpar->codec_id, stream->codecpar, PES_TIMEBASE)) {
+		LOGERROR("mediaplayer: %s: the audio track can't be decoded, play without audio", __FUNCTION__);
+		m_audioIdx = -1;
+		UpdateStreamDiscards();
+		m_pDevice->SetMediaStreams(false, m_videoIdx >= 0);
+	}
+}
+
+/**
+ * Select the subtitle track (called by VDR, e.g. from the subtitle track menu)
+ *
+ * The track is switched by the player thread.
+ *
+ * @param type      track type (ttNone switches the subtitles off)
+ * @param trackId   track (the id is the stream index + 1)
+ */
+void cDrmDevicePlayer::SetSubtitleTrack(eTrackType type, const tTrackId *trackId)
+{
+	m_requestedSubtitleIdx = IS_SUBTITLE_TRACK(type) && trackId && trackId->id ? trackId->id - 1 : -1;
+}
+
+/**
+ * Close the subtitle decoder and hide the subtitles
+ */
+void cDrmDevicePlayer::CloseSubtitleDecoder(void)
+{
+	avcodec_free_context(&m_pSubtitleCtx);
+	m_subtitleIdx = -1;
+	m_subtitles.Clear();
+}
+
+/**
+ * Switch to the subtitle track, which VDR or the user selected
+ *
+ * The subtitles of the new track are shown, as soon as they are read.
+ *
+ * Must be called with the thread lock.
+ */
+void cDrmDevicePlayer::SwitchSubtitleTrack(void)
+{
+	int subtitleIdx = m_requestedSubtitleIdx.exchange(NO_TRACK_REQUEST);
+
+	if (subtitleIdx == NO_TRACK_REQUEST || subtitleIdx == m_subtitleIdx)
+		return;
+
+	CloseSubtitleDecoder();
+	UpdateStreamDiscards();
+
+	if (subtitleIdx < 0 || subtitleIdx >= static_cast<int>(m_pFormat->nb_streams) ||
+	    !IsTextSubtitle(m_pFormat->streams[subtitleIdx]))
+		return;
+
+	AVStream *stream = m_pFormat->streams[subtitleIdx];
+	const AVCodec *codec = avcodec_find_decoder(stream->codecpar->codec_id);
+	if (!(m_pSubtitleCtx = avcodec_alloc_context3(codec)))
+		return;
+
+	m_pSubtitleCtx->pkt_timebase = PES_TIMEBASE;
+	if (avcodec_parameters_to_context(m_pSubtitleCtx, stream->codecpar) < 0 ||
+	    avcodec_open2(m_pSubtitleCtx, codec, NULL) < 0) {
+		LOGERROR("mediaplayer: %s: can't open the subtitle decoder %s", __FUNCTION__, codec->name);
+		avcodec_free_context(&m_pSubtitleCtx);
+		return;
+	}
+
+	LOGDEBUG2(L_MEDIA, "mediaplayer: %s: show subtitle stream %d (%s)", __FUNCTION__, subtitleIdx, codec->name);
+	m_subtitleIdx = subtitleIdx;
+	UpdateStreamDiscards();
+}
+
+/**
+ * Decode a subtitle packet and add the subtitle
+ *
+ * @param pkt       subtitle packet (PES timebase)
+ */
+void cDrmDevicePlayer::DecodeSubtitle(const AVPacket *pkt)
+{
+	if (!m_pSubtitleCtx || pkt->pts == AV_NOPTS_VALUE)
+		return;
+
+	AVSubtitle subtitle;
+	int gotSubtitle = 0;
+	if (avcodec_decode_subtitle2(m_pSubtitleCtx, &subtitle, &gotSubtitle, const_cast<AVPacket *>(pkt)) < 0 || !gotSubtitle)
+		return;
+
+	std::vector<std::string> lines;
+	for (unsigned int i = 0; i < subtitle.num_rects; i++) {
+		std::vector<std::string> rectLines;
+		if (subtitle.rects[i]->type == SUBTITLE_ASS)
+			rectLines = AssDialogueToLines(subtitle.rects[i]->ass);
+		else if (subtitle.rects[i]->type == SUBTITLE_TEXT)
+			rectLines = TextToLines(subtitle.rects[i]->text);
+		lines.insert(lines.end(), rectLines.begin(), rectLines.end());
+	}
+
+	// the display times are in ms relative to the packet
+	int64_t startPts = pkt->pts + static_cast<int64_t>(subtitle.start_display_time) * PTSTICKS / 1000;
+	int64_t endPts = subtitle.end_display_time > subtitle.start_display_time ?
+		pkt->pts + static_cast<int64_t>(subtitle.end_display_time) * PTSTICKS / 1000 : startPts;
+
+	// an empty subtitle ends the previous one
+	m_subtitles.Add(startPts, endPts, lines);
+	avsubtitle_free(&subtitle);
+}
+
+/**
+ * Show the subtitles of the played position
+ *
+ * Called by the player thread without the thread lock, because the subtitles
+ * are drawn.
+ */
+void cDrmDevicePlayer::ProcessSubtitles(void)
+{
+	if (m_subtitleIdx < 0)
+		return;
+
+	// after a jump the device reports the old position, until the new one is played
+	int64_t stc = m_pDevice->GetSTC();
+	if (stc != AV_NOPTS_VALUE && stc != m_staleStc)
+		m_subtitles.Process(stc);
 }
 
 /**
@@ -473,6 +927,7 @@ void cDrmDevicePlayer::CloseFile(void)
 	if (m_pFormat)
 		avformat_close_input(&m_pFormat);
 
+	CloseSubtitleDecoder();
 	m_audioIdx = m_videoIdx = -1;
 	m_durationMs = 0;
 	m_seekable = false;
@@ -517,6 +972,8 @@ void cDrmDevicePlayer::PlayFile(const char *url)
 				break;
 			}
 		}
+
+		ProcessSubtitles();
 
 		if (sleep)
 			cCondWait::SleepMs(m_playMode == pmPause || m_playMode == pmStill ? 10 : 3);
@@ -620,7 +1077,7 @@ AVPacket *cDrmDevicePlayer::ReadPacket(void)
 			return nullptr;
 		}
 
-		if (pkt->stream_index == m_audioIdx || pkt->stream_index == m_videoIdx) {
+		if (pkt->stream_index == m_audioIdx || pkt->stream_index == m_videoIdx || pkt->stream_index == m_subtitleIdx) {
 			RescaleToPesTimebase(pkt, m_pFormat->streams[pkt->stream_index]->time_base, m_startTime);
 			return pkt;
 		}
@@ -693,6 +1150,12 @@ bool cDrmDevicePlayer::FeedPacket(AVPacket *pkt)
 	if (pkt->stream_index == m_videoIdx)
 		return m_pDevice->PlayVideoPkts(pkt);           // the device takes the ownership
 
+	if (pkt->stream_index == m_subtitleIdx) {
+		DecodeSubtitle(pkt);
+		av_packet_free(&pkt);
+		return true;
+	}
+
 	if (!m_pDevice->PlayAudioPkts(pkt))
 		return false;
 
@@ -730,6 +1193,9 @@ void cDrmDevicePlayer::ShowStillPicture(void)
  */
 bool cDrmDevicePlayer::Feed(void)
 {
+	SwitchAudioTrack();
+	SwitchSubtitleTrack();
+
 	// reposition after an Empty()
 	if (m_seekMs >= 0) {
 		Seek(m_seekMs, false);
@@ -853,6 +1319,7 @@ void cDrmDevicePlayer::Empty(void)
 
 	m_seekMs = GetPositionMs();
 	m_stillPending = false;
+	m_subtitles.Clear();
 
 	if (m_pPacket)
 		av_packet_free(&m_pPacket);
@@ -910,8 +1377,10 @@ void cDrmDevicePlayer::Play(void)
 {
 	if (m_playMode != pmPlay) {
 		LOCK_THREAD;
-		if (m_playMode == pmStill || m_playMode == pmFast || (m_playMode == pmSlow && m_playDir == pdBackward))
+		if (m_playMode == pmStill || m_playMode == pmFast || (m_playMode == pmSlow && m_playDir == pdBackward) ||
+		    (m_playMode == pmPause && m_resyncAfterPause))
 			Empty();
+		m_resyncAfterPause = false;
 
 		DevicePlay();
 		m_playMode = pmPlay;
@@ -1161,7 +1630,8 @@ static constexpr int STAY_SECONDS_OFF_END = 10;
  * @param device          pointer to device
  */
 cDrmDeviceControl::cDrmDeviceControl(const char *url, cOutputDevice *device)
-	: cControl(m_pPlayer = new cDrmDevicePlayer(url, device))
+	: cControl(m_pPlayer = new cDrmDevicePlayer(url, device)),
+	  m_pDevice(device)
 {
 	m_pControl = this;
 }
@@ -1540,9 +2010,12 @@ eOSState cDrmDeviceControl::ProcessKey(eKeys key)
 			m_pPlayer->SkipSeconds(Setup.SkipSeconds);
 			break;
 		case kStop:
-		case kBlue:
 			Hide();
 			return osEnd;
+		case kBlue:
+			m_pDevice->NextZoomLevel();
+			Skins.QueueMessage(mtInfo, m_pDevice->ZoomLevelString());
+			break;
 		default:
 			doShowMode = false;
 			switch (int(key)) {

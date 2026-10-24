@@ -20,11 +20,14 @@
 #include <string>
 
 extern "C" {
+#include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 }
 
 #include <vdr/player.h>
 #include <vdr/tools.h>
+
+#include "subtitle.h"
 
 class cOutputDevice;
 
@@ -88,6 +91,8 @@ public:
 	virtual bool GetIndex(int &, int &, bool = false);
 	virtual bool GetFrameNumber(int &, int &);
 	virtual bool GetReplayMode(bool &, bool &, int &);
+	virtual void SetAudioTrack(eTrackType, const tTrackId *);
+	virtual void SetSubtitleTrack(eTrackType, const tTrackId *);
 
 	// playlist
 	void SetEntry(int);
@@ -118,6 +123,13 @@ private:
 
 	void PlayFile(const char *);
 	bool OpenFile(const char *);
+	int AddTracks(AVFormatContext *);
+	void UpdateStreamDiscards(void);
+	void SwitchAudioTrack(void);
+	void SwitchSubtitleTrack(void);
+	void CloseSubtitleDecoder(void);
+	void DecodeSubtitle(const AVPacket *);
+	void ProcessSubtitles(void);
 	void CloseFile(void);
 	void ReadPlaylist(const char *);
 
@@ -138,6 +150,7 @@ private:
 	std::atomic<cPlaylistEntry *> m_pCurrentEntry = nullptr; ///< currently played playlist entry (read by the menu)
 
 	char *m_pSource;                                    ///< played file or playlist
+	bool m_isPlaylist = false;                          ///< true, if the source is a m3u playlist (not a HLS stream)
 	int m_entries = 0;                                  ///< number of playlist entries
 	cOutputDevice *m_pDevice;                           ///< pointer to the device
 	std::atomic<bool> m_stopFile = false;               ///< true, if the current file shall be stopped
@@ -154,6 +167,15 @@ private:
 	AVPacket *m_pPacket = nullptr;                      ///< packet, which wasn't accepted by the device yet
 	int m_audioIdx = -1;                                ///< index of the audio stream (-1, if none)
 	int m_videoIdx = -1;                                ///< index of the video stream (-1, if none)
+	static constexpr int NO_TRACK_REQUEST = -2;         ///< no track change was requested
+	/** stream index of the audio track selected by the user */
+	std::atomic<int> m_requestedAudioIdx = NO_TRACK_REQUEST;
+	bool m_resyncAfterPause = false;                    ///< true, if the audio track changed in pause mode
+	int m_subtitleIdx = -1;                             ///< index of the shown subtitle stream (-1, if none)
+	/** stream index of the subtitle track selected by VDR or the user (-1: off) */
+	std::atomic<int> m_requestedSubtitleIdx = NO_TRACK_REQUEST;
+	AVCodecContext *m_pSubtitleCtx = nullptr;           ///< decoder of the shown subtitle stream
+	cTextSubtitles m_subtitles;                         ///< shows the subtitles
 	int64_t m_startTime = 0;                            ///< start time of the file (AV_TIME_BASE units)
 	std::atomic<int64_t> m_durationMs = 0;              ///< duration of the file in ms (0, if unknown)
 	std::atomic<double> m_fps = DEFAULTFRAMESPERSECOND; ///< frame rate of the file
@@ -208,6 +230,7 @@ private:
 	static cDrmDeviceControl *m_pControl;               ///< the current control
 	static cDrmDevicePlayer *m_pPlayer;                 ///< the current player
 	cSkinDisplayReplay *m_pDisplayReplay = nullptr;     ///< replay display
+	cOutputDevice *m_pDevice;                           ///< pointer to the device (zoom)
 	std::atomic<bool> m_closing = false;                ///< true, if the control shall be closed
 
 	// replay display (like cReplayControl)

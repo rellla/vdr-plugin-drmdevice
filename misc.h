@@ -200,6 +200,37 @@ static inline uint32_t ReadBytes(const uint8_t *data, int count)
 	return value;
 }
 
+/**
+ * Compute the visible part of a zoomed picture
+ *
+ * The picture is magnified by the zoom-in factor and the overflow is cropped
+ * equally off all sides, so the aspect ratio is kept. The offsets and the size
+ * are even to keep the chroma planes aligned.
+ *
+ * @param width        picture width
+ * @param height       picture height
+ * @param zoom         zoom-in factor in 1/10 % (0 = no zoom)
+ * @param[out] x       x offset of the visible part
+ * @param[out] y       y offset of the visible part
+ * @param[out] w       width of the visible part
+ * @param[out] h       height of the visible part
+ */
+static inline void ZoomCropRect(int width, int height, int zoom, int *x, int *y, int *w, int *h)
+{
+	*x = 0;
+	*y = 0;
+	*w = width;
+	*h = height;
+
+	if (zoom <= 0 || width <= 0 || height <= 0)
+		return;
+
+	*w = std::max(2, static_cast<int>(static_cast<int64_t>(width) * 1000 / (1000 + zoom)) & ~1);
+	*h = std::max(2, static_cast<int>(static_cast<int64_t>(height) * 1000 / (1000 + zoom)) & ~1);
+	*x = ((width - *w) / 2) & ~1;
+	*y = ((height - *h) / 2) & ~1;
+}
+
 /** @} */
 
 #endif

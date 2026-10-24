@@ -168,6 +168,10 @@ void cVideoStream::CloseDecoder(void)
 	m_codecId = AV_CODEC_ID_NONE;
 	m_pDecoder->Close();
 	m_pPar = nullptr;
+	if (!m_isPipStream) {
+		m_streamInfo = {};
+		m_pConfig->SetVideoStreamInfo(m_streamInfo);
+	}
 	m_numIFrames = 0;
 	m_maxFrameNum = 1;
 	m_naluTypesAtStart.clear();
@@ -550,6 +554,34 @@ void cVideoStream::CancelFilterThread(void) {
 }
 
 /**
+ * Publish the properties of the main stream for the statistics, if they changed
+ *
+ * @param frame         decoded frame
+ */
+void cVideoStream::UpdateStreamInfo(const AVFrame *frame)
+{
+	if (m_isPipStream)
+		return;
+
+	const AVCodecContext *ctx = m_pDecoder->GetContext();
+	const char *deinterlacer = !m_useDeinterlacer ? "off" :
+	                           frame->format == AV_PIX_FMT_DRM_PRIME ? "hardware" : "software";
+
+	if (m_streamInfo.width == ctx->width && m_streamInfo.height == ctx->height &&
+	    m_streamInfo.frameRate == m_framerate && m_streamInfo.interlaced == m_interlaced &&
+	    m_streamInfo.deinterlacer == deinterlacer && m_streamInfo.codec == avcodec_get_name(ctx->codec_id))
+		return;
+
+	m_streamInfo.codec = avcodec_get_name(ctx->codec_id);
+	m_streamInfo.width = ctx->width;
+	m_streamInfo.height = ctx->height;
+	m_streamInfo.frameRate = m_framerate;
+	m_streamInfo.interlaced = m_interlaced;
+	m_streamInfo.deinterlacer = deinterlacer;
+	m_pConfig->SetVideoStreamInfo(m_streamInfo);
+}
+
+/**
  * Render a frame
  *
  * Frames either go through the filter thread or directly into the render buffer.
@@ -651,6 +683,8 @@ void cVideoStream::RenderFrame(AVFrame * frame)
 
 		m_pRender->SetDisplayMode(m_pConfig->ConfigVideoDisplayMode);
 	}
+
+	UpdateStreamInfo(frame);
 
 	if (m_videoFilter.Active())
 		m_videoFilter.PushFrame(frame);

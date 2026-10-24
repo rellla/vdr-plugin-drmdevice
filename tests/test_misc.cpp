@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdlib>
 #include <string>
 #include <thread>
 
@@ -126,5 +127,36 @@ TEST_CASE("misc - Alpha blending", "[misc]") {
 		REQUIRE(BlendColor(0xFF, 0x00, 0x00) == 0xFF);
 		REQUIRE(BlendColor(0x00, 0xFF, 0x80) == 0x80);
 		REQUIRE(BlendColor(0xFF, 0xFF, 0x80) == 0xFF);
+	}
+}
+
+TEST_CASE("misc - ZoomCropRect", "[misc]") {
+	int x, y, w, h;
+
+	SECTION("no zoom shows the whole picture") {
+		ZoomCropRect(1920, 1080, 0, &x, &y, &w, &h);
+		REQUIRE((x == 0 && y == 0 && w == 1920 && h == 1080));
+	}
+
+	SECTION("+34.4% fills a 2.39:1 picture on 16:9") {
+		ZoomCropRect(1920, 1080, 344, &x, &y, &w, &h);
+		// 1920 / 1.344 = 1428.57, 1080 / 1.344 = 803.57
+		REQUIRE((w == 1428 && h == 802));
+		REQUIRE((x == 246 && y == 138));
+		// centered and the aspect ratio is kept
+		REQUIRE(x * 2 + w <= 1920);
+		REQUIRE(y * 2 + h <= 1080);
+		REQUIRE(std::abs(w * 9 - h * 16) < 32);
+	}
+
+	SECTION("offsets and sizes are even") {
+		ZoomCropRect(720, 576, 125, &x, &y, &w, &h);
+		REQUIRE((x % 2 == 0 && y % 2 == 0 && w % 2 == 0 && h % 2 == 0));
+		REQUIRE((w == 640 && h == 512 && x == 40 && y == 32));
+	}
+
+	SECTION("invalid sizes are passed") {
+		ZoomCropRect(0, 0, 344, &x, &y, &w, &h);
+		REQUIRE((x == 0 && y == 0 && w == 0 && h == 0));
 	}
 }

@@ -95,6 +95,8 @@ public:
 	void PresentationFinished(void);
 	void SetSizeOnScreen(int x, int y, int w, int h) { m_rectOnScreen.Set(x, y, w, h); } ///< remember the position on screen (for grabbing)
 	cRect GetScreenRect(void) { return m_rectOnScreen; }                                 ///< get the position on screen
+	void SetCropRect(int x, int y, int w, int h) { m_rectCrop.Set(x, y, w, h); }         ///< remember the shown part of the buffer (for grabbing)
+	cRect GetCropRect(void) { return m_rectCrop; }                                       ///< get the shown part of the buffer (empty: all)
 
 private:
 	uint32_t m_width = 0;       ///< buffer width
@@ -102,6 +104,7 @@ private:
 	uint32_t m_pixFmt = 0;      ///< buffer pixel format
 
 	cRect m_rectOnScreen;       ///< dimensions on screen - set at pageflip, needed for grab
+	cRect m_rectCrop;           ///< shown part of the buffer (zoom) - set at pageflip, needed for grab
 
 	bool m_dirty = false;       ///< true, if the buffer is dirty (it was written to)
 

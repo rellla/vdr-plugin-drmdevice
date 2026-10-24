@@ -14,6 +14,9 @@
  * @license{AGPL-3.0-or-later}
  */
 
+#include <string>
+
+#include <vdr/config.h>
 #include <vdr/menuitems.h>
 
 #include "audio.h"
@@ -22,6 +25,17 @@
 #include "device.h"
 #include "logger.h"
 #include "setupmenu.h"
+
+/**
+ * Passthrough modes of the setup menu
+ *
+ * @ingroup menu
+ */
+enum PassthroughMode {
+	PASSTHROUGH_OFF,       ///< decode all audio
+	PASSTHROUGH_MANUAL,    ///< pass the selected codecs through
+	PASSTHROUGH_AUTO       ///< pass the codecs through, which the sink reports in its ELD
+};
 
 /**
  * Create a seperator named item
@@ -36,198 +50,385 @@ static inline cOsdItem *SeparatorName(const char *label)
 }
 
 /**
- * Create a collapsed item
+ * Get the name of a section of the setup menu
  *
- * @param label     text inside collapsed
- * @param flag      flag handling collapsed or opened
- * @param msg       open message
+ * @param section   section (see cDeviceSetupMenu::Section)
  */
-inline cOsdItem *cDeviceSetupMenu::CollapsedItem(const char *label, int &flag, const char *msg)
+const char *cDeviceSetupMenu::SectionName(int section)
 {
-	cOsdItem *item;
+	switch (section) {
+	case SECTION_GENERAL:    return tr("General");
+	case SECTION_VIDEO:      return tr("Video");
+	case SECTION_AUDIO:      return tr("Audio");
+	case SECTION_AUDIO_EQ:   return tr("Audio equalizer");
+	case SECTION_PIP:        return tr("Picture-in-picture");
+	case SECTION_LOGGING:    return tr("Logging");
+	case SECTION_STATISTICS: return tr("Statistics");
+	case SECTION_EXPERT:     return tr("Expert settings");
+	default:                 return "";
+	}
+}
 
-	item = new cMenuEditBoolItem(cString::sprintf("* %s", label), &flag,
-		msg ? msg : tr("show"), tr("hide"));
+/**
+ * Show the overview or a section of the setup menu
+ *
+ * @param section   section to show (SECTION_OVERVIEW: the list of the sections)
+ */
+void cDeviceSetupMenu::ShowSection(int section)
+{
+	int current = -1;	// the first selectable item of a section
 
-	return item;
+	if (section == SECTION_OVERVIEW) {
+		// select the section, which was just closed
+		for (size_t i = 0; i < m_overviewSections.size(); i++) {
+			if (m_overviewSections[i] == m_section)
+				current = i;
+		}
+		SetTitle(m_title);
+	} else {
+		// the title of the page is set by VDR after the construction (SetPlugin())
+		if (m_section == SECTION_OVERVIEW)
+			m_title = Title();
+		SetTitle(cString::sprintf("%s - %s", *m_title, SectionName(section)));
+	}
+
+	m_section = section;
+	Create(current);
+}
+
+/**
+ * Get a readable name of a codec for the statistics
+ *
+ * @param codec     FFmpeg name of the codec (e.g. "eac3")
+ * @param profile   profile of the codec (e.g. "DTS-HD MA" or empty)
+ * @return          e.g. "E-AC-3" or "DTS-HD MA"
+ *
+ * @ingroup menu
+ */
+static std::string CodecLabel(const std::string &codec, const std::string &profile)
+{
+	static const struct { const char *codec; const char *label; } labels[] = {
+		{ "mpeg2video", "MPEG-2" }, { "h264", "H.264" }, { "hevc", "HEVC" },
+		{ "ac3", "AC-3" }, { "eac3", "E-AC-3" }, { "dts", "DTS" }, { "truehd", "TrueHD" },
+		{ "mp2", "MP2" }, { "mp3", "MP3" }, { "aac", "AAC" }, { "aac_latm", "AAC-LATM" },
+		{ "pcm_dvd", "LPCM" },
+	};
+
+	// the DTS profiles name the format (e.g. "DTS-HD MA")
+	if (codec == "dts" && !profile.empty())
+		return profile;
+
+	std::string label = codec;
+	for (const auto &l : labels) {
+		if (codec == l.codec)
+			label = l.label;
+	}
+
+	return profile.empty() ? label : label + " (" + profile + ")";
+}
+
+/**
+ * Get the codecs of a passthrough mask for the statistics
+ *
+ * @param mask      CODEC_* bit mask
+ * @return          e.g. "AC-3 E-AC-3" or "-", if the mask is empty
+ *
+ * @ingroup menu
+ */
+static std::string PassthroughCodecs(int mask)
+{
+	std::string codecs;
+
+	if (mask & CODEC_AC3)    codecs += " AC-3";
+	if (mask & CODEC_EAC3)   codecs += " E-AC-3";
+	if (mask & CODEC_DTS)    codecs += " DTS";
+	if (mask & CODEC_DTSHD)  codecs += " DTS-HD";
+	if (mask & CODEC_TRUEHD) codecs += " TrueHD";
+
+	return codecs.empty() ? "-" : codecs.substr(1);
+}
+
+/**
+ * Add a statistics item, whose text is updated, while the menu is shown
+ *
+ * @param text      creates the current text of the item
+ */
+void cDeviceSetupMenu::AddLiveItem(std::function<cString(void)> text)
+{
+	cOsdItem *item = new cOsdItem(text(), osUnknown, false);
+	Add(item);
+	m_liveItems.push_back({ item, std::move(text) });
+}
+
+/**
+ * Update the texts of the statistics items and redraw the menu, if one changed
+ *
+ * The whole menu is drawn again, because not every skin draws a single item,
+ * which is changed with cOsdMenu::DisplayItem().
+ */
+void cDeviceSetupMenu::UpdateLiveItems(void)
+{
+	bool changed = false;
+
+	for (auto &live : m_liveItems) {
+		cString text = live.text();
+		if (strcmp(text, live.item->Text())) {
+			live.item->SetText(text);
+			changed = true;
+		}
+	}
+
+	if (changed)
+		Display();
+}
+
+/**
+ * Add the statistics of the played streams, the display and the audio output
+ */
+void cDeviceSetupMenu::AddStatistics(void)
+{
+	// video
+	AddLiveItem([this]() {
+		if (m_pDevice->IsDetached())
+			return cString(tr("Device detached"));
+		sVideoStreamInfo video = m_pConfig->GetVideoStreamInfo();
+		if (video.codec.empty())
+			return cString(tr("Video: none"));
+		return cString::sprintf(tr("Video: %s %dx%d%s, %.2f fps"), CodecLabel(video.codec, "").c_str(),
+			video.width, video.height, video.interlaced ? "i" : "p", video.frameRate);
+	});
+	AddLiveItem([this]() {
+		return cString::sprintf(tr("Video decoder: %s (%s)"), m_pConfig->CurrentDecoderName, m_pConfig->CurrentDecoderType);
+	});
+	AddLiveItem([this]() {
+		const char *deinterlacer = m_pConfig->GetVideoStreamInfo().deinterlacer;
+		return cString::sprintf(tr("Deinterlacer: %s"), !strcmp(deinterlacer, "off") ? trVDR("off") : tr(deinterlacer));
+	});
+	AddLiveItem([this]() {
+		return cString::sprintf(tr("Display: %dx%d@%.2f%s, %s"), m_pConfig->CurrentDrmMode.width, m_pConfig->CurrentDrmMode.height,
+			m_pConfig->CurrentDrmMode.refreshRateHz, m_pConfig->CurrentDrmMode.interlaced ? "i" : "",
+			m_pConfig->StatHdrActive ? "HDR" : "SDR");
+	});
+	AddLiveItem([this]() {
+		int duped;
+		int dropped;
+		int counter;
+		m_pDevice->GetStats(&duped, &dropped, &counter);
+		return cString::sprintf(tr("Frames duped(%d) dropped(%d) total(%d)"), duped, dropped, counter);
+	});
+
+	// audio
+	AddLiveItem([this]() {
+		sAudioStreamInfo audio = m_pConfig->GetAudioStreamInfo();
+		if (audio.codec.empty())
+			return cString(tr("Audio: none"));
+		std::string codec = CodecLabel(audio.codec, audio.profile);
+		// the stream format of a bitstream is only known from the mediaplayer
+		if (!audio.sampleRate || !audio.channels)
+			return cString::sprintf(tr("Audio: %s"), codec.c_str());
+		return cString::sprintf(tr("Audio: %s, %d Hz, %d channels"), codec.c_str(), audio.sampleRate, audio.channels);
+	});
+	AddLiveItem([this]() {
+		sAudioStreamInfo audio = m_pConfig->GetAudioStreamInfo();
+		if (audio.codec.empty())
+			return cString(tr("Audio output: none"));
+		return cString::sprintf(audio.passthrough ? tr("Audio output: passthrough, %d Hz, %d channels") : tr("Audio output: PCM, %d Hz, %d channels"),
+			audio.outputSampleRate, audio.outputChannels);
+	});
+	AddLiveItem([this]() {
+		cAudioStream *audio = m_pDevice->Audio();
+		return cString::sprintf(tr("Audio device: %s"), audio ? audio->GetDeviceName().c_str() : "-");
+	});
+	AddLiveItem([this]() {
+		cAudioStream *audio = m_pDevice->Audio();
+		// in automatic mode the codecs of the sink's ELD are passed through
+		if (audio && m_pDevice->IsPassthroughOn() && m_pConfig->ConfigAudioPassthroughAuto && audio->GetEldPassthroughMask() >= 0)
+			return cString::sprintf(" %s (%s)", *m_pDevice->PassthroughString(), PassthroughCodecs(audio->GetEldPassthroughMask()).c_str());
+		return cString::sprintf(" %s", *m_pDevice->PassthroughString());
+	});
+
+	// osd
+#ifdef USE_GLES
+	Add(new cOsdItem(cString::sprintf(tr("OSD: Using %s rendering"), m_pConfig->ConfigDisableOglOsd ? "software" : "hardware"), osUnknown, false));
+#else
+	Add(new cOsdItem(cString::sprintf(tr("OSD: Using software rendering")), osUnknown, false));
+#endif
 }
 
 /**
  * Build setup menu
  */
-void cDeviceSetupMenu::Create(void)
+void cDeviceSetupMenu::Create(int current)
 {
-	int current;
-
-	current = Current();	// get current menu item index
+	if (current == KEEP_CURRENT)
+		current = Current();	// get current menu item index
 	Clear();            	// clear the menu
+	m_liveItems.clear();
+
+	//
+	// Overview: OK opens the section under the cursor
+	//
+	SetHasHotkeys(m_section == SECTION_OVERVIEW);
+	if (m_section == SECTION_OVERVIEW) {
+		m_overviewSections.clear();
+		for (int section = 0; section < SECTION_COUNT; section++) {
+			if (section == SECTION_PIP && !m_pDevice->UsePip())
+				continue;
+			Add(new cOsdItem(hk(SectionName(section))));
+			m_overviewSections.push_back(section);
+		}
+	}
 
 	//
 	// General
 	//
-	Add(CollapsedItem(tr("General"), m_cGeneralMenu));
-	if (m_cGeneralMenu) {
-		Add(new cMenuEditBoolItem(tr(" Hide main menu entry"), &m_cHideMainMenuEntry, trVDR("no"), trVDR("yes")));
+	if (m_section == SECTION_GENERAL) {
+		Add(new cMenuEditBoolItem(tr("Hide main menu entry"), &m_cHideMainMenuEntry, trVDR("no"), trVDR("yes")));
 	}
 
 	//
 	// Video
 	//
-	Add(CollapsedItem(tr("Video"), m_cVideoMenu));
-	if (m_cVideoMenu) {
-		Add(new cMenuEditBoolItem(tr(" Enable HDR"), &m_cVideoEnableHDR, trVDR("no"), trVDR("yes")));
-		Add(new cMenuEditStraItem(tr(" Display mode"), &m_cVideoDisplayMode, m_displayModePtrs.size(), m_displayModePtrs.data()));
-		Add(new cMenuEditStraItem(tr(" Enable fast channel switch"), &m_cVideoChannelSwitchMode, m_channelSwitchModePtrs.size(), m_channelSwitchModePtrs.data()));
+	if (m_section == SECTION_VIDEO) {
+		Add(new cMenuEditBoolItem(tr("Enable HDR"), &m_cVideoEnableHDR, trVDR("no"), trVDR("yes")));
+		Add(new cMenuEditStraItem(tr("Display mode"), &m_cVideoDisplayMode, m_displayModePtrs.size(), m_displayModePtrs.data()));
+		Add(new cMenuEditStraItem(tr("Enable fast channel switch"), &m_cVideoChannelSwitchMode, m_channelSwitchModePtrs.size(), m_channelSwitchModePtrs.data()));
+		for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
+			Add(new cMenuEditIntItem(cString::sprintf(tr("Zoom level %d (/1000)"), i + 1), &m_cZoomLevel[i], 0, cDeviceConfig::ZOOM_MAX, trVDR("off")));
 	}
 
 	//
 	// Audio
 	//
-	Add(CollapsedItem(tr("Audio"), m_cAudioMenu));
-	if (m_cAudioMenu) {
-		Add(new cMenuEditBoolItem(tr(" Volume control"), &m_cAudioSoftvol, tr("hardware"), tr("software")));
-		Add(new cMenuEditBoolItem(tr(" Enable stereo downmix"), &m_cAudioDownmix, trVDR("no"), trVDR("yes")));
-		Add(new cMenuEditBoolItem(tr(" Enable passthrough"), &m_cAudioPassthroughDefault, trVDR("off"), trVDR("on")));
-		if (m_cAudioPassthroughDefault) {
-			Add(new cMenuEditBoolItem(tr("  AC-3 passthrough"), &m_cAudioPassthroughAC3, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  E-AC-3 passthrough"), &m_cAudioPassthroughEAC3, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  DTS passthrough"), &m_cAudioPassthroughDTS, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  DTS-HD passthrough"), &m_cAudioPassthroughDTSHD, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  TrueHD passthrough"), &m_cAudioPassthroughTrueHD, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  Disable automatic AES"), &m_cAudioDisableAutoAES, trVDR("no"), trVDR("yes")));
+	if (m_section == SECTION_AUDIO) {
+		Add(new cMenuEditBoolItem(tr("Volume control"), &m_cAudioSoftvol, tr("hardware"), tr("software")));
+		Add(new cMenuEditBoolItem(tr("Enable stereo downmix"), &m_cAudioDownmix, trVDR("no"), trVDR("yes")));
+		Add(new cMenuEditStraItem(tr("Passthrough"), &m_cAudioPassthroughMode, 3, m_passthroughModes));
+		if (m_cAudioPassthroughMode == PASSTHROUGH_MANUAL) {
+			Add(new cMenuEditBoolItem(tr(" AC-3 passthrough"), &m_cAudioPassthroughAC3, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" E-AC-3 passthrough"), &m_cAudioPassthroughEAC3, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" DTS passthrough"), &m_cAudioPassthroughDTS, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" DTS-HD passthrough"), &m_cAudioPassthroughDTSHD, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" TrueHD passthrough"), &m_cAudioPassthroughTrueHD, trVDR("no"), trVDR("yes")));
 		}
-		Add(new cMenuEditIntItem(tr(" Audio/Video delay (ms)"), &m_cAudioDelay, -1000, 1000));
-		Add(new cMenuEditBoolItem(tr(" Enable normalize volume"), &m_cAudioNormalize, trVDR("no"), trVDR("yes")));
+		if (m_cAudioPassthroughMode != PASSTHROUGH_OFF)
+			Add(new cMenuEditBoolItem(tr(" Disable automatic AES"), &m_cAudioDisableAutoAES, trVDR("no"), trVDR("yes")));
+		Add(new cMenuEditIntItem(tr("Audio/Video delay (ms)"), &m_cAudioDelay, -1000, 1000));
+		Add(new cMenuEditBoolItem(tr("Enable normalize volume"), &m_cAudioNormalize, trVDR("no"), trVDR("yes")));
 		if (m_cAudioNormalize)
-			Add(new cMenuEditIntItem(tr("  Max normalize factor (/1000)"), &m_cAudioMaxNormalize, 0, 10000));
-		Add(new cMenuEditBoolItem(tr(" Enable volume compression"), &m_cAudioCompression, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditIntItem(tr(" Max normalize factor (/1000)"), &m_cAudioMaxNormalize, 0, 10000));
+		Add(new cMenuEditBoolItem(tr("Enable volume compression"), &m_cAudioCompression, trVDR("no"), trVDR("yes")));
 		if (m_cAudioCompression)
-			Add(new cMenuEditIntItem(tr("  Max compression factor (/1000)"), &m_cAudioMaxCompression, 0, 10000));
-		Add(new cMenuEditIntItem(tr(" Reduce stereo volume (/1000)"), &m_cAudioStereoDescent, 0, 1000));
+			Add(new cMenuEditIntItem(tr(" Max compression factor (/1000)"), &m_cAudioMaxCompression, 0, 10000));
+		Add(new cMenuEditIntItem(tr("Reduce stereo volume (/1000)"), &m_cAudioStereoDescent, 0, 1000));
 	}
 
 	//
 	// Audio filter
 	//
-	Add(CollapsedItem(tr("Audio equalizer"), m_cAudioFilterMenu));
-	if (m_cAudioFilterMenu) {
-		Add(new cMenuEditBoolItem(tr(" Enable audio equalizer"), &m_cAudioEq, trVDR("no"), trVDR("yes")));
+	if (m_section == SECTION_AUDIO_EQ) {
+		Add(new cMenuEditBoolItem(tr("Enable audio equalizer"), &m_cAudioEq, trVDR("no"), trVDR("yes")));
 		if (m_cAudioEq) {
-			Add(new cMenuEditIntItem(tr("  60 Hz band gain"),   &m_cAudioEqBand[0], -15, 1));
-			Add(new cMenuEditIntItem(tr("  72 Hz band gain"),   &m_cAudioEqBand[1], -15, 1));
-			Add(new cMenuEditIntItem(tr("  107 Hz band gain"),   &m_cAudioEqBand[2], -15, 1));
-			Add(new cMenuEditIntItem(tr("  150 Hz band gain"),   &m_cAudioEqBand[3], -15, 1));
-			Add(new cMenuEditIntItem(tr("  220 Hz band gain"),   &m_cAudioEqBand[4], -15, 1));
-			Add(new cMenuEditIntItem(tr("  310 Hz band gain"),   &m_cAudioEqBand[5], -15, 1));
-			Add(new cMenuEditIntItem(tr("  430 Hz band gain"),   &m_cAudioEqBand[6], -15, 1));
-			Add(new cMenuEditIntItem(tr("  620 Hz band gain"),   &m_cAudioEqBand[7], -15, 1));
-			Add(new cMenuEditIntItem(tr("  860 Hz band gain"),   &m_cAudioEqBand[8], -15, 1));
-			Add(new cMenuEditIntItem(tr("  1200 Hz band gain"),  &m_cAudioEqBand[9], -15, 1));
-			Add(new cMenuEditIntItem(tr("  1700 Hz band gain"),  &m_cAudioEqBand[10], -15, 1));
-			Add(new cMenuEditIntItem(tr("  2500 Hz band gain"),  &m_cAudioEqBand[11], -15, 1));
-			Add(new cMenuEditIntItem(tr("  3500 Hz band gain"),  &m_cAudioEqBand[12], -15, 1));
-			Add(new cMenuEditIntItem(tr("  4800 Hz band gain"),  &m_cAudioEqBand[13], -15, 1));
-			Add(new cMenuEditIntItem(tr("  7000 Hz band gain"),  &m_cAudioEqBand[14], -15, 1));
-			Add(new cMenuEditIntItem(tr("  9500 Hz band gain"),  &m_cAudioEqBand[15], -15, 1));
-			Add(new cMenuEditIntItem(tr("  13500 Hz band gain"), &m_cAudioEqBand[16], -15, 1));
-			Add(new cMenuEditIntItem(tr("  17200 Hz band gain"), &m_cAudioEqBand[17], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 60 Hz band gain"),   &m_cAudioEqBand[0], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 72 Hz band gain"),   &m_cAudioEqBand[1], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 107 Hz band gain"),   &m_cAudioEqBand[2], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 150 Hz band gain"),   &m_cAudioEqBand[3], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 220 Hz band gain"),   &m_cAudioEqBand[4], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 310 Hz band gain"),   &m_cAudioEqBand[5], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 430 Hz band gain"),   &m_cAudioEqBand[6], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 620 Hz band gain"),   &m_cAudioEqBand[7], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 860 Hz band gain"),   &m_cAudioEqBand[8], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 1200 Hz band gain"),  &m_cAudioEqBand[9], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 1700 Hz band gain"),  &m_cAudioEqBand[10], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 2500 Hz band gain"),  &m_cAudioEqBand[11], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 3500 Hz band gain"),  &m_cAudioEqBand[12], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 4800 Hz band gain"),  &m_cAudioEqBand[13], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 7000 Hz band gain"),  &m_cAudioEqBand[14], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 9500 Hz band gain"),  &m_cAudioEqBand[15], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 13500 Hz band gain"), &m_cAudioEqBand[16], -15, 1));
+			Add(new cMenuEditIntItem(tr(" 17200 Hz band gain"), &m_cAudioEqBand[17], -15, 1));
 		}
 	}
 
 	//
 	// PiP
 	//
-	if (m_pDevice->UsePip()) {
-		Add(CollapsedItem(tr("Picture-in-picture"), m_cPipMenu));
-		if (m_cPipMenu) {
-			Add(new cMenuEditIntItem(tr(" video scaling factor (%)"), &m_cPipScalePercent, 10, 100));
-			Add(new cMenuEditIntItem(tr(" video left (%)"), &m_cPipLeftPercent, 0, 100));
-			Add(new cMenuEditIntItem(tr(" video top (%)"), &m_cPipTopPercent, 0, 100));
-			Add(new cMenuEditBoolItem(tr(" use alternative position as default"), &m_cPipUseAlt, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditIntItem(tr(" alternative video scaling factor (%)"), &m_cPipAltScalePercent, 10, 100));
-			Add(new cMenuEditIntItem(tr(" alternative video left (%)"), &m_cPipAltLeftPercent, 0, 100));
-			Add(new cMenuEditIntItem(tr(" alternative video top (%)"), &m_cPipAltTopPercent, 0, 100));
-		}
+	if (m_section == SECTION_PIP && m_pDevice->UsePip()) {
+		Add(new cMenuEditIntItem(tr("Video scaling factor (%)"), &m_cPipScalePercent, 10, 100));
+		Add(new cMenuEditIntItem(tr("Video left (%)"), &m_cPipLeftPercent, 0, 100));
+		Add(new cMenuEditIntItem(tr("Video top (%)"), &m_cPipTopPercent, 0, 100));
+		Add(new cMenuEditBoolItem(tr("Use alternative position as default"), &m_cPipUseAlt, trVDR("no"), trVDR("yes")));
+		Add(new cMenuEditIntItem(tr("Alternative video scaling factor (%)"), &m_cPipAltScalePercent, 10, 100));
+		Add(new cMenuEditIntItem(tr("Alternative video left (%)"), &m_cPipAltLeftPercent, 0, 100));
+		Add(new cMenuEditIntItem(tr("Alternative video top (%)"), &m_cPipAltTopPercent, 0, 100));
 	}
 
 	//
 	// Logging
 	//
-	Add(CollapsedItem(tr("Logging"), m_cLoggingMenu));
-	if (m_cLoggingMenu) {
-		Add(new cMenuEditBoolItem(tr(" Enable logging"), &m_cLogDefault, trVDR("off"), trVDR("on")));
+	if (m_section == SECTION_LOGGING) {
+		Add(new cMenuEditBoolItem(tr("Enable logging"), &m_cLogDefault, trVDR("off"), trVDR("on")));
 		if (m_cLogDefault) {
-			Add(new cMenuEditBoolItem(tr("  Standard debug logs"), &m_cLogDebug_, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  DRM debug logs"), &m_cLogDRM, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  Codec debug logs"), &m_cLogCodec, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  AV Sync debug logs"), &m_cLogAVSync, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  Sound debug logs"), &m_cLogSound, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  FFmpeg debug logs"), &m_cLogFFmpeg, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" Standard debug logs"), &m_cLogDebug_, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" DRM debug logs"), &m_cLogDRM, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" Codec debug logs"), &m_cLogCodec, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" AV Sync debug logs"), &m_cLogAVSync, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" Sound debug logs"), &m_cLogSound, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" FFmpeg debug logs"), &m_cLogFFmpeg, trVDR("no"), trVDR("yes")));
 			if (m_cLogFFmpeg)
-				Add(new cMenuEditStraItem(tr("   FFmpeg log level"), &m_cLogFFmpegLevel, FFMPEG_LOG_LEVELS, m_ffmpegLogLevels));
-			Add(new cMenuEditBoolItem(tr("  Packet tracking logs"), &m_cLogPacket, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  OSD debug logs"), &m_cLogOSD, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  Grabbing debug logs"), &m_cLogGrab, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  Stillpicture debug logs"), &m_cLogStill, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  Trickspeed debug logs"), &m_cLogTrick, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  Mediaplayer debug logs"), &m_cLogMedia, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  OpenGL OSD debug logs"), &m_cLogGL, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  OpenGL OSD time measurement"), &m_cLogGLTime, trVDR("no"), trVDR("yes")));
-			Add(new cMenuEditBoolItem(tr("  OpenGL OSD time measurement (extensive)"), &m_cLogGLTimeAll, trVDR("no"), trVDR("yes")));
+				Add(new cMenuEditStraItem(tr("  FFmpeg log level"), &m_cLogFFmpegLevel, FFMPEG_LOG_LEVELS, m_ffmpegLogLevels));
+			Add(new cMenuEditBoolItem(tr(" Packet tracking logs"), &m_cLogPacket, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" OSD debug logs"), &m_cLogOSD, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" Grabbing debug logs"), &m_cLogGrab, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" Stillpicture debug logs"), &m_cLogStill, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" Trickspeed debug logs"), &m_cLogTrick, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" Mediaplayer debug logs"), &m_cLogMedia, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" OpenGL OSD debug logs"), &m_cLogGL, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" OpenGL OSD time measurement"), &m_cLogGLTime, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" OpenGL OSD time measurement (extensive)"), &m_cLogGLTimeAll, trVDR("no"), trVDR("yes")));
 		}
 	}
 
 	//
 	// Statistics
 	//
-	Add(CollapsedItem(tr("Statistics"), m_cStatisticsMenu));
-	if (m_cStatisticsMenu) {
-		int duped;
-		int dropped;
-		int counter;
-		m_pDevice->GetStats(&duped, &dropped, &counter);
-		Add(new cOsdItem(cString::sprintf(tr(" Frames duped(%d) dropped(%d) total(%d)"), duped, dropped, counter), osUnknown, false));
-#ifdef USE_GLES
-		Add(new cOsdItem(cString::sprintf(tr(" OSD: Using %s rendering"), m_pConfig->ConfigDisableOglOsd ? "software" : "hardware"), osUnknown, false));
-#else
-		Add(new cOsdItem(cString::sprintf(tr(" OSD: Using software rendering")), osUnknown, false));
-#endif
-		Add(new cOsdItem(cString::sprintf(tr(" Video decoder: %s (%s)"), m_pConfig->CurrentDecoderName, m_pConfig->CurrentDecoderType), osUnknown, false));
-	}
+	if (m_section == SECTION_STATISTICS)
+		AddStatistics();
 
 	//
 	// Expert settings
 	//
-	Add(CollapsedItem(tr("Expert settings"), m_cExpertMenu));
-	if (m_cExpertMenu) {
-		Add(SeparatorName(tr(" Audio settings")));
-		Add(new cMenuEditIntItem(tr(" Adjust a/v buffer size (ms)"), &m_cAdditionalBufferLengthMs, - (m_pDevice->GetMinBufferFillLevelThresholdMs() - 100), 1000));
+	if (m_section == SECTION_EXPERT) {
+		Add(SeparatorName(tr("Audio settings")));
+		Add(new cMenuEditIntItem(tr("Adjust a/v buffer size (ms)"), &m_cAdditionalBufferLengthMs, - (m_pDevice->GetMinBufferFillLevelThresholdMs() - 100), 1000));
 
-		int shortTermAudioJitter = m_pConfig->StatMaxShortTermAudioJitterMs;
-		int longTermAudioJitter = m_pConfig->StatMaxLongTermAudioJitterMs;
-		int shortTermVideoJitter = m_pConfig->StatMaxShortTermVideoJitterMs;
-		int longTermVideoJitter = m_pConfig->StatMaxLongTermVideoJitterMs;
-		Add(new cOsdItem(cString::sprintf(tr("   Current a/v buffer size: %dms"), m_pDevice->GetMinBufferFillLevelThresholdMs() + m_cAdditionalBufferLengthMs), osUnknown, false));
-		Add(new cOsdItem(cString::sprintf(tr("   Audio jitter: %dms, max: %dms"), shortTermAudioJitter, longTermAudioJitter), osUnknown, false));
-		Add(new cOsdItem(cString::sprintf(tr("   Video jitter: %dms, max: %dms"), shortTermVideoJitter, longTermVideoJitter), osUnknown, false));
+		AddLiveItem([this]() {
+			return cString::sprintf(tr("  Current a/v buffer size: %dms"), m_pDevice->GetMinBufferFillLevelThresholdMs() + m_cAdditionalBufferLengthMs);
+		});
+		AddLiveItem([this]() {
+			return cString::sprintf(tr("  Audio jitter: %dms, max: %dms"), m_pConfig->StatMaxShortTermAudioJitterMs.load(), m_pConfig->StatMaxLongTermAudioJitterMs.load());
+		});
+		AddLiveItem([this]() {
+			return cString::sprintf(tr("  Video jitter: %dms, max: %dms"), m_pConfig->StatMaxShortTermVideoJitterMs.load(), m_pConfig->StatMaxLongTermVideoJitterMs.load());
+		});
 
-		Add(SeparatorName(tr(" Video settings")));
-		Add(new cMenuEditBoolItem(tr(" Disable deinterlacer"), &m_cDisableDeint, trVDR("no"), trVDR("yes")));
-		Add(new cMenuEditBoolItem(tr(" Enable SW decoder fallback"), &m_cDecoderFallbackToSw, trVDR("no"), trVDR("yes")));
+		Add(SeparatorName(tr("Video settings")));
+		Add(new cMenuEditBoolItem(tr("Disable deinterlacer"), &m_cDisableDeint, trVDR("no"), trVDR("yes")));
+		Add(new cMenuEditBoolItem(tr("Enable SW decoder fallback"), &m_cDecoderFallbackToSw, trVDR("no"), trVDR("yes")));
 		if (m_cDecoderFallbackToSw) {
-			Add(new cOsdItem(cString::sprintf(tr("  (minimum: %d)"), m_pConfig->GetDecoderNeedsMaxPackets() + 1), osUnknown, false));
-			Add(new cMenuEditIntItem(tr("  fallback after num packets"), &m_cDecoderFallbackToSwNumPkts, 22));
+			Add(new cOsdItem(cString::sprintf(tr(" (minimum: %d)"), m_pConfig->GetDecoderNeedsMaxPackets() + 1), osUnknown, false));
+			Add(new cMenuEditIntItem(tr(" fallback after num packets"), &m_cDecoderFallbackToSwNumPkts, 22));
 		}
-		Add(new cMenuEditIntItem(tr(" H.264: Parse stream until num I-Frames"), &m_cParseH264StreamStart, 0, 20));
-		Add(new cMenuEditIntItem(tr(" H.264: Drop invalid P-Frames until num I-Frames"), &m_cDropInvalidH264PFrames, 0, 20));
+		Add(new cMenuEditIntItem(tr("H.264: Parse stream until num I-Frames"), &m_cParseH264StreamStart, 0, 20));
+		Add(new cMenuEditIntItem(tr("H.264: Drop invalid P-Frames until num I-Frames"), &m_cDropInvalidH264PFrames, 0, 20));
 #ifdef USE_GLES
-		Add(SeparatorName(tr(" OSD settings")));
+		Add(SeparatorName(tr("OSD settings")));
 		if (!m_pConfig->ConfigDisableOglOsd) {
-			Add(new cMenuEditIntItem(tr(" GPU mem used for image caching (MB)"), &m_cMaxSizeGPUImageCache, 0, 4000));
+			Add(new cMenuEditIntItem(tr("GPU mem used for image caching (MB)"), &m_cMaxSizeGPUImageCache, 0, 4000));
 		}
 #endif
-		Add(SeparatorName(tr(" Misc settings")));
-		Add(new cMenuEditBoolItem(tr(" Show channel switch duration"), &m_cShowChannelSwitchDurationMessage, trVDR("no"), trVDR("yes")));
+		Add(SeparatorName(tr("Misc settings")));
+		Add(new cMenuEditBoolItem(tr("Show channel switch duration"), &m_cShowChannelSwitchDurationMessage, trVDR("no"), trVDR("yes")));
 	}
 
 	SetCurrent(Get(current));	// restore selected menu entry
@@ -237,45 +438,74 @@ void cDeviceSetupMenu::Create(void)
 /**
  * Process key for setup menu.
  *
+ * The overview lists the sections, OK opens the section under the cursor.
+ * In a section, OK stores the settings and Back discards the changes, both
+ * return to the overview. Back in the overview closes the setup menu.
+ *
+ * OK returns OK_HANDLED instead of osContinue: VDR's plugin setup menu
+ * (cMenuSetupPlugins) stores the setup with OK and osContinue, calls
+ * cOsdProvider::UpdateOsdSize(true) and so the skin closes and opens the OSD
+ * again (it flickers). The setup is saved here instead.
+ *
  * @param key          pressed key
  */
 eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 {
-	int old_cGeneralMenu = m_cGeneralMenu;
-	int old_cVideoMenu = m_cVideoMenu;
-	int old_cAudioMenu = m_cAudioMenu;
-	int old_cAudioPassthroughDefault = m_cAudioPassthroughDefault;
+	int old_cAudioPassthroughMode = m_cAudioPassthroughMode;
 	int old_cAudioNormalize = m_cAudioNormalize;
 	int old_cAudioCompression = m_cAudioCompression;
-	int old_cAudioFilterMenu = m_cAudioFilterMenu;
 	int old_cAudioEq = m_cAudioEq;
-	int old_cPipMenu = m_cPipMenu;
-	int old_cLoggingMenu = m_cLoggingMenu;
 	int old_cLogDefault = m_cLogDefault;
 	int old_cLogFFmpeg = m_cLogFFmpeg;
-	int old_cStatisticsMenu = m_cStatisticsMenu;
-	int old_cExpertMenu = m_cExpertMenu;
 	int old_cDecoderFallbackToSw = m_cDecoderFallbackToSw;
 
-	eOSState state = cMenuSetupPage::ProcessKey(key);
+	if (m_section == SECTION_OVERVIEW) {
+		// cMenuSetupPage would store the settings and close the menu with OK
+		if (key == kOk) {
+			int current = Current();
+			if (current >= 0 && current < (int)m_overviewSections.size())
+				ShowSection(m_overviewSections[current]);
+			return OK_HANDLED;
+		}
+		return cMenuSetupPage::ProcessKey(key);
+	}
+
+	// let an edited item handle the key first (e.g. OK in a string item)
+	eOSState state = cOsdMenu::ProcessKey(key);
+
+	if (state == osUnknown && key == kOk) {
+		if (m_section != SECTION_STATISTICS) {	// nothing to store
+			Store();
+			Setup.Save();
+		}
+		ShowSection(SECTION_OVERVIEW);
+		return OK_HANDLED;
+	}
+	// OK of an edited item (e.g. the end of a string input)
+	if (state == osContinue && key == kOk)
+		state = OK_HANDLED;
+	if (state == osBack) {
+		// discard the changes of the section
+		LoadValues();
+		ShowSection(SECTION_OVERVIEW);
+		return osContinue;
+	}
+
+	// update the statistics, while the menu is shown
+	if (key == kNone && !HasSubMenu() && !m_liveItems.empty() && m_liveUpdateTimer.TimedOut()) {
+		UpdateLiveItems();
+		m_liveUpdateTimer.Set(LIVE_UPDATE_INTERVAL_MS);
+	}
 
 	if (key != kNone) {
 		// update menu only, if something on the structure has changed
 		// this is needed because VDR menus are evil slow
-		if (old_cGeneralMenu             != m_cGeneralMenu ||
-		    old_cVideoMenu               != m_cVideoMenu ||
-		    old_cAudioMenu               != m_cAudioMenu ||
-		    old_cAudioPassthroughDefault != m_cAudioPassthroughDefault ||
+		if (old_cAudioPassthroughMode    != m_cAudioPassthroughMode ||
 		    old_cAudioNormalize          != m_cAudioNormalize ||
 		    old_cAudioCompression        != m_cAudioCompression ||
-		    old_cAudioFilterMenu         != m_cAudioFilterMenu ||
 		    old_cAudioEq                 != m_cAudioEq ||
-		    old_cPipMenu                 != m_cPipMenu ||
-		    old_cLoggingMenu             != m_cLoggingMenu ||
 		    old_cLogDefault              != m_cLogDefault ||
 		    old_cLogFFmpeg               != m_cLogFFmpeg ||
-		    old_cStatisticsMenu          != m_cStatisticsMenu ||
-		    old_cExpertMenu              != m_cExpertMenu ||
 		    old_cDecoderFallbackToSw     != m_cDecoderFallbackToSw) {
 
 			Create();	// update menu
@@ -286,38 +516,51 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 }
 
 /**
- * Init the setup menu parameters and build the menu
- *
- * Import global config variables into setup
+ * Init the setup menu and build the overview
  */
 cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	: m_pDevice(device),
 	  m_pConfig(m_pDevice->Config())
 {
+	BuildDisplayModeList();
+	BuildChannelSwitchModeList();
+
+	m_passthroughModes[PASSTHROUGH_OFF] = trVDR("off");
+	m_passthroughModes[PASSTHROUGH_MANUAL] = tr("manual");
+	m_passthroughModes[PASSTHROUGH_AUTO] = tr("automatic");
+
+	LoadValues();
+	Create();
+}
+
+/**
+ * Copy the setup values of the config into the menu
+ *
+ * Also used to discard the changes of a section.
+ */
+void cDeviceSetupMenu::LoadValues(void)
+{
 	//
 	// General
 	//
-	m_cGeneralMenu = 0;
 	m_cHideMainMenuEntry = m_pConfig->ConfigHideMainMenuEntry;
 
 	//
 	// Video
 	//
-	BuildDisplayModeList();
-	BuildChannelSwitchModeList();
-
-	m_cVideoMenu = 0;
 	m_cVideoEnableHDR          = m_pConfig->ConfigVideoEnableHDR;
 	m_cVideoDisplayMode        = m_pConfig->ConfigVideoDisplayMode;
 	m_cVideoChannelSwitchMode  = m_pConfig->ConfigVideoChannelSwitchMode;
+	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
+		m_cZoomLevel[i] = m_pConfig->ConfigZoomLevel[i];
 
 	//
 	// Audio
 	//
-	m_cAudioMenu = 0;
 	m_cAudioSoftvol            = m_pConfig->ConfigAudioSoftvol;
 	m_cAudioDownmix            = m_pConfig->ConfigAudioDownmix;
-	m_cAudioPassthroughDefault = m_pConfig->ConfigAudioPassthroughState;
+	m_cAudioPassthroughMode    = !m_pConfig->ConfigAudioPassthroughState ? PASSTHROUGH_OFF :
+	                             m_pConfig->ConfigAudioPassthroughAuto ? PASSTHROUGH_AUTO : PASSTHROUGH_MANUAL;
 	m_cAudioPassthroughAC3     = m_pConfig->ConfigAudioPassthroughMask & CODEC_AC3;
 	m_cAudioPassthroughEAC3    = m_pConfig->ConfigAudioPassthroughMask & CODEC_EAC3;
 	m_cAudioPassthroughDTS     = m_pConfig->ConfigAudioPassthroughMask & CODEC_DTS;
@@ -334,7 +577,6 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	//
 	// Audio equalizer
 	//
-	m_cAudioFilterMenu = 0;
 	m_cAudioEq = m_pConfig->ConfigAudioEq;
 	for (int i = 0; i < 18; i++) {
 		m_cAudioEqBand[i] = m_pConfig->ConfigAudioEqBand[i];
@@ -343,7 +585,6 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	//
 	// Picture-in-picture
 	//
-	m_cPipMenu = 0;
 	m_cPipScalePercent = m_pConfig->ConfigPipScalePercent;
 	m_cPipLeftPercent = m_pConfig->ConfigPipLeftPercent;
 	m_cPipTopPercent = m_pConfig->ConfigPipTopPercent;
@@ -355,7 +596,6 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	//
 	// Logging
 	//
-	m_cLoggingMenu = 0;
 	m_cLogDefault   = m_pConfig->ConfigLogState;
 	m_cLogDebug_    = m_pConfig->ConfigLogLevels & L_DEBUG;
 	m_cLogDRM       = m_pConfig->ConfigLogLevels & L_DRM;
@@ -375,14 +615,8 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_cLogGLTimeAll = m_pConfig->ConfigLogLevels & L_OPENGL_TIME_ALL;
 
 	//
-	// Statistics
-	//
-	m_cStatisticsMenu = 0;
-
-	//
 	// Expert settings
 	//
-	m_cExpertMenu = 0;
 	m_cAdditionalBufferLengthMs= m_pConfig->ConfigAdditionalBufferLengthMs;
 	m_cDisableDeint = m_pConfig->ConfigDisableDeint;
 	m_cDecoderFallbackToSw = m_pConfig->ConfigDecoderFallbackToSw;
@@ -393,8 +627,6 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_cMaxSizeGPUImageCache = m_pConfig->ConfigMaxSizeGPUImageCache;
 #endif
 	m_cShowChannelSwitchDurationMessage = m_pConfig->ConfigShowChannelSwitchDurationMessage;
-
-	Create();
 }
 
 void cDeviceSetupMenu::BuildDisplayModeList(void)
@@ -475,6 +707,11 @@ void cDeviceSetupMenu::Store(void)
 		SetupStore("VideoDisplayMode", m_cVideoDisplayMode);
 	SetupStore("VideoChannelSwitchMode", m_pConfig->ConfigVideoChannelSwitchMode = m_cVideoChannelSwitchMode);
 	m_pDevice->SetChannelSwitchMode(static_cast<ChannelSwitchMode>(m_pConfig->ConfigVideoChannelSwitchMode));
+	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
+		SetupStore(cString::sprintf("ZoomLevel%d", i + 1), m_pConfig->ConfigZoomLevel[i] = m_cZoomLevel[i]);
+	// a disabled zoom level can't stay active
+	if (m_pDevice->GetZoomLevel() && !m_pDevice->GetZoom())
+		m_pDevice->SetZoomLevel(0);
 
 	//
 	// Audio
@@ -491,12 +728,14 @@ void cDeviceSetupMenu::Store(void)
 	                                      | (m_cAudioPassthroughDTS ? CODEC_DTS : 0)
 	                                      | (m_cAudioPassthroughTrueHD ? CODEC_TRUEHD : 0)
 	                                      | (m_cAudioPassthroughDTSHD ? CODEC_DTSHD : 0);
-	m_pConfig->ConfigAudioPassthroughState = m_cAudioPassthroughDefault;
-	if (m_pConfig->ConfigAudioPassthroughState) {
-		SetupStore("AudioPassthrough", m_pConfig->ConfigAudioPassthroughMask);
-	} else {
-		SetupStore("AudioPassthrough", -m_pConfig->ConfigAudioPassthroughMask);
-	}
+	m_pConfig->ConfigAudioPassthroughState = m_cAudioPassthroughMode != PASSTHROUGH_OFF;
+	// switching the passthrough off keeps the automatic mode for the passthrough toggle
+	if (m_cAudioPassthroughMode != PASSTHROUGH_OFF)
+		m_pConfig->ConfigAudioPassthroughAuto = m_cAudioPassthroughMode == PASSTHROUGH_AUTO;
+	// the automatic mode is stored as an additional bit, the sign is the on/off state
+	int passthrough = m_pConfig->ConfigAudioPassthroughMask | (m_pConfig->ConfigAudioPassthroughAuto ? CODEC_PASSTHROUGH_AUTO : 0);
+	SetupStore("AudioPassthrough", m_pConfig->ConfigAudioPassthroughState ? passthrough : -passthrough);
+	m_pDevice->SetPassthroughOn(m_pConfig->ConfigAudioPassthroughState);
 	SetupStore("AudioDisableAutoAES", m_pConfig->ConfigAudioDisableAutoAES = m_cAudioDisableAutoAES);
 	SetupStore("AudioDelay", m_pConfig->ConfigVideoAudioDelayMs = m_cAudioDelay);
 	SetupStore("AudioNormalize", m_pConfig->ConfigAudioNormalize = m_cAudioNormalize);
@@ -610,7 +849,6 @@ void cDeviceSetupMenu::Store(void)
 		return;
 
 	m_pDevice->SetEnableHdr(m_pConfig->ConfigVideoEnableHDR);
-	m_pDevice->SetPassthroughMask(m_pConfig->ConfigAudioPassthroughState ? m_pConfig->ConfigAudioPassthroughMask : 0);
 
 	// the audio stream is recreated on an attach, so don't store its pointer in the menu
 	cAudioStream *audio = m_pDevice->Audio();

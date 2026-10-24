@@ -25,15 +25,15 @@
  *
  * Only the video pid is handled
  *
- * @param channel    channel to receive
+ * @param vpid       video pid of the channel
  * @param device     pointer to cOutputDevice object
  */
-cPipReceiver::cPipReceiver(const cChannel *channel, cOutputDevice *device)
+cPipReceiver::cPipReceiver(int vpid, cOutputDevice *device)
 	: cReceiver(NULL, MINPRIORITY),
 	  m_pDevice(device)
 {
 	LOGDEBUG("pipreceiver: %s", __FUNCTION__);
-	AddPid(channel->Vpid());
+	AddPid(vpid);
 }
 
 /**
@@ -163,9 +163,8 @@ cPipHandler::cPipHandler(cOutputDevice *device)
 
 cPipHandler::~cPipHandler(void)
 {
-	// The handler is deleted by the state machine on a detach, which holds the state
-	// machine lock and has halted the render thread. So don't use Stop(), which locks
-	// both again in ResetPipStream(). The pip stream is destroyed by the device anyway.
+	// The handler is deleted with the device, which is detached then, so pip is
+	// already stopped by Detach(). Don't use Stop(), the pip stream doesn't exist.
 	m_active = false;
 	delete m_pPipReceiver;
 }
@@ -177,32 +176,41 @@ cPipHandler::~cPipHandler(void)
  *                      0 switches to the current main stream channel
  *
  * @retval 0     pip was enabled
- * @retval -1    pip wasn't enabled, no device for channel available
+ * @retval -1    pip wasn't enabled, no device for channel available or the
+ *               output device is detached
  */
 int cPipHandler::Start(int channelNum)
 {
+	// the pip stream only exists in attached state
+	if (m_pDevice->IsDetached()) {
+		LOGDEBUG("piphandler: %s: the device is detached", __FUNCTION__);
+		return -1;
+	}
+
 	if (!channelNum)
 		channelNum = m_pDevice->CurrentChannel();
 
-	const cChannel *channel;
-	cDevice *device;
-	cPipReceiver *receiver;
+	// A channel is only valid with the channels lock (it may be changed or
+	// deleted by another thread), so keep it until the receiver is attached.
+	// VDR also switches a channel with the channels lock (cChannels::SwitchTo()).
+	LOCK_CHANNELS_READ;
+	const cChannel *channel = Channels->GetByNumber(channelNum);
 
-	{
-		LOCK_CHANNELS_READ;
-		channel = Channels->GetByNumber(channelNum);
+	// the pip receiver only handles the video pid
+	if (channel && !channel->Vpid()) {
+		LOGERROR("piphandler: %s: channel %d has no video", __FUNCTION__, channelNum);
+		return -1;
 	}
 
-	// cDevice::GetDevice() dereferences the channel
-	device = channel ? m_pDevice->GetDevice(channel, 0, false) : nullptr;
+	cDevice *device = channel ? m_pDevice->GetDevice(channel, 0, false) : nullptr;
 
 	if (channelNum && channel && device) {
 		Stop();
 		device->SwitchChannel(channel, false);
-		receiver = new cPipReceiver(channel, m_pDevice);
+		cPipReceiver *receiver = new cPipReceiver(channel->Vpid(), m_pDevice);
 		device->AttachReceiver(receiver);
 		m_pPipReceiver = receiver;
-		m_pPipChannel = channel;
+		m_pipChannelId = channel->GetChannelID();
 		m_pipChannelNum = channelNum;
 
 		LOGDEBUG("piphandler: %s: New receiver for channel (%d) %s", __FUNCTION__, channel->Number(), channel->Name());
@@ -229,14 +237,13 @@ void cPipHandler::Stop(void)
 	if (!m_pPipReceiver)
 		return;
 
-	LOGDEBUG("piphandler: %s: deleting receiver for channel (%d) %s", __FUNCTION__, m_pPipChannel->Number(), m_pPipChannel->Name());
+	LOGDEBUG("piphandler: %s: deleting receiver for channel %d", __FUNCTION__, m_pipChannelNum);
 
 	// both, PiP decoding and render thread are halted and resumed in ResetPipStream
 	m_pDevice->ResetPipStream();
 
 	delete m_pPipReceiver;
 	m_pPipReceiver = nullptr;
-	m_pPipChannel = nullptr;
 }
 
 /**
@@ -271,36 +278,56 @@ void cPipHandler::HandleChannelChange(int direction)
 	if (!m_active)
 		return;
 
-	const cChannel *channel = m_pPipChannel;
-	const cChannel *first = m_pPipChannel;
+	const tChannelID firstId = m_pipChannelId;
+	tChannelID channelId = firstId;
 
 	Stop();
 
-	while (channel) {
-		bool ndr;
+	while (true) {
+		int channelNum = 0;
+		bool reachedFirst = false;
 
+		// search the next channel, which a device provides, with the channels lock
 		{
 			LOCK_CHANNELS_READ;
-			channel = direction > 0 ? Channels->Next(channel) : Channels->Prev(channel);
-			if (!channel && Setup.ChannelsWrap)
-				channel = direction > 0 ? Channels->First() : Channels->Last();
+			const cChannel *channel = Channels->GetByChannelID(channelId);   // nullptr, if it was deleted
+
+			while (channel) {
+				channel = direction > 0 ? Channels->Next(channel) : Channels->Prev(channel);
+				if (!channel && Setup.ChannelsWrap)
+					channel = direction > 0 ? Channels->First() : Channels->Last();
+				if (!channel)       // no wrap around at the end of the channel list
+					break;
+
+				reachedFirst = channel->GetChannelID() == firstId;
+
+				bool ndr;
+				cDevice *device = channel->GroupSep() ? nullptr : m_pDevice->GetDevice(channel, 0, false, true);
+				if (device && device->ProvidesChannel(channel, 0, &ndr) && !ndr) {
+					channelNum = channel->Number();
+					channelId = channel->GetChannelID();
+					break;
+				}
+
+				if (reachedFirst)
+					break;
+			}
 		}
 
-		if (!channel)       // no wrap around at the end of the channel list
-			break;
-
-		cDevice *device = m_pDevice->GetDevice(channel, 0, false, true);
-
-		if (!channel->GroupSep() && device && device->ProvidesChannel(channel, 0, &ndr) && !ndr) {
-			Start(channel->Number());
+		if (channelNum && !Start(channelNum))
 			return;
-		}
 
-		if (channel == first) {
+		if (reachedFirst) {
 			Skins.Message(mtError, tr("Channel not available!"));
 			break;
 		}
+
+		if (!channelNum)    // end of the channel list
+			break;
 	}
+
+	// no channel is shown, so don't show the (frozen) pip window anymore
+	m_pDevice->SetRenderPipActive(false);
 }
 
 /*****************************************************************************
@@ -314,6 +341,8 @@ void cPipHandler::HandleChannelChange(int direction)
  */
 void cPipHandler::Enable(void)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	if (m_active)
 		return;
 
@@ -321,10 +350,39 @@ void cPipHandler::Enable(void)
 }
 
 /**
+ * Show the given channel in the pip window
+ *
+ * If pip is off, it is started with the channel, otherwise the pip window
+ * switches to the channel. If the channel can't be received, a shown pip
+ * window keeps its channel.
+ *
+ * @param channelNum     number of the channel
+ *
+ * @retval true          the channel is shown
+ * @retval false         no device can receive the channel
+ */
+bool cPipHandler::EnableChannel(int channelNum)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	bool wasActive = m_active;
+
+	if (Start(channelNum))
+		return false;
+
+	if (!wasActive)
+		m_pDevice->SetRenderPipActive(true);
+
+	return true;
+}
+
+/**
  * Stop picture-in-picture
  */
 void cPipHandler::Disable(void)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	if (!m_active)
 		return;
 
@@ -332,10 +390,30 @@ void cPipHandler::Disable(void)
 }
 
 /**
+ * Stop picture-in-picture and detach the output device
+ *
+ * The handler stays locked while the device is detached, so no other thread
+ * can start pip in between. Start() refuses to start pip in detached state.
+ *
+ * @param detach         function, which detaches the output device
+ */
+void cPipHandler::Detach(const std::function<void(void)> &detach)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	if (m_active)
+		HandleEnable(false);
+
+	detach();
+}
+
+/**
  * Toggle picture-in-picture
  */
 void cPipHandler::Toggle(void)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	HandleEnable(!m_active);
 }
 
@@ -346,6 +424,8 @@ void cPipHandler::Toggle(void)
  */
 void cPipHandler::ChannelChange(int direction)
 {
+	std::lock_guard<std::mutex> lock(m_mutex);
+
 	if (!m_active)
 		return;
 
@@ -362,21 +442,33 @@ void cPipHandler::ChannelChange(int direction)
  */
 void cPipHandler::ChannelSwap(bool closePip)
 {
+	std::unique_lock<std::mutex> lock(m_mutex);
+
 	if (!m_active)
 		return;
 
-	const cChannel *channel = m_pPipChannel;
-	if (!channel)
-		return;
-
-	Stop();
-	if (!closePip)
-		Start(0); // resets the pip channel to the current channel
-
-	LOGDEBUG("piphandler: %s: switch main stream to %d", __FUNCTION__, channel->Number());
+	int channelNum;
 	{
 		LOCK_CHANNELS_READ;
-		Channels->SwitchTo(channel->Number());
+		const cChannel *channel = Channels->GetByChannelID(m_pipChannelId);
+		if (!channel)       // the pip channel was deleted
+			return;
+
+		channelNum = channel->Number();
+	}
+
+	Stop();
+	// shows the current channel (the old main channel), the pip window is closed, if it can't
+	if (closePip || Start(0))
+		m_pDevice->SetRenderPipActive(false);
+
+	// the channel switch doesn't need the pip handler
+	lock.unlock();
+
+	LOGDEBUG("piphandler: %s: switch main stream to %d", __FUNCTION__, channelNum);
+	{
+		LOCK_CHANNELS_READ;
+		Channels->SwitchTo(channelNum);
 	}
 }
 

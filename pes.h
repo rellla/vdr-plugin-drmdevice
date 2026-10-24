@@ -20,6 +20,49 @@ extern "C"
 }
 
 /**
+ * Size of the sub stream header of the DVD audio
+ *
+ * The sub stream id, the number of frames and 2 bytes pointer to the first
+ * access unit.
+ *
+ * @ingroup misc
+ */
+static constexpr int DVD_SUBSTREAM_HEADER_SIZE = 4;
+
+/**
+ * Check, if VDR passed the sub stream id of a DVD audio stream
+ *
+ * VDR passes the sub stream id of the private stream 1 of a PES player (e.g.
+ * the dvd plugin) to PlayAudio(): AC-3 (0x80-0x87), DTS (0x88-0x8F) and
+ * LPCM (0xA0-0xA7). The payload starts with the sub stream header then.
+ * Live TV and recordings pass the stream id (e.g. 0xBD).
+ *
+ * @param id     id passed to PlayAudio()
+ *
+ * @ingroup misc
+ */
+static inline bool IsDvdAudioSubStream(uint8_t id)
+{
+	return (id >= 0x80 && id <= 0x8F) || (id >= 0xA0 && id <= 0xAF);
+}
+
+/**
+ * Check, if VDR passed the sub stream id of a DVD LPCM stream
+ *
+ * The LPCM data follows the sub stream header with a 3 bytes LPCM header
+ * (quantization, sample rate and channels), which FFmpeg's pcm_dvd decoder
+ * reads from every packet.
+ *
+ * @param id     id passed to PlayAudio()
+ *
+ * @ingroup misc
+ */
+static inline bool IsDvdLpcmSubStream(uint8_t id)
+{
+	return id >= 0xA0 && id <= 0xAF;
+}
+
+/**
  * PES Packet Parser
  *
  * This class parses PES (Packetized Elementary Stream) packets

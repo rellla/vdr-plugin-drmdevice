@@ -71,6 +71,7 @@ cOutputDevice::~cOutputDevice(void)
 	m_initialized = false; // not necessary, just for documentation
 
 	delete m_pEventHandler;
+	delete m_pPipHandler;
 	delete m_pHardwareDevice;
 	delete m_pSpuDecoder;
 }
@@ -90,6 +91,7 @@ bool cOutputDevice::Initialize(void)
 	m_pSpuDecoder = new cDvbSpuDecoder();
 	m_pHardwareDevice = new cHardwareDevice();
 	m_pEventHandler = new cEventHandler(m_pStateMachine.get());
+	m_pPipHandler = new cPipHandler(this);
 
 	auto channelSwitchStartTime = std::chrono::steady_clock::now();
 	LOGGER->SetChannelSwitchStartTime(channelSwitchStartTime);
@@ -97,6 +99,7 @@ bool cOutputDevice::Initialize(void)
 
 	m_pipUseAlt = m_pConfig->ConfigPipUseAlt;
 	m_channelSwitchMode = static_cast<ChannelSwitchMode>(m_pConfig->ConfigVideoChannelSwitchMode);
+	m_passthroughOn = m_pConfig->ConfigAudioPassthroughState;
 
 	m_initialized = true;
 
@@ -120,9 +123,7 @@ int cOutputDevice::Start(void)
 void cOutputDevice::Stop(void)
 {
 	LOGDEBUG("device: %s", __FUNCTION__);
-	if (m_pPipHandler)
-		m_pPipHandler->Disable();
-	TriggerEvent(DetachEvent{});
+	TriggerDetachEvent();
 }
 
 /*********************************************************************
@@ -355,8 +356,7 @@ bool cOutputDevice::SetPlayMode(ePlayMode play_mode)
 		// External players like mpv (vdr-plugin-mpv) want to acquire DRM/ALSA
 		// so we release it here and set a flag. As soon as the next SetPlayMode arrives
 		// we then can attach again before changing to the new playmode.
-		m_pPipHandler->Disable();
-		TriggerEvent(DetachEvent{});
+		TriggerDetachEvent();
 		m_externalPlayerActive = true;
 		break;
 	default:
@@ -387,7 +387,8 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 	if (IsDetached())
 		return size;
 
-	m_receivedAudio = true;
+	// audio, which can't be decoded, is dropped: the playback starts with the video only
+	m_receivedAudio = !m_pAudioDecoder->OpenFailed();
 
 	// Special audio-only trickspeed handling:
 	// Advance the pts and block the thread depending on the pts difference and trickspeed factor.
@@ -437,7 +438,29 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 		LOGDEBUG("device: %s: new channel id 0x%02X", __FUNCTION__, m_audioChannelID);
 	}
 
-	m_audioReassemblyBuffer.Push(pesPacket.GetPayload(), pesPacket.GetPayloadSize(), pesPacket.GetPts());
+	const uint8_t *payload = pesPacket.GetPayload();
+	int payloadSize = pesPacket.GetPayloadSize();
+	AVPacket *lpcmPkt = nullptr;
+
+	// DVD audio (e.g. of the dvd plugin) starts with the sub stream header
+	if (IsDvdAudioSubStream(id)) {
+		if (payloadSize <= DVD_SUBSTREAM_HEADER_SIZE)
+			return size;
+
+		payload += DVD_SUBSTREAM_HEADER_SIZE;
+		payloadSize -= DVD_SUBSTREAM_HEADER_SIZE;
+	}
+
+	// LPCM has no sync words, every packet is decoded (starting with the LPCM header)
+	if (IsDvdLpcmSubStream(id)) {
+		if (!(lpcmPkt = av_packet_alloc()) || av_new_packet(lpcmPkt, payloadSize) < 0) {
+			av_packet_free(&lpcmPkt);
+			return size;
+		}
+		memcpy(lpcmPkt->data, payload, payloadSize);
+		lpcmPkt->pts = pesPacket.GetPts();
+	} else
+		m_audioReassemblyBuffer.Push(payload, payloadSize, pesPacket.GetPts());
 
 	// fire playback start, if all buffers reached the threshold fill levels
 	if (CheckPlaybackStartConditions())
@@ -450,13 +473,19 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 
 	AVPacket *avpkt;
 	do {
-		if (!(avpkt = m_audioReassemblyBuffer.PopAvPacket()))
+		AVCodecID codecId;
+		if (lpcmPkt) {
+			avpkt = lpcmPkt;
+			lpcmPkt = nullptr;
+			codecId = AV_CODEC_ID_PCM_DVD;
+		} else if (IsDvdLpcmSubStream(id) || !(avpkt = m_audioReassemblyBuffer.PopAvPacket())) {
 			break;
+		} else
+			codecId = m_audioReassemblyBuffer.GetCodec();
 
 		// (Re)open the decoder, if the playback has just started or the codec changed.
 		// The PES stream id doesn't change between AC-3 and E-AC-3 (both are private stream 1),
 		// so the codec has to be compared.
-		AVCodecID codecId = m_audioReassemblyBuffer.GetCodec();
 		if (codecId != AV_CODEC_ID_NONE && m_pAudioDecoder->GetCodecId() != codecId) {
 			if (m_pAudioDecoder->GetCodecId() != AV_CODEC_ID_NONE)
 				LOGINFO("device: %s: audio codec changed from %s to %s", __FUNCTION__,
@@ -793,9 +822,14 @@ bool cOutputDevice::Flush(int timeoutMs)
 			: m_pVideoStream->BuffersEmpty();
 	};
 
+	// the buffered data is played, even if the buffering threshold isn't reached
+	m_flushing = true;
+
 	const cTimeMs timeout(timeoutMs);
 	while (!buffersEmpty() && !timeout.TimedOut())
 		cCondWait::SleepMs(std::min(5, timeoutMs));
+
+	m_flushing = false;
 
 	return buffersEmpty();
 }
@@ -862,6 +896,9 @@ void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool li
 	LOGGER->SetChannelSwitchStartTime(now);
 	LOGDEBUG2(L_AV_SYNC, "TRACE: channel switch");
 
+	// the zoom is chosen for the content
+	m_zoomLevel = 0;
+
 	// the receiver may have been switched on meanwhile
 	if (!IsDetached())
 		m_pAudioDecoder->RetryPassthrough();
@@ -884,6 +921,9 @@ void cOutputDevice::Replaying([[maybe_unused]]const cControl *control,
 	auto now = std::chrono::steady_clock::now();
 	LOGGER->SetChannelSwitchStartTime(now);
 	LOGDEBUG2(L_AV_SYNC, "TRACE: replay start");
+
+	// the zoom is chosen for the content
+	m_zoomLevel = 0;
 
 	// the receiver may have been switched on meanwhile
 	if (!IsDetached())
@@ -926,6 +966,80 @@ void cOutputDevice::SetEnableHdr(bool enable)
 {
     m_pRender->SetEnableHdr(enable);
 };
+
+/**
+ * Get the zoom-in factor of the active zoom level
+ *
+ * @return       zoom-in factor in 1/10 % (0 = no zoom)
+ */
+int cOutputDevice::GetZoom(void)
+{
+	int level = m_zoomLevel;
+
+	if (level < 1 || level > cDeviceConfig::ZOOM_LEVELS)
+		return 0;
+
+	return m_pConfig->ConfigZoomLevel[level - 1];
+}
+
+/**
+ * Select a zoom level
+ *
+ * The zoom level is reset with every channel switch and replay start.
+ *
+ * @param level  zoom level (1 - 5) or 0 to disable the zoom
+ *
+ * @return       false, if the level doesn't exist or is disabled in the setup
+ */
+bool cOutputDevice::SetZoomLevel(int level)
+{
+	if (level < 0 || level > cDeviceConfig::ZOOM_LEVELS ||
+	    (level > 0 && !m_pConfig->ConfigZoomLevel[level - 1]))
+		return false;
+
+	m_zoomLevel = level;
+	LOGDEBUG("device: %s: zoom level %d (+%d.%d%%)", __FUNCTION__, level, GetZoom() / 10, GetZoom() % 10);
+
+	return true;
+}
+
+/**
+ * Select the next zoom level
+ *
+ * Cycles through the zoom levels, which are enabled in the setup, and
+ * disables the zoom after the last one.
+ *
+ * @return       the new zoom level (0 = off)
+ */
+int cOutputDevice::NextZoomLevel(void)
+{
+	int level = m_zoomLevel + 1;
+
+	while (level <= cDeviceConfig::ZOOM_LEVELS && !m_pConfig->ConfigZoomLevel[level - 1])
+		level++;
+
+	if (level > cDeviceConfig::ZOOM_LEVELS)
+		level = 0;
+
+	SetZoomLevel(level);
+
+	return level;
+}
+
+/**
+ * Describe the active zoom level for the user
+ *
+ * @return       e.g. "Zoom 1 (+34.4%)" or "Zoom off"
+ */
+cString cOutputDevice::ZoomLevelString(void)
+{
+	int zoom = GetZoom();
+
+	if (!zoom)
+		return tr("Zoom off");
+
+	return cString::sprintf(tr("Zoom %d (+%d.%d%%)"), GetZoomLevel(), zoom / 10, zoom % 10);
+}
 
 /**
  * Trigger a display mode change event if the mode changed
@@ -996,6 +1110,8 @@ bool cOutputDevice::VideoArrivedInAudioOnlyPlayback(void)
  *      -> the render output buffer queue is completely filled once (which implies "a video frame reached the renderer")
  *   4) if CHANNEL_SWITCH_FAST_AUDIO mode is selected:
  *      -> if audio playback has already started, the audio pts must have reached the video pts
+ *   5) if a player waits for empty buffers (DrainDevice() or Flush()):
+ *      -> a video frame reached the renderer or only audio was received
  *
  * @return true, if all conditions for a playback start are met, false otherwise
  *
@@ -1009,6 +1125,13 @@ bool cOutputDevice::CheckPlaybackStartConditions()
 	bool audioHasInputPts = m_pAudio->HasInputPts();
 	bool videoHasInputPts = m_pVideoStream->HasInputPts();
 	bool videoHasOutputPts = m_pRender->GetOutputPtsMs() != AV_NOPTS_VALUE;
+
+	// A player waits for empty buffers (e.g. the dvd plugin before a still picture or the mediaplayer
+	// at the end of a file), so the buffering threshold may never be reached. Play, what was buffered.
+	if ((m_draining || m_flushing) && ((videoHasInputPts && videoHasOutputPts) || (audioHasInputPts && !videoHasInputPts))) {
+		LOGDEBUG("device: %s: start the playback, because a player waits for empty buffers", __FUNCTION__);
+		return true;
+	}
 
 	// Assume audio only or video only if no PES fragment from the other stream has been received, while the buffering threshold of the other stream is reached.
 	// Check for buffer fill level only if at least one PES packet was reassembled and pushed to the respective decoder.
@@ -1256,13 +1379,53 @@ void cOutputDevice::SetScreenSize(int width, int height)
  ********************************************************************/
 
 /**
- * Set the passthrough mask (called from setup menu or conf)
+ * Get the passthrough setting for the audio stream
+ *
+ * @return     CODEC_* bit mask of the setup, CODEC_PASSTHROUGH_AUTO for the
+ *             automatic passthrough or 0, if the passthrough is switched off
  */
-void cOutputDevice::SetPassthroughMask(int mask)
+int cOutputDevice::GetPassthroughSetting(void)
 {
-	m_pAudio->SetPassthroughMask(mask);
+	if (!m_passthroughOn)
+		return 0;
+
+	return m_pConfig->ConfigAudioPassthroughAuto ? static_cast<int>(CODEC_PASSTHROUGH_AUTO) : m_pConfig->ConfigAudioPassthroughMask;
+}
+
+/**
+ * Switch the audio passthrough on or off
+ *
+ * Switched on, the passthrough mode of the setup (manual or automatic) is used.
+ * This is also used for the passthrough toggle, which isn't stored, so the setup
+ * value stays the default at startup.
+ *
+ * @param on           true to switch the passthrough on
+ */
+void cOutputDevice::SetPassthroughOn(bool on)
+{
+	m_passthroughOn = on;
+	LOGDEBUG("device: %s: passthrough %s", __FUNCTION__, on ? "on" : "off");
+
+	// in detached state the setting is applied with the attach
+	if (IsDetached())
+		return;
+
+	m_pAudio->SetPassthroughMask(GetPassthroughSetting());
 	if (m_pAudioDecoder)
-		m_pAudioDecoder->SetPassthroughMask(mask);
+		m_pAudioDecoder->UpdatePassthroughMask();
+}
+
+/**
+ * Describe the passthrough state for the user
+ *
+ * @return     e.g. "Passthrough: automatic" or "Passthrough: off"
+ */
+cString cOutputDevice::PassthroughString(void)
+{
+	if (!m_passthroughOn)
+		return tr("Passthrough: off");
+
+	return m_pConfig->ConfigAudioPassthroughAuto ? tr("Passthrough: automatic") : tr("Passthrough: manual");
 }
 
 /**
@@ -1305,10 +1468,12 @@ void cOutputDevice::GetStats(int *duped, int *dropped, int *counter)
  * @param codecId       audio codec id
  * @param par           audio codec parameters
  * @param timebase      timebase
+ *
+ * @retval false        the codec can't be decoded
  */
-void cOutputDevice::SetAudioCodec(enum AVCodecID codecId, AVCodecParameters * par, AVRational timebase)
+bool cOutputDevice::SetAudioCodec(enum AVCodecID codecId, AVCodecParameters * par, AVRational timebase)
 {
-	m_pAudioDecoder->Open(codecId, par, timebase);
+	return m_pAudioDecoder->Open(codecId, par, timebase);
 }
 
 /**
@@ -1430,8 +1595,7 @@ void cOutputDevice::Detach(void)
 		MakePrimaryDevice(false);
 	}
 
-	m_pPipHandler->Disable();
-	TriggerEvent(DetachEvent{});
+	TriggerDetachEvent();
 }
 
 /**
@@ -1527,6 +1691,9 @@ bool cOutputDevice::TryResetPipStream(void)
  */
 void cOutputDevice::ResetPipStreamLocked(void)
 {
+	if (!m_pPipStream)   // detached
+		return;
+
 	m_pPipStream->Halt();
 
 	m_pPipStream->CancelFilterThread();
@@ -1556,6 +1723,8 @@ bool cOutputDevice::PipIsEnabled(void)
 
 /** Enable pip (see cPipHandler::Enable()) */
 void cOutputDevice::PipEnable(void) { m_pPipHandler->Enable(); };
+/** Show the given channel in the pip window (see cPipHandler::EnableChannel()) */
+bool cOutputDevice::PipEnableChannel(int channelNum) { return m_pPipHandler->EnableChannel(channelNum); };
 /** Disable pip (see cPipHandler::Disable()) */
 void cOutputDevice::PipDisable(void) { m_pPipHandler->Disable(); };
 /** Toggle pip (see cPipHandler::Toggle()) */
@@ -1577,6 +1746,9 @@ void cOutputDevice::SetRenderPipSize(void)
 {
 	auto lock = m_pStateMachine->Lock();
 
+	if (!m_pRender)   // detached
+		return;
+
 	m_pRender->Halt();
 	m_pRender->SetPipSize(m_pipUseAlt);
 	m_pRender->Resume();
@@ -1586,6 +1758,9 @@ void cOutputDevice::SetRenderPipSize(void)
 void cOutputDevice::SetRenderPipActive(bool active)
 {
 	auto lock = m_pStateMachine->Lock();
+
+	if (!m_pRender)   // detached
+		return;
 
 	m_pRender->Halt();
 	m_pRender->SetPipActive(active);
@@ -1857,6 +2032,17 @@ void cOutputDevice::TriggerEvent(const Event &event)
 }
 
 /**
+ * Stop pip and detach the device
+ *
+ * The pip handler stays locked until the device is detached, so another
+ * thread (e.g. an SVDRP command) can't start pip in between.
+ */
+void cOutputDevice::TriggerDetachEvent(void)
+{
+	m_pPipHandler->Detach([this] { TriggerEvent(DetachEvent{}); });
+}
+
+/**
  * Actions to be performed when leaving a state
  *
  * These are only executed when the state actually changes.
@@ -1898,6 +2084,7 @@ void cOutputDevice::LeaveState(State state)
 			break;
 		case DETACHED:
 			m_pAudio = new cAudioStream(this);
+			m_pAudio->SetPassthroughMask(GetPassthroughSetting());  // the passthrough may have been toggled
 			m_pRender = new cVideoRender(this);
 			m_pGrab = new cGrabber(m_pRender);
 			m_pVideoStream = new cMainVideoStream(m_pRender, m_pHardwareDevice->GetQuirks(), m_pRender->GetMainOutputBuffer(), m_pConfig, std::bind(&cVideoRender::PushMainFrame, m_pRender, std::placeholders::_1));
@@ -1912,7 +2099,6 @@ void cOutputDevice::LeaveState(State state)
 			m_pVideoStream->StartDecoder(); // starts decoding thread
 			m_pPipStream = new cPipVideoStream(m_pRender, m_pHardwareDevice->GetQuirks(), m_pRender->GetPipOutputBuffer(), m_pConfig, std::bind(&cVideoRender::PushPipFrame, m_pRender, std::placeholders::_1));
 			m_pPipStream->StartDecoder(); // starts decoding thread
-			m_pPipHandler = new cPipHandler(this);
 			// Audio is init lazily (includes starting thread)
 
 			break;
@@ -1987,9 +2173,6 @@ void cOutputDevice::EnterState(State state)
 
 			break;
 		case DETACHED:
-			delete m_pPipHandler;
-			m_pPipHandler = nullptr;
-
 			// resume the previously stopped threads
 			m_pVideoStream->Resume();
 			m_pRender->Resume();

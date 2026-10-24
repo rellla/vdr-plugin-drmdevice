@@ -27,6 +27,7 @@ extern "C" {
 
 #include "audio.h"
 #include "codec_audio.h"
+#include "config.h"
 #include "logger.h"
 #include "spdif.h"
 #include "misc.h"
@@ -84,43 +85,55 @@ cAudioDecoder::~cAudioDecoder(void)
  * @param par           audio codec parameters
  * @param timebase      timebase
  *
- * @todo FIXME: errors shouldn't be fatal, maybe just disable audio
+ * If the codec can't be opened (e.g. FFmpeg was built without its decoder),
+ * the audio of the stream is dropped until the next codec is opened.
+ *
+ * @retval true         the decoder is open
+ * @retval false        the codec can't be decoded
  */
-void cAudioDecoder::Open(AVCodecID codecId, AVCodecParameters *par, AVRational timebase)
+bool cAudioDecoder::Open(AVCodecID codecId, AVCodecParameters *par, AVRational timebase)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	const AVCodec *codec;
+	// the mediaplayer opens the decoder for every file and audio track without closing it
+	CloseCodec();
 
+	const AVCodec *codec = nullptr;
+
+	// remember the codec also, if it can't be opened, so it isn't tried with every packet
 	m_codecId = codecId;
 
-	switch (codecId) {
-	case AV_CODEC_ID_AC3:
-		if (!(codec = avcodec_find_decoder_by_name("ac3_fixed")))
-			LOGFATAL("audiocodec: %s: codec ac3_fixed ID %#06x not found", __FUNCTION__, codecId);
-		break;
-	case AV_CODEC_ID_AAC:
-		if (!(codec = avcodec_find_decoder_by_name("aac_fixed")))
-			LOGFATAL("audiocodec: %s: codec aac_fixed ID %#06x not found", __FUNCTION__, codecId);
-		break;
-	default:
-		if (!(codec = avcodec_find_decoder(codecId))) {
-			LOGFATAL("audiocodec: %s: codec %s ID %#06x not found", __FUNCTION__,
-			avcodec_get_name(codecId), codecId);
-		}
-		break;
+	// the sink may have been switched on or off meanwhile (automatic passthrough)
+	m_passthroughMask = m_pAudio->GetPassthroughMask() & CODEC_PASSTHROUGH_ALL;
+
+	// prefer the fixed point decoders
+	if (codecId == AV_CODEC_ID_AC3)
+		codec = avcodec_find_decoder_by_name("ac3_fixed");
+	else if (codecId == AV_CODEC_ID_AAC)
+		codec = avcodec_find_decoder_by_name("aac_fixed");
+	if (!codec)
+		codec = avcodec_find_decoder(codecId);
+
+	if (!codec) {
+		LOGERROR("audiocodec: %s: no decoder for %s, the audio is dropped", __FUNCTION__, avcodec_get_name(codecId));
+		return false;
 	}
 
-	if (!(m_pAudioCtx = avcodec_alloc_context3(codec)))
-		LOGFATAL("audiocodec: %s: can't allocate audio codec context", __FUNCTION__);
+	if (!(m_pAudioCtx = avcodec_alloc_context3(codec))) {
+		LOGERROR("audiocodec: %s: can't allocate the codec context for %s, the audio is dropped", __FUNCTION__, avcodec_get_name(codecId));
+		return false;
+	}
 
 	m_pAudioCtx->pkt_timebase = timebase;
 
 	if (par && ((avcodec_parameters_to_context(m_pAudioCtx, par)) < 0))
 		LOGERROR("audiocodec: %s: insert parameters to context failed!", __FUNCTION__);
 
-	if (avcodec_open2(m_pAudioCtx, m_pAudioCtx->codec, NULL) < 0)
-		LOGFATAL("audiocodec: %s: can't open audio codec", __FUNCTION__);
+	if (avcodec_open2(m_pAudioCtx, m_pAudioCtx->codec, NULL) < 0) {
+		LOGERROR("audiocodec: %s: can't open the decoder for %s, the audio is dropped", __FUNCTION__, avcodec_get_name(codecId));
+		avcodec_free_context(&m_pAudioCtx);
+		return false;
+	}
 
 	LOGDEBUG2(L_CODEC, "audiocodec: %s: Codec %s found%s", __FUNCTION__, m_pAudioCtx->codec->long_name, GetPassthroughMaskString(m_passthroughMask).c_str());
 
@@ -133,6 +146,18 @@ void cAudioDecoder::Open(AVCodecID codecId, AVCodecParameters *par, AVRational t
 	m_currentDtshdRate = 0;
 	m_passthroughFailed = false;
 	m_dtshdFailed = false;
+
+	return true;
+}
+
+/**
+ * Check, if the current codec couldn't be opened (its audio is dropped)
+ */
+bool cAudioDecoder::OpenFailed(void)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	return m_codecId != AV_CODEC_ID_NONE && !m_pAudioCtx;
 }
 
 /**
@@ -141,6 +166,19 @@ void cAudioDecoder::Open(AVCodecID codecId, AVCodecParameters *par, AVRational t
 void cAudioDecoder::Close(void)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
+
+	CloseCodec();
+}
+
+/**
+ * Close the codec and the spdif muxer
+ *
+ * Must be called with the decoder mutex.
+ */
+void cAudioDecoder::CloseCodec(void)
+{
+	// also a codec, which couldn't be opened, is tried again with the next Open()
+	m_codecId = AV_CODEC_ID_NONE;
 
 	if (!m_pAudioCtx)
 		return;
@@ -153,6 +191,8 @@ void cAudioDecoder::Close(void)
 
 	m_codecId = AV_CODEC_ID_NONE;
 	m_lastPts = AV_NOPTS_VALUE;
+	m_streamInfo = {};
+	m_pAudio->Config()->SetAudioStreamInfo({});
 }
 
 /**
@@ -221,6 +261,8 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 	m_currentPassthroughMask = m_passthroughMask;
 	m_currentPassthrough = passthrough;
 
+	UpdateStreamInfo(passthrough, m_currentHwSampleRate, m_currentHwNumChannels);
+
 	// audio was newly set up (err == 0)
 	if (!err)
 		LOGDEBUG2(L_SOUND, "audiocodec: %s: format changed %s %dHz *%d channels%s", __FUNCTION__,
@@ -231,6 +273,39 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 }
 
 /**
+ * Publish the properties of the played stream for the statistics, if they changed
+ *
+ * @param passthrough        true, if the stream is passed through
+ * @param outputSampleRate   sample rate of the audio device
+ * @param outputChannels     channels of the audio device
+ */
+void cAudioDecoder::UpdateStreamInfo(bool passthrough, int outputSampleRate, int outputChannels)
+{
+	const char *codec = avcodec_get_name(m_pAudioCtx->codec_id);
+	const char *profile = avcodec_profile_name(m_pAudioCtx->codec_id, m_pAudioCtx->profile);
+
+	// called with every decoded frame, so compare without copying the strings
+	if (m_streamInfo.codec == codec && m_streamInfo.profile == (profile ? profile : "") &&
+	    m_streamInfo.sampleRate == m_pAudioCtx->sample_rate &&
+	    m_streamInfo.channels == m_pAudioCtx->ch_layout.nb_channels &&
+	    m_streamInfo.passthrough == passthrough &&
+	    m_streamInfo.outputSampleRate == outputSampleRate &&
+	    m_streamInfo.outputChannels == outputChannels &&
+	    m_streamInfo.device == m_pAudio->GetDeviceName())
+		return;
+
+	m_streamInfo.codec = codec;
+	m_streamInfo.profile = profile ? profile : "";
+	m_streamInfo.sampleRate = m_pAudioCtx->sample_rate;
+	m_streamInfo.channels = m_pAudioCtx->ch_layout.nb_channels;
+	m_streamInfo.passthrough = passthrough;
+	m_streamInfo.outputSampleRate = outputSampleRate;
+	m_streamInfo.outputChannels = outputChannels;
+	m_streamInfo.device = m_pAudio->GetDeviceName();
+	m_pAudio->Config()->SetAudioStreamInfo(m_streamInfo);
+}
+
+/**
  * Forward an audio packet either to the decoder or passthrough
  *
  * @param avpkt        audio packet to decode
@@ -238,6 +313,10 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 void cAudioDecoder::Decode(const AVPacket *avpkt)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
+
+	// the codec couldn't be opened
+	if (!m_pAudioCtx)
+		return;
 
 	if (ShouldTryPassthrough())
 		Passthrough(avpkt);
@@ -343,6 +422,11 @@ void cAudioDecoder::DecodePCM(const AVPacket *avpkt)
 
 			m_pAudio->Filter(frame, m_pAudioCtx);
 
+			// The audio device of a decoded stream is set up by the filter graph
+			// (cAudioStream::InitFilter()), CheckUpdateFormat() only sets it up after
+			// a passthrough. So publish the stream for the statistics here.
+			UpdateStreamInfo(false, m_pAudio->GetHwSampleRate(), m_pAudio->GetHwNumChannels());
+
 		} while (retRec == 0);
 	} while (retSend == AVERROR(EAGAIN));
 }
@@ -372,6 +456,7 @@ void cAudioDecoder::FlushBuffers(void)
  *
  * If the passthrough of a codec failed (e.g. the receiver was off), the codec is
  * decoded until the next codec change. This allows a new try with the next packet.
+ * With the automatic passthrough, the codecs of the sink are read again.
  */
 void cAudioDecoder::RetryPassthrough(void)
 {
@@ -380,18 +465,20 @@ void cAudioDecoder::RetryPassthrough(void)
 	if (m_passthroughFailed || m_dtshdFailed)
 		LOGDEBUG2(L_SOUND, "audiocodec: %s: try the passthrough again", __FUNCTION__);
 
+	m_passthroughMask = m_pAudio->GetPassthroughMask() & CODEC_PASSTHROUGH_ALL;
+
 	m_passthroughFailed = false;
 	m_dtshdFailed = false;
 }
 
 /**
- * Set audio pass-through mask
+ * Update the codecs, which are passed through, from the audio stream
  *
- * @param mask         codec mask to enable (AC-3, E-AC-3, DTS, TrueHD, DTS-HD)
+ * Called after the passthrough setting of the audio stream was changed.
  */
-void cAudioDecoder::SetPassthroughMask(int mask)
+void cAudioDecoder::UpdatePassthroughMask(void)
 {
-	m_passthroughMask = mask & CODEC_PASSTHROUGH_ALL;
+	m_passthroughMask = m_pAudio->GetPassthroughMask() & CODEC_PASSTHROUGH_ALL;
 	m_passthroughFailed = false; // try again with the new settings
 	m_dtshdFailed = false;
 }

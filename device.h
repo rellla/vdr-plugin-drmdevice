@@ -166,6 +166,13 @@ public:
 	bool IsVideoOnlyPlayback(void) { return m_playbackMode == VIDEO_ONLY; }  ///< true, if only video is played
 	bool IsAudioOnlyPlayback(void) { return m_playbackMode == AUDIO_ONLY; }  ///< true, if only audio is played
 
+	// Zoom
+	int GetZoom(void);
+	int GetZoomLevel(void) const { return m_zoomLevel; }      ///< get the active zoom level (0 = off)
+	bool SetZoomLevel(int);
+	int NextZoomLevel(void);
+	cString ZoomLevelString(void);
+
 	// Osd
 #ifdef USE_GLES
 	int MaxSizeGPUImageCache(void);
@@ -181,14 +188,17 @@ public:
 	// Audio
 	int GetVideoAudioDelayMs(void) { return m_pConfig->ConfigVideoAudioDelayMs; }             ///< get the configured video/audio delay
 	int GetMinBufferFillLevelThresholdMs(void) { return MIN_BUFFER_FILL_LEVEL_THRESHOLD_MS; } ///< get the minimum buffer fill level to start playback
-	void SetPassthroughMask(int);
+	void SetPassthroughOn(bool);
+	bool IsPassthroughOn(void) const { return m_passthroughOn; }                              ///< true, if the passthrough is switched on
+	void TogglePassthrough(void) { SetPassthroughOn(!m_passthroughOn); }                      ///< switch the passthrough on or off (not stored)
+	cString PassthroughString(void);
 	void ResetChannelId(void);
 
 	// Logging, statistics
 	void GetStats(int *, int *, int *);
 
 	// Mediaplayer
-	void SetAudioCodec(enum AVCodecID, AVCodecParameters *, AVRational);
+	bool SetAudioCodec(enum AVCodecID, AVCodecParameters *, AVRational);
 	void SetVideoCodec(enum AVCodecID, AVCodecParameters *, AVRational);
 	void SetMediaStreams(bool, bool);
 	int PlayAudioPkts(AVPacket *);
@@ -208,13 +218,14 @@ public:
 	// Pip
 	int PlayPipVideo(const uchar *, int);
 	void SetDrmCanDisplayPip(bool canDisplay) { m_drmCanDisplayPip = canDisplay; }     ///< set, if the drm device has a plane for pip
-	bool UsePip(void) { return m_drmCanDisplayPip && !m_disablePip && m_pPipHandler; } ///< true, if pip can be used
+	bool UsePip(void) { return m_drmCanDisplayPip && !m_disablePip && !IsDetached(); } ///< true, if pip can be used
 	void ResetPipStream(void);
 	void ToggleRenderPipPosition(void) { m_pipUseAlt = !m_pipUseAlt; }  ///< toggle the pip position (normal/alternative)
 	// wrapper functions
 	void SetDisablePip(void) { m_disablePip = true; }   ///< disable pip (workaround option)
 	bool PipIsEnabled(void);
 	void PipEnable(void);
+	bool PipEnableChannel(int);
 	void PipDisable(void);
 	void PipToggle(void);
 	void PipChannelChange(int);
@@ -226,6 +237,7 @@ public:
 
 	// state transitioning functions
 	void TriggerEvent(const Event&);
+	void TriggerDetachEvent(void);
 	bool VideoArrivedInAudioOnlyPlayback(void);
 	bool TryResetPipStream(void);
 
@@ -257,6 +269,7 @@ private:
 
 	bool m_initialized = false;                     ///< true, if the plugin had a successful Initialize()
 	std::atomic<bool> m_draining = false;           ///< true, if the device is in draining mode (waiting for empty buffers)
+	std::atomic<bool> m_flushing = false;           ///< true, while a player waits in Flush() for empty buffers
 	std::mutex m_eventMutex;                        ///< mutex to protect event queue
 	bool m_needsMakePrimary = false;                ///< true, if device should be made a primary device after attach
 	cDvbSpuDecoder *m_pSpuDecoder = nullptr;        ///< pointer to spu decoder
@@ -275,6 +288,8 @@ private:
 	/** current channel switch mode */
 	std::atomic<ChannelSwitchMode> m_channelSwitchMode = CHANNEL_SWITCH_AVSYNC;
 	bool m_logPlaybackStart = true;                 ///< log the duration until the playback started
+	std::atomic<int> m_zoomLevel = 0;               ///< active zoom level (0 = off, reset with every new content)
+	std::atomic<bool> m_passthroughOn = false;      ///< passthrough is switched on (setup or toggle)
 
 	std::atomic<PlaybackMode> m_playbackMode = NONE; ///< current playback mode
 	int m_audioChannelID = -1;       ///< current audio channel ID
@@ -282,7 +297,7 @@ private:
 
 	cVideoStream *m_pPipStream = nullptr; ///< pointer to pip video stream (nullptr, if detached)
 	cReassemblyBufferVideo m_pipReassemblyBuffer; ///< pip pes reassembly buffer
-	cPipHandler *m_pPipHandler = nullptr; ///< pointer to pip handler (nullptr, if detached)
+	cPipHandler *m_pPipHandler = nullptr; ///< pointer to pip handler (exists also in detached state)
 	std::mutex m_sizeMutex;          ///< mutex to lock screen size (which is accessed by different threads)
 	std::atomic<bool> m_receivedAudio = false; ///< flag if audio packets have been received
 	std::atomic<bool> m_receivedVideo = false; ///< flag if video packets have been received
@@ -308,6 +323,7 @@ private:
 	int64_t GetFirstAudioPtsMsToPlay();
 	int64_t GetFirstVideoPtsMsToPlay();
 	int GetBufferFillLevelThresholdMs();
+	int GetPassthroughSetting(void);
 	void SetDrain(bool);
 };
 

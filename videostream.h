@@ -26,6 +26,7 @@ extern "C" {
 #include <vdr/remux.h>
 #include <vdr/thread.h>
 
+#include "config.h"
 #include "queue.h"
 #include "videofilter.h"
 
@@ -129,6 +130,7 @@ private:
 	int m_sentTrickPkts = 0;                        ///< how many avpkt have been sent to the decoder in trickspeed mode?
 	std::atomic<bool> m_newStream = false;          ///< flag for new stream
 	bool m_interlaced = false;                      ///< flag for interlaced stream
+	sVideoStreamInfo m_streamInfo;                  ///< last published properties of the stream (main stream only)
 	double m_framerate = 0.0;                       ///< current stream framerate
 
 	int64_t m_inputPts = AV_NOPTS_VALUE;                 ///< PTS of the last packet (with a pts) pushed to the input buffer
@@ -151,6 +153,7 @@ private:
 	void SendPacket(AVPacket *);
 	int ReceiveFrame(AVFrame **);
 	void RenderFrame(AVFrame *);
+	void UpdateStreamInfo(const AVFrame *);
 	void CheckForcingFrameDecode(void);
 	void OpenDecoder(void);
 	bool ParseH264Packet(AVPacket *);

@@ -277,15 +277,20 @@ int cVideoRender::SetVideoBuffer(cDrmBuffer *buf)
 
 	AVFrame *frame = buf->frame;
 
-	if (frame && m_enableHdr) {
-		struct hdr_output_metadata hdrData;
-		AVFrameSideData *sd1 = av_frame_get_side_data(frame, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
-		AVFrameSideData *sd2 = av_frame_get_side_data(frame, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+	if (frame) {
+		bool hdr = false;
+		if (m_enableHdr) {
+			struct hdr_output_metadata hdrData;
+			AVFrameSideData *sd1 = av_frame_get_side_data(frame, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+			AVFrameSideData *sd2 = av_frame_get_side_data(frame, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
 
-		if (!m_pHdrMetadata.Build(&hdrData, frame->color_primaries, frame->color_trc, sd1, sd2)) {
-			SetHdrBlob(hdrData);
-			SetColorSpace(COLORRANGE_LIMITED);
+			if (!m_pHdrMetadata.Build(&hdrData, frame->color_primaries, frame->color_trc, sd1, sd2)) {
+				SetHdrBlob(hdrData);
+				SetColorSpace(COLORRANGE_LIMITED);
+				hdr = true;
+			}
 		}
+		m_pConfig->StatHdrActive = hdr;                // for the statistics
 	}
 
 	// set display dimensions as default
@@ -307,12 +312,17 @@ int cVideoRender::SetVideoBuffer(cDrmBuffer *buf)
 	// fit frame into display
 	sRect fittedRect = ComputeFittedRect(frame, dispX, dispY, dispWidth, dispHeight);
 
+	// zoom into the frame (not into a scaled video), the plane crops the source
+	int cropX, cropY, cropW, cropH;
+	ZoomCropRect(buf->Width(), buf->Height(), m_videoIsScaled ? 0 : m_pDevice->GetZoom(), &cropX, &cropY, &cropW, &cropH);
+
 	// now set the plane parameters
 	videoPlane->SetParams(m_pDrmDevice->CrtcId(), buf->Id(),
 		fittedRect.x, fittedRect.y, fittedRect.w, fittedRect.h,
-		0, 0, buf->Width(), buf->Height());
+		cropX, cropY, cropW, cropH);
 
 	buf->SetSizeOnScreen(fittedRect.x, fittedRect.y, fittedRect.w, fittedRect.h); // remember for grab
+	buf->SetCropRect(cropX, cropY, cropW, cropH);
 
 	return 0;
 }

@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <mutex>
 
+#include "codec_audio.h"
 #include "config.h"
 #include "logger.h"
 
@@ -42,11 +43,14 @@ bool cDeviceConfig::SetupParse(const char *name, const char *value)
 	} else if (!strcasecmp(name, "VideoEnableHDR"))        { ConfigVideoEnableHDR = atoi(value);
 	} else if (!strcasecmp(name, "VideoDisplayMode"))      { ConfigVideoDisplayMode = std::min(atoi(value), static_cast<int>(CONFIG_DISPLAY_MODE_FOLLOW_VIDEO_INTERLACED));
 	} else if (!strcasecmp(name, "VideoChannelSwitchMode")){ ConfigVideoChannelSwitchMode = atoi(value);
+	} else if (!strncasecmp(name, "ZoomLevel", 9) && name[9] >= '1' && name[9] < '1' + ZOOM_LEVELS && !name[10]) {
+	                                                         ConfigZoomLevel[name[9] - '1'] = std::clamp(atoi(value), 0, ZOOM_MAX);
 
 	// Audio
 	} else if (!strcasecmp(name, "AudioSoftvol"))          { ConfigAudioSoftvol = atoi(value);
 	} else if (!strcasecmp(name, "AudioDownmix"))          { ConfigAudioDownmix = atoi(value);
-	} else if (!strcasecmp(name, "AudioPassthrough"))      { ConfigAudioPassthroughMask = abs(atoi(value));
+	} else if (!strcasecmp(name, "AudioPassthrough"))      { ConfigAudioPassthroughMask = abs(atoi(value)) & CODEC_PASSTHROUGH_ALL;
+	                                                         ConfigAudioPassthroughAuto = abs(atoi(value)) & CODEC_PASSTHROUGH_AUTO;
 	                                                         ConfigAudioPassthroughState = atoi(value) > 0;
 	} else if (!strcasecmp(name, "AudioDisableAutoAES"))   { ConfigAudioDisableAutoAES = atoi(value);
 	// replaced by AudioDisableAutoAES: the automatic AES is enabled by default now, the stored default (0) is ignored
@@ -192,6 +196,42 @@ int cDeviceConfig::GetDecoderNeedsMaxPackets(void)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	return m_decoderNeedsMaxPackets;
+}
+
+/**
+ * Set the properties of the played video stream (called by the decoding thread)
+ *
+ * @param info         properties of the video stream
+ */
+void cDeviceConfig::SetVideoStreamInfo(const sVideoStreamInfo &info)
+{
+	std::lock_guard<std::mutex> lock(m_streamInfoMutex);
+	m_videoStreamInfo = info;
+}
+
+/** Get a copy of the properties of the played video stream (for the statistics) */
+sVideoStreamInfo cDeviceConfig::GetVideoStreamInfo(void)
+{
+	std::lock_guard<std::mutex> lock(m_streamInfoMutex);
+	return m_videoStreamInfo;
+}
+
+/**
+ * Set the properties of the played audio stream (called by the decoding thread)
+ *
+ * @param info         properties of the audio stream
+ */
+void cDeviceConfig::SetAudioStreamInfo(const sAudioStreamInfo &info)
+{
+	std::lock_guard<std::mutex> lock(m_streamInfoMutex);
+	m_audioStreamInfo = info;
+}
+
+/** Get a copy of the properties of the played audio stream (for the statistics) */
+sAudioStreamInfo cDeviceConfig::GetAudioStreamInfo(void)
+{
+	std::lock_guard<std::mutex> lock(m_streamInfoMutex);
+	return m_audioStreamInfo;
 }
 
 /**

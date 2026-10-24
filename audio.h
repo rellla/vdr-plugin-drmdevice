@@ -99,7 +99,14 @@ public:
 	void SetAutoAES(bool appendAes) { m_alsa.SetAutoAES(appendAes); }          ///< automatically append AES to the pass-through device
 	void SetTimebase(AVRational timebase) { m_timebase = timebase; }           ///< set the timebase of the pts values
 	void SetDownmix(int downMix) { m_alsa.SetDownmix(downMix); }               ///< downmix to stereo
-	int GetPassthroughMask(void) const { return m_alsa.GetPassthroughMask(); } ///< get the codecs, which are passed through
+	int GetPassthroughMask(void) { return m_alsa.GetPassthroughMask(); }       ///< get the codecs, which are passed through (read from the ELD in auto mode)
+	/** codecs of the last read ELD (-1: not read yet) */
+	int GetEldPassthroughMask(void) const { return m_alsa.GetEldPassthroughMask(); }
+	/** name of the used alsa device */
+	const std::string &GetDeviceName(void) const { return m_alsa.GetDeviceName(); }
+	int GetHwSampleRate(void) { return m_alsa.GetHwSampleRate(); }             ///< get the sample rate of the audio device
+	int GetHwNumChannels(void) { return m_alsa.GetHwNumChannels(); }           ///< get the number of channels of the audio device
+	cDeviceConfig *Config(void) { return m_pConfig; }                          ///< get the config
 
 	void DropSamplesOlderThanPtsMs(int64_t);
 	void ClockDriftCompensation(void);
@@ -139,6 +146,7 @@ private:
 
 	int64_t m_inputPts = AV_NOPTS_VALUE;    ///< pts clock (last pts in ringbuffer)
 	std::atomic<bool> m_paused = true;      ///< audio is paused
+	bool m_bitstreamGap = false;            ///< true, if a gap of the bitstream is bridged with pause bursts
 	std::atomic<int64_t> m_trickSpeedPts = AV_NOPTS_VALUE; ///< pts of the last received (undecoded) packet during audio-only trickspeed
 	std::atomic<double> m_trickspeedFactor = 0;   ///< current trickspeed factor for AdvanceTrickSpeedPts()
 	std::atomic<bool> m_trickspeed = false;       ///< true, if trickspeed is active
@@ -154,8 +162,10 @@ private:
 
 	void Enqueue(const uint16_t *, int, int64_t);
 	void EnqueueFrame(AVFrame *);
+	void SignalUnderrun(void);
 	bool SendAudio(int);
 	bool SendPause(void);
+	bool BridgeBitstreamGap(int);
 	void FillPause(uint8_t *, int);
 	void AdvanceSpdifReadPhase(int);
 	void RebuildPauseBurst(int);

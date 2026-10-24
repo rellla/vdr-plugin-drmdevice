@@ -15,14 +15,17 @@ Features
 - Software fallback for decoding and deinterlacing
 - Optional GPU accelerated OSD composing (OpenGL/ES)
 - Audio decoding with alsa (PCM)
-- Audio passthrough support (AC3, E-AC3, DTS)
+- Audio passthrough support (AC3, E-AC3, DTS, TrueHD, DTS-HD), optionally
+  with the formats reported by the HDMI sink
 - UHD support
 - HDR display support
 - Auto-switch display mode to video source (optional)
+- Zoom levels to crop black bars of the broadcast
 - Picture-in-picture support (depending on hardware)
-- Integrated minimalistic media player
+- Integrated media player with audio track selection and text subtitles
 - Grabbing support - video, osd and pip - mpeg2, h264, hevc (8/10bit)
 - Detach/Attach support (release display, audio and GPU resources, but keep VDR running)
+- Output for the dvd plugin (incl. LPCM audio)
 - Many adjustable (expert) settings via setup menu
 
 
@@ -195,6 +198,21 @@ Setup: /etc/vdr/setup.conf
 		2  = display mode follows video resolution respecting interlaced modes (width, height, refresh rate, interlaced flag)
 		     Same as above, but now the display also chooses an interlaced mode for interlaced input (except for 576i) if available
 
+	drmdevice.ZoomLevel1 = 344
+	drmdevice.ZoomLevel2 = 125
+	drmdevice.ZoomLevel3 = 0
+	drmdevice.ZoomLevel4 = 0
+	drmdevice.ZoomLevel5 = 0
+		0 - 499 = zoom-in factor of the zoom level in 1/10 % (0 = level disabled)
+		The zoom magnifies the picture to crop black bars, which are part of
+		the broadcast. The aspect ratio is kept and the overflow is cropped
+		equally off all sides. The defaults fill a 2.39:1 (+34.4%) and a 2.00:1
+		(+12.5%) picture on a 16:9 screen.
+		The active zoom level is reset with every channel switch and replay
+		start and isn't stored. Select it in the plugin menu, with the key
+		macros, with SVDRP ZOOM or with the Blue key in the mediaplayer
+		(the key macros don't work during a replay).
+
 	drmdevice.VideoChannelSwitchMode = 0
 		0 = fast channel switch is disabled
 		1 = enable fast channel switch: video is presented immediately as a still-picture
@@ -209,12 +227,24 @@ Setup: /etc/vdr/setup.conf
 		Use FFmpeg downmix of AC-3/EAC-3 audio to stereo.
 
 	drmdevice.AudioPassthrough = 0
-		0 = none, 4 = AC-3, 8 = EAC-3, 16 = DTS, 32 = TrueHD, 64 = DTS-HD
+		0 = none, 4 = AC-3, 8 = EAC-3, 16 = DTS, 32 = TrueHD, 64 = DTS-HD,
+		128 = automatic
 
 		For AC-3/EAC-3/DTS/TrueHD/DTS-HD the passthrough device is used and the
 		audio stream is passed undecoded to the output device.
 		Add the values above: e.g. 12 = AC-3 + EAC-3
 		negating the value disables passthrough but remembers the setting
+		automatic (128, "Passthrough: automatic" in the setup menu): the codecs
+		are taken from the ELD of the HDMI sink (TV or AV receiver), which
+		tells the formats the sink can decode. The other codec bits are
+		ignored. The ELD is read again with every codec change and channel
+		switch, so a receiver, which is switched on later, is recognized.
+		Without an ELD (e.g. no HDMI device or the sink is off), the audio is
+		decoded. If the ELD is wrong (e.g. an AV receiver behind a TV, which
+		only reports its own formats), use the manual selection.
+		The passthrough can be switched on and off in the plugin menu, with
+		the key macro "@drmdevice Yellow 1" or with SVDRP PASS. This isn't
+		stored, the setup value is the default at startup.
 		TrueHD and DTS-HD Master Audio need a device with 8 channels and 192kHz
 		(HDMI), DTS-HD High Resolution Audio needs 192kHz. DTS-HD is only
 		recognized by the mediaplayer, otherwise (and if the device doesn't
@@ -357,7 +387,13 @@ SVDRP Commands
 		910 -> ATTACHED
 		911 -> DETACHED
 
-	PION         Enable picture-in-picture.
+	PION [channel]
+		Enable picture-in-picture. With a channel (number, channel ID or
+		name, like VDR's CHAN command) the pip window shows this channel,
+		otherwise the current channel. If pip is already enabled, it
+		switches to the given channel. E.g. from a script:
+			svdrpsend PLUG drmdevice PION 73
+			svdrpsend PLUG drmdevice PIOF
 
 	PIOF         Disable picture-in-picture.
 
@@ -372,6 +408,20 @@ SVDRP Commands
 	PIPS         Switch main stream to pip stream and close the pip window.
 
 	PIPP         Swap pip position between normal and alternative.
+	PASS [on | off | toggle]
+		Switch the audio passthrough on or off (not stored).
+		Without an argument the passthrough state is returned.
+	ZOOM [next | 0-5]
+		Select the next zoom level (next) or the given zoom level (0 = off).
+		Without an argument the active zoom level is returned.
+
+Reply codes:
+	900      the command was executed (STAT: 910 attached, 911 detached)
+	501      invalid argument (e.g. a missing url or an unknown zoom level)
+	550      the command wasn't executed: e.g. the device is already detached,
+	         pip isn't enabled or available, a disabled zoom level
+	554      the command failed: e.g. the channel can't be received for pip
+	500      unknown command (sent by VDR)
 
 
 Keymacros
@@ -390,6 +440,9 @@ Currently supported:
 	@drmdevice Blue 6      Switch main stream to pip channel and close pip
 	@drmdevice Red 1       Detach device
 	@drmdevice Red 2       Attach device
+	@drmdevice Green 1     Next zoom level
+	@drmdevice Green 2     Zoom off
+	@drmdevice Yellow 1    Switch the audio passthrough on/off
 
 
 OpenGL/ES
@@ -505,6 +558,18 @@ Playback can be started with svdrp or via the main menu. If the mediaplayer is c
 the main menu, you can either choose a previously created playlist, create a new playlist or
 simply play a single file.
 
+Playlists are m3u or m3u8 files, which list one file or url per line. Lines starting with '#'
+are ignored, relative paths are relative to the folder of the playlist. A HLS stream (a m3u8
+url or a local m3u8 file with HLS tags like `#EXT-X-...`) is played by FFmpeg instead. FFmpeg
+only loads the segments of the played audio and video variants. A HLS stream with a duration
+can be positioned, a live stream can't.
+
+In the file menu, the Blue key deletes the file or the folder with all its files under the
+cursor after a confirmation. Only files in VDR's video directory can be deleted. A symbolic
+link is deleted itself (not its target), and the files of a mounted file system in the folder
+are kept. A recording, which VDR records or replays at the moment, isn't deleted (also not
+as part of a folder). The deletion of a large folder may take some time.
+
 The replay works like the replay of a VDR recording, the keys and the replay display
 behave like in VDR. The settings "Multi speed mode", "Show replay mode", "Show remaining time",
 "Progress display time" and the skip distances with the Green/Yellow keys of VDR's replay setup
@@ -521,13 +586,35 @@ are used. In replay mode, you can control playback with the following keys:
 	               Left/Right: skip the time backward/ forward)
 	Green:         Skip backward (skip distance, the repeat distance if held)
 	Yellow:        Skip forward (skip distance, the repeat distance if held)
-	Stop/Blue:     Stop replay and end player
+	Stop:          Stop replay and end player
+	Blue:          Next zoom level (see drmdevice.ZoomLevel1-5)
 	Back:          Stop replay and open the file menu
 	Prev/Next:     Previous/ next file in playlist
+	Audio:         Select the audio track
+	Subtitles:     Select the subtitle track
+
+A file with several audio tracks starts with the track of the preferred audio language
+(and the Dolby track with "Use Dolby Digital") of VDR's setup, otherwise with the default
+track of the file. The Audio key opens VDR's track menu to select another track.
+
+Text subtitles of a file (e.g. SubRip, ASS/SSA or mov_text) are shown like VDR's subtitles:
+they are selected according to VDR's subtitle setup ("Display subtitles" and the subtitle
+languages) and with the Subtitles key, and they are drawn with the subtitle offset and
+transparencies of the setup. ASS styles and positions aren't used. Bitmap subtitles (e.g.
+DVB or PGS subtitles) aren't shown by the mediaplayer.
 
 The fast/slow modes and the positioning need a seekable file. The replay of a local file
 continues at the position, where it was stopped (backed up by 10s). The positions of the last
 100 files are stored in the file "resume" in the plugin's cache directory.
+
+
+DVD plugin
+----------
+The [dvd plugin](https://github.com/vdr-projects/vdr-plugin-dvd) plays through this device.
+The DVD audio (AC-3, DTS, LPCM and MPEG audio) is played like the audio of a recording,
+AC-3 and DTS can be passed through. The sub stream header of the DVD audio is removed, the
+LPCM audio is decoded by FFmpeg's pcm_dvd decoder. The subpictures (subtitles and menu
+buttons) are drawn by VDR's SPU decoder on the OSD, the menus are shown as still pictures.
 
 
 Hints for Raspberry Pi 4/5

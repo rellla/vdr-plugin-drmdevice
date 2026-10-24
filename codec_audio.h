@@ -25,6 +25,7 @@ extern "C" {
 
 #include <vdr/remux.h>
 
+#include "config.h"
 #include "spdif.h"
 
 class cAudioStream;
@@ -49,6 +50,8 @@ enum PassthroughMask {
 	CODEC_DTSHD  = (1 << 6), ///< DTS-HD bit mask
 	/** all codecs, which can be passed through */
 	CODEC_PASSTHROUGH_ALL = CODEC_AC3 | CODEC_EAC3 | CODEC_DTS | CODEC_TRUEHD | CODEC_DTSHD,
+	/** pass the codecs through, which the sink reports in its ELD (instead of the codec bits) */
+	CODEC_PASSTHROUGH_AUTO = (1 << 7),
 };
 
 /**
@@ -68,11 +71,12 @@ class cAudioDecoder {
 public:
 	cAudioDecoder(cAudioStream *);
 	~cAudioDecoder(void);
-	void Open(AVCodecID, AVCodecParameters * = nullptr, AVRational = { .num = 1, .den = PTSTICKS });
+	bool Open(AVCodecID, AVCodecParameters * = nullptr, AVRational = { .num = 1, .den = PTSTICKS });
+	bool OpenFailed(void);
 	void Close(void);
 	void Decode(const AVPacket *);
 	void FlushBuffers(void);
-	void SetPassthroughMask(int);
+	void UpdatePassthroughMask(void);
 	void RetryPassthrough(void);
 	AVCodecID GetCodecId() const { return m_codecId; }  ///< get the current codec id
 
@@ -82,7 +86,7 @@ private:
 	AVCodecID m_codecId = AV_CODEC_ID_NONE;     ///< current codec id
 	AVFrame *m_pFrame;                          ///< decoded ffmpeg audio frame
 	int64_t m_lastPts = AV_NOPTS_VALUE;         ///< last seen PTS
-	int m_passthroughMask;                      ///< passthrough mask to be set
+	std::atomic<int> m_passthroughMask;         ///< codecs, which are passed through
 	int m_currentPassthroughMask = 0;           ///< current passthrough mask
 	int m_currentSampleRate = 0;                ///< current sample rate
 	int m_currentNumChannels = 0;               ///< current number of channels
@@ -92,15 +96,18 @@ private:
 	std::atomic<bool> m_passthroughFailed = false; ///< true, if the passthrough of the current codec failed (decode it instead)
 	std::atomic<bool> m_dtshdFailed = false;    ///< true, if the DTS-HD passthrough failed (pass the DTS core through instead)
 	int m_currentDtshdRate = 0;                 ///< rate of the current DTS-HD bitstream (0: no DTS-HD)
+	sAudioStreamInfo m_streamInfo;              ///< stream properties, which were published for the statistics
 	std::mutex m_mutex;                         ///< decoder mutex
 
 	cSpdifMuxer m_spdif;                        ///< spdif muxer
 
 
+	void CloseCodec(void);
 	bool ShouldTryPassthrough(void);
 	int Passthrough(const AVPacket *);
 	void DecodePCM(const AVPacket *);
 	int CheckUpdateFormat(bool);
+	void UpdateStreamInfo(bool, int, int);
 };
 
 #endif
