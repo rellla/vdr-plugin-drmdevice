@@ -353,13 +353,13 @@ void cDeviceSetupMenu::Create(int current)
 	// PiP
 	//
 	if (m_section == SECTION_PIP && m_pDevice->UsePip()) {
-		Add(new cMenuEditIntItem(tr("video scaling factor (%)"), &m_cPipScalePercent, 10, 100));
-		Add(new cMenuEditIntItem(tr("video left (%)"), &m_cPipLeftPercent, 0, 100));
-		Add(new cMenuEditIntItem(tr("video top (%)"), &m_cPipTopPercent, 0, 100));
-		Add(new cMenuEditBoolItem(tr("use alternative position as default"), &m_cPipUseAlt, trVDR("no"), trVDR("yes")));
-		Add(new cMenuEditIntItem(tr("alternative video scaling factor (%)"), &m_cPipAltScalePercent, 10, 100));
-		Add(new cMenuEditIntItem(tr("alternative video left (%)"), &m_cPipAltLeftPercent, 0, 100));
-		Add(new cMenuEditIntItem(tr("alternative video top (%)"), &m_cPipAltTopPercent, 0, 100));
+		Add(new cMenuEditIntItem(tr("Video scaling factor (%)"), &m_cPipScalePercent, 10, 100));
+		Add(new cMenuEditIntItem(tr("Video left (%)"), &m_cPipLeftPercent, 0, 100));
+		Add(new cMenuEditIntItem(tr("Video top (%)"), &m_cPipTopPercent, 0, 100));
+		Add(new cMenuEditBoolItem(tr("Use alternative position as default"), &m_cPipUseAlt, trVDR("no"), trVDR("yes")));
+		Add(new cMenuEditIntItem(tr("Alternative video scaling factor (%)"), &m_cPipAltScalePercent, 10, 100));
+		Add(new cMenuEditIntItem(tr("Alternative video left (%)"), &m_cPipAltLeftPercent, 0, 100));
+		Add(new cMenuEditIntItem(tr("Alternative video top (%)"), &m_cPipAltTopPercent, 0, 100));
 	}
 
 	//
