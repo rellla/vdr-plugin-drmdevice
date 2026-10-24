@@ -104,6 +104,8 @@ public:
 	int GetEldPassthroughMask(void) const { return m_alsa.GetEldPassthroughMask(); }
 	/** name of the used alsa device */
 	const std::string &GetDeviceName(void) const { return m_alsa.GetDeviceName(); }
+	int GetHwSampleRate(void) { return m_alsa.GetHwSampleRate(); }             ///< get the sample rate of the audio device
+	int GetHwNumChannels(void) { return m_alsa.GetHwNumChannels(); }           ///< get the number of channels of the audio device
 	cDeviceConfig *Config(void) { return m_pConfig; }                          ///< get the config
 
 	void DropSamplesOlderThanPtsMs(int64_t);

@@ -191,6 +191,7 @@ void cAudioDecoder::CloseCodec(void)
 
 	m_codecId = AV_CODEC_ID_NONE;
 	m_lastPts = AV_NOPTS_VALUE;
+	m_streamInfo = {};
 	m_pAudio->Config()->SetAudioStreamInfo({});
 }
 
@@ -260,19 +261,7 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 	m_currentPassthroughMask = m_passthroughMask;
 	m_currentPassthrough = passthrough;
 
-	// for the statistics
-	sAudioStreamInfo info;
-	info.codec = avcodec_get_name(m_pAudioCtx->codec_id);
-	const char *profile = avcodec_profile_name(m_pAudioCtx->codec_id, m_pAudioCtx->profile);
-	if (profile)
-		info.profile = profile;
-	info.sampleRate = m_pAudioCtx->sample_rate;
-	info.channels = m_pAudioCtx->ch_layout.nb_channels;
-	info.passthrough = passthrough;
-	info.outputSampleRate = m_currentHwSampleRate;
-	info.outputChannels = m_currentHwNumChannels;
-	info.device = m_pAudio->GetDeviceName();
-	m_pAudio->Config()->SetAudioStreamInfo(info);
+	UpdateStreamInfo(passthrough, m_currentHwSampleRate, m_currentHwNumChannels);
 
 	// audio was newly set up (err == 0)
 	if (!err)
@@ -281,6 +270,39 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 			GetPassthroughMaskString(m_passthroughMask).c_str());
 
 	return 0;
+}
+
+/**
+ * Publish the properties of the played stream for the statistics, if they changed
+ *
+ * @param passthrough        true, if the stream is passed through
+ * @param outputSampleRate   sample rate of the audio device
+ * @param outputChannels     channels of the audio device
+ */
+void cAudioDecoder::UpdateStreamInfo(bool passthrough, int outputSampleRate, int outputChannels)
+{
+	const char *codec = avcodec_get_name(m_pAudioCtx->codec_id);
+	const char *profile = avcodec_profile_name(m_pAudioCtx->codec_id, m_pAudioCtx->profile);
+
+	// called with every decoded frame, so compare without copying the strings
+	if (m_streamInfo.codec == codec && m_streamInfo.profile == (profile ? profile : "") &&
+	    m_streamInfo.sampleRate == m_pAudioCtx->sample_rate &&
+	    m_streamInfo.channels == m_pAudioCtx->ch_layout.nb_channels &&
+	    m_streamInfo.passthrough == passthrough &&
+	    m_streamInfo.outputSampleRate == outputSampleRate &&
+	    m_streamInfo.outputChannels == outputChannels &&
+	    m_streamInfo.device == m_pAudio->GetDeviceName())
+		return;
+
+	m_streamInfo.codec = codec;
+	m_streamInfo.profile = profile ? profile : "";
+	m_streamInfo.sampleRate = m_pAudioCtx->sample_rate;
+	m_streamInfo.channels = m_pAudioCtx->ch_layout.nb_channels;
+	m_streamInfo.passthrough = passthrough;
+	m_streamInfo.outputSampleRate = outputSampleRate;
+	m_streamInfo.outputChannels = outputChannels;
+	m_streamInfo.device = m_pAudio->GetDeviceName();
+	m_pAudio->Config()->SetAudioStreamInfo(m_streamInfo);
 }
 
 /**
@@ -399,6 +421,11 @@ void cAudioDecoder::DecodePCM(const AVPacket *avpkt)
 			}
 
 			m_pAudio->Filter(frame, m_pAudioCtx);
+
+			// The audio device of a decoded stream is set up by the filter graph
+			// (cAudioStream::InitFilter()), CheckUpdateFormat() only sets it up after
+			// a passthrough. So publish the stream for the statistics here.
+			UpdateStreamInfo(false, m_pAudio->GetHwSampleRate(), m_pAudio->GetHwNumChannels());
 
 		} while (retRec == 0);
 	} while (retSend == AVERROR(EAGAIN));

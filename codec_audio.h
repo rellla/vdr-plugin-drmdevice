@@ -25,6 +25,7 @@ extern "C" {
 
 #include <vdr/remux.h>
 
+#include "config.h"
 #include "spdif.h"
 
 class cAudioStream;
@@ -95,6 +96,7 @@ private:
 	std::atomic<bool> m_passthroughFailed = false; ///< true, if the passthrough of the current codec failed (decode it instead)
 	std::atomic<bool> m_dtshdFailed = false;    ///< true, if the DTS-HD passthrough failed (pass the DTS core through instead)
 	int m_currentDtshdRate = 0;                 ///< rate of the current DTS-HD bitstream (0: no DTS-HD)
+	sAudioStreamInfo m_streamInfo;              ///< stream properties, which were published for the statistics
 	std::mutex m_mutex;                         ///< decoder mutex
 
 	cSpdifMuxer m_spdif;                        ///< spdif muxer
@@ -105,6 +107,7 @@ private:
 	int Passthrough(const AVPacket *);
 	void DecodePCM(const AVPacket *);
 	int CheckUpdateFormat(bool);
+	void UpdateStreamInfo(bool, int, int);
 };
 
 #endif
