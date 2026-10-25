@@ -16,6 +16,7 @@
 
 #include <string>
 
+#include <vdr/config.h>
 #include <vdr/menuitems.h>
 
 #include "audio.h"
@@ -441,6 +442,11 @@ void cDeviceSetupMenu::Create(int current)
  * In a section, OK stores the settings and Back discards the changes, both
  * return to the overview. Back in the overview closes the setup menu.
  *
+ * OK returns OK_HANDLED instead of osContinue: VDR's plugin setup menu
+ * (cMenuSetupPlugins) stores the setup with OK and osContinue, calls
+ * cOsdProvider::UpdateOsdSize(true) and so the skin closes and opens the OSD
+ * again (it flickers). The setup is saved here instead.
+ *
  * @param key          pressed key
  */
 eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
@@ -459,7 +465,7 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 			int current = Current();
 			if (current >= 0 && current < (int)m_overviewSections.size())
 				ShowSection(m_overviewSections[current]);
-			return osContinue;
+			return OK_HANDLED;
 		}
 		return cMenuSetupPage::ProcessKey(key);
 	}
@@ -468,11 +474,16 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 	eOSState state = cOsdMenu::ProcessKey(key);
 
 	if (state == osUnknown && key == kOk) {
-		if (m_section != SECTION_STATISTICS)	// nothing to store
+		if (m_section != SECTION_STATISTICS) {	// nothing to store
 			Store();
+			Setup.Save();
+		}
 		ShowSection(SECTION_OVERVIEW);
-		return osContinue;
+		return OK_HANDLED;
 	}
+	// OK of an edited item (e.g. the end of a string input)
+	if (state == osContinue && key == kOk)
+		state = OK_HANDLED;
 	if (state == osBack) {
 		// discard the changes of the section
 		LoadValues();
