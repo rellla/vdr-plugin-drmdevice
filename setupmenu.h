@@ -134,6 +134,8 @@ private:
 		SECTION_COUNT                              ///< number of the sections
 	};
 	static constexpr int KEEP_CURRENT = -2;            ///< Create() keeps the current item
+	/** returned for a handled OK, VDR's menus don't handle this state (see ProcessKey()) */
+	static constexpr eOSState OK_HANDLED = os_User;
 
 	cOutputDevice *m_pDevice;                          ///< pointer to the device
 	cDeviceConfig *m_pConfig;                          ///< pointer to the config
