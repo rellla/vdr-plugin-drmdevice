@@ -329,7 +329,7 @@ static constexpr int64_t RESUME_BACKUP_MS = 10000;
  */
 cDrmDevicePlayer::cDrmDevicePlayer(const char *url, cOutputDevice *device)
 	: cPlayer(pmAudioVideo),
-	  cThread("drmdevice mediaplayer"),
+	  cThread("drmdev player"),
 	  m_pDevice(device)
 {
 	m_pSource = (char *) malloc(1 + strlen(url));
