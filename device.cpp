@@ -515,6 +515,26 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 }
 
 /**
+ * Play TS packets
+ *
+ * A channel switch to the channel of the zap cache starts with its buffered
+ * packets since the last I-frame (see cZapCache::Splice()).
+ *
+ * @param data        TS packets
+ * @param length      length of the data
+ * @param videoOnly   play only the video (trick speed)
+ *
+ * @return            number of the played bytes (see cDevice::PlayTs())
+ */
+int cOutputDevice::PlayTs(const uchar *data, int length, bool videoOnly)
+{
+	if (m_zapCache.SpliceArmed() && data && length >= TS_SIZE)
+		m_zapCache.Splice(data, [this](const uchar *packet, int size) { return cDevice::PlayTs(packet, size); });
+
+	return cDevice::PlayTs(data, length, videoOnly);
+}
+
+/**
  * Play a video packet of the main videostream
  *
  * This is the main function, which is called by VDR to play video data
@@ -909,6 +929,9 @@ void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool li
 		m_zapCache.ChannelSwitched(channelNum);
 		return;
 	}
+
+	// the new channel may start with the packets of the zap cache
+	m_zapCache.ChannelSwitchStarted();
 
 	auto now = std::chrono::steady_clock::now();
 	LOGGER->SetChannelSwitchStartTime(now);

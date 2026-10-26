@@ -51,7 +51,8 @@ SOURCES_UNDER_TEST = \
 	pidcontroller.cpp \
 	ringbuffer.cpp \
 	spdif.cpp \
-	subtitletext.cpp
+	subtitletext.cpp \
+	zapbuffer.cpp
 
 OBJDIR = obj/$(BUILD)
 OBJS = $(addprefix $(OBJDIR)/, $(TEST_SOURCES:.cpp=.o) $(SOURCES_UNDER_TEST:.cpp=.o))
