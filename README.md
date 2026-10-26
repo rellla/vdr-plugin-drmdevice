@@ -234,8 +234,20 @@ Setup: /etc/vdr/setup.conf
 		It only works, if a free device can receive the channel (or the channel is
 		on the transponder of the current channel), and it is off while pip is
 		shown. An encrypted channel isn't buffered (the device of the next channel
-		has no CAM), only tuned. The device isn't free for the EPG scan meanwhile,
-		but it is released for a recording or the live view.
+		has no CAM), only tuned. The device isn't free for VDR's EPG scan meanwhile
+		(see drmdevice.ZapAheadRelease), but it is released for a recording or the
+		live view.
+
+	drmdevice.ZapAheadRelease = 2
+		Release the devices of drmdevice.ZapAhead after a time without key press
+		(and without channel switch), so VDR's EPG scan can use them. The EPG
+		scan starts 60s after the last key press. The next key press tunes the
+		channels again.
+		0 = never
+		1 = after 20s
+		2 = after 50s
+		3 = after 5min
+		4 = after 30min
 
 	drmdevice.ZapAheadTuners = 2
 		Tuners for the live view and drmdevice.ZapAhead (only, if VDR has at least

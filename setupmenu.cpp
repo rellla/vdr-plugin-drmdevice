@@ -296,6 +296,8 @@ void cDeviceSetupMenu::Create(int current)
 		Add(new cMenuEditBoolItem(tr("Tune channels ahead"), &m_cZapAhead, trVDR("no"), trVDR("yes")));
 		if (m_cZapAhead && cZapCache::NumTuners() >= 3)
 			Add(new cMenuEditStraItem(tr(" Tuners for live view and cache"), &m_cZapAheadTuners, 2, m_zapAheadTuners));
+		if (m_cZapAhead)
+			Add(new cMenuEditStraItem(tr(" Release the tuners without key press"), &m_cZapAheadRelease, 5, m_zapAheadReleases));
 		for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 			Add(new cMenuEditIntItem(cString::sprintf(tr("Zoom level %d (/1000)"), i + 1), &m_cZoomLevel[i], 0, cDeviceConfig::ZOOM_MAX, trVDR("off")));
 	}
@@ -535,6 +537,11 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_passthroughModes[PASSTHROUGH_AUTO] = tr("automatic");
 	m_zapAheadTuners[0] = tr("2 (next channel)");
 	m_zapAheadTuners[1] = tr("3 (next and previous channel)");
+	m_zapAheadReleases[0] = tr("never");
+	m_zapAheadReleases[1] = tr("after 20s");
+	m_zapAheadReleases[2] = tr("after 50s");
+	m_zapAheadReleases[3] = tr("after 5min");
+	m_zapAheadReleases[4] = tr("after 30min");
 
 	LoadValues();
 	Create();
@@ -560,6 +567,7 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cVideoChannelSwitchMode  = m_pConfig->ConfigVideoChannelSwitchMode;
 	m_cZapAhead                = m_pConfig->ConfigZapAhead;
 	m_cZapAheadTuners          = m_pConfig->ConfigZapAheadTuners - 2;
+	m_cZapAheadRelease         = m_pConfig->ConfigZapAheadRelease;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		m_cZoomLevel[i] = m_pConfig->ConfigZoomLevel[i];
 
@@ -759,6 +767,7 @@ void cDeviceSetupMenu::Store(void)
 		m_pDevice->SetChannelSwitchMode(static_cast<ChannelSwitchMode>(m_pConfig->ConfigVideoChannelSwitchMode));
 	StoreChanged("ZapAhead", m_pConfig->ConfigZapAhead, m_cZapAhead);
 	StoreChanged("ZapAheadTuners", m_pConfig->ConfigZapAheadTuners, m_cZapAheadTuners + 2);
+	StoreChanged("ZapAheadRelease", m_pConfig->ConfigZapAheadRelease, m_cZapAheadRelease);
 	bool zoomChanged = false;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		zoomChanged |= StoreChanged(cString::sprintf("ZoomLevel%d", i + 1), m_pConfig->ConfigZoomLevel[i], m_cZoomLevel[i]);

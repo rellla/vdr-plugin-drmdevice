@@ -203,6 +203,9 @@ msgstr "Kanäle vorab tunen"
 msgid " Tuners for live view and cache"
 msgstr " Tuner für Live-Bild und Cache"
 
+msgid " Release the tuners without key press"
+msgstr " Tuner ohne Tastendruck freigeben"
+
 #, c-format
 msgid "Zoom level %d (/1000)"
 msgstr "Zoomstufe %d (/1000)"
@@ -450,6 +453,21 @@ msgstr "2 (nächster Kanal)"
 
 msgid "3 (next and previous channel)"
 msgstr "3 (nächster und vorheriger Kanal)"
+
+msgid "never"
+msgstr "nie"
+
+msgid "after 20s"
+msgstr "nach 20s"
+
+msgid "after 50s"
+msgstr "nach 50s"
+
+msgid "after 5min"
+msgstr "nach 5min"
+
+msgid "after 30min"
+msgstr "nach 30min"
 
 #, c-format
 msgid "default %dx%d@%.2f%s"

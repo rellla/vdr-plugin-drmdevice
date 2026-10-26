@@ -10,10 +10,12 @@
  */
 
 #include <algorithm>
+#include <ctime>
 
 #include <vdr/channels.h>
 #include <vdr/config.h>
 #include <vdr/device.h>
+#include <vdr/remote.h>
 #include <vdr/transfer.h>
 
 #include "logger.h"
@@ -183,9 +185,29 @@ std::vector<uint8_t> cZapReceiver::Take(const uint8_t *next, int *frames)
  * cZapCache class
  ****************************************************************************/
 
+cZapCache::cZapCache(void)
+	: m_lastSwitch(time(NULL))
+{
+}
+
 cZapCache::~cZapCache(void)
 {
 	Clear();
+}
+
+/**
+ * Get the time without key press, after which the receivers are released
+ *
+ * @param release   release time (drmdevice.ZapAheadRelease): 0 = never, 1 = 20s,
+ *                  2 = 50s (before VDR's EPG scan starts), 3 = 5min, 4 = 30min
+ *
+ * @return          the time in seconds (0: never)
+ */
+int cZapCache::ReleaseSeconds(int release)
+{
+	static const int seconds[RELEASE_TIMES] = { 0, 20, 50, 5 * 60, 30 * 60 };
+
+	return seconds[std::clamp(release, 0, RELEASE_TIMES - 1)];
 }
 
 /**
@@ -214,6 +236,7 @@ void cZapCache::ChannelSwitched(int channelNum)
 
 	m_previousChannel = m_liveChannel;
 	m_liveChannel = channelNum;
+	m_lastSwitch = time(NULL);
 	m_preparePending = true;
 	m_prepareTimer.Set(PREPARE_DELAY_MS);
 
@@ -282,8 +305,10 @@ void cZapCache::Clear(void)
  *
  * @param mode          channels to tune (enum Mode, ZAP_AHEAD_OFF, if the option is
  *                      off or the live view isn't in transfer mode)
+ * @param releaseSeconds  release the receivers after this time without key press
+ *                      or channel switch (0: never)
  */
-void cZapCache::MainThreadHook(int mode)
+void cZapCache::MainThreadHook(int mode, int releaseSeconds)
 {
 	if (mode == ZAP_AHEAD_OFF) {
 		bool hasReceivers;
@@ -295,7 +320,42 @@ void cZapCache::MainThreadHook(int mode)
 		}
 		if (hasReceivers)
 			Clear();
+		m_released = false;
 		return;
+	}
+
+	// release the devices, so VDR's EPG scan can use them
+	if (releaseSeconds) {
+		time_t lastActivity;
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			lastActivity = std::max(cRemote::LastActivity(), m_lastSwitch);
+		}
+		if (time(NULL) - lastActivity >= releaseSeconds) {
+			if (!m_released) {
+				bool hasReceivers;
+				{
+					std::lock_guard<std::mutex> lock(m_mutex);
+					m_preparePending = false;
+					m_spliceArmed = false;
+					hasReceivers = HasReceivers();
+				}
+				if (hasReceivers) {
+					Clear();
+					LOGDEBUG("zapcache: released the devices after %ds without key press", releaseSeconds);
+				}
+				m_released = true;
+			}
+			return;
+		}
+	}
+
+	// a key was pressed after the release, tune the channels again
+	if (m_released) {
+		m_released = false;
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_preparePending = true;
+		m_prepareTimer.Set(0);
 	}
 
 	int liveChannel;

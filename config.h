@@ -113,6 +113,7 @@ public:
 	int ConfigZoomLevel[ZOOM_LEVELS] = { 344, 125, 0, 0, 0 };
 	int ConfigZapAhead = 0;                     ///< tune the neighbour channels on free devices ahead
 	int ConfigZapAheadTuners = 2;               ///< tuners for the live view and the zap cache (2: next channel, 3: next and previous channel)
+	int ConfigZapAheadRelease = 2;              ///< release the devices without key press (see cZapCache::ReleaseSeconds())
 
 	// Audio
 	bool ConfigAudioSoftvol = false;            ///< config use software volume
