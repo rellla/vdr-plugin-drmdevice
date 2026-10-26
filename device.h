@@ -123,6 +123,7 @@ protected:
 	virtual int PlayVideo(const uchar *, int);
 	virtual int PlayAudio(const uchar *, int, uchar);
 public:
+	virtual int PlayTs(const uchar *, int, bool = false);
 	virtual int64_t GetSTC(void);
 	virtual cRect CanScaleVideo(const cRect &, int);
 	virtual void ScaleVideo(const cRect & = cRect::Null);

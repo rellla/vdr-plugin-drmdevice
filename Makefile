@@ -169,6 +169,7 @@ OBJS = $(PLUGINENTRY).o \
 	videofilter.o \
 	videorender.o \
 	videostream.o \
+	zapbuffer.o \
 	zapcache.o
 
 ifeq ($(GLES),1)

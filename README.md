@@ -225,9 +225,14 @@ Setup: /etc/vdr/setup.conf
 		(channel up or down) is received on a free device with the lowest priority.
 		A switch to this channel doesn't have to tune and to wait for the tuner lock,
 		because VDR prefers a device, which is tuned to the transponder already.
-		It only works, if a free device can receive the channel, and it is off while
-		pip is shown. The device isn't free for the EPG scan meanwhile, but it is
-		released for a recording or the live view.
+		The packets of the channel since its last I-frame are buffered, so the switch
+		starts with this I-frame instead of waiting for the next one. The picture is
+		up to one GOP (max. 64 frames) later than without the buffer then.
+		It only works, if a free device can receive the channel (or the channel is
+		on the transponder of the current channel), and it is off while pip is
+		shown. An encrypted channel isn't buffered (the device of the next channel
+		has no CAM), only tuned. The device isn't free for the EPG scan meanwhile,
+		but it is released for a recording or the live view.
 
 	drmdevice.AudioSoftvol = 0
 		0 = off, use hardware volume control
