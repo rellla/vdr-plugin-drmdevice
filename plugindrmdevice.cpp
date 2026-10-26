@@ -268,6 +268,8 @@ cOsdObject *cPluginDrmDevice::MainMenuAction(void)
 /**
  * Main thread hook
  *
+ * Tunes the next channel ahead (see cZapCache).
+ *
  * Closes the menu after a detach or attach with SVDRP: the menu wasn't shown
  * while detached, so VDR would only close it with the next menu key instead
  * of opening the menu. The menu key is put into the queue, because only the
@@ -275,6 +277,8 @@ cOsdObject *cPluginDrmDevice::MainMenuAction(void)
  */
 void cPluginDrmDevice::MainThreadHook(void)
 {
+	m_pDevice->MainThreadHook();
+
 	if (m_closeMenu.exchange(false) && dynamic_cast<cSkinDisplayMenu *>(cSkinDisplay::Current())) {
 		LOGDEBUG("plugin: %s: close the menu", __FUNCTION__);
 		cRemote::Put(kMenu);

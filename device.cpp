@@ -123,7 +123,19 @@ int cOutputDevice::Start(void)
 void cOutputDevice::Stop(void)
 {
 	LOGDEBUG("device: %s", __FUNCTION__);
+	m_zapCache.Clear();
 	TriggerDetachEvent();
+}
+
+/**
+ * Called by VDR's main thread in every loop (wrapped by cPluginDrmDevice)
+ *
+ * Tunes the next channel ahead, if this is enabled and the live view is in
+ * transfer mode (pip uses the free devices, too).
+ */
+void cOutputDevice::MainThreadHook(void)
+{
+	m_zapCache.MainThreadHook(m_pConfig->ConfigZapAhead && Transferring() && !IsDetached() && !PipIsEnabled());
 }
 
 /*********************************************************************
@@ -885,11 +897,18 @@ bool cOutputDevice::DrainDevice(void)
  *
  * Save the timestamp when a channel switch is initiated (channelNum == 0)
  * for later time measurement, and try a failed audio passthrough again.
+ * After the switch (channelNum != 0), the next channel is tuned ahead.
  */
 void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool liveView)
 {
-	if (device != cDevice::PrimaryDevice() || !liveView || channelNum != 0)
+	if (device != cDevice::PrimaryDevice() || !liveView)
 		return;
+
+	// the switch is done, tune the next channel ahead
+	if (channelNum) {
+		m_zapCache.ChannelSwitched(channelNum);
+		return;
+	}
 
 	auto now = std::chrono::steady_clock::now();
 	LOGGER->SetChannelSwitchStartTime(now);
@@ -1594,6 +1613,7 @@ void cOutputDevice::Detach(void)
 		MakePrimaryDevice(false);
 	}
 
+	m_zapCache.Clear();
 	TriggerDetachEvent();
 }
 

@@ -55,6 +55,7 @@ protected:
 	int m_cVideoEnableHDR;
 	int m_cVideoDisplayMode;
 	int m_cVideoChannelSwitchMode;
+	int m_cZapAhead;
 	int m_cZoomLevel[cDeviceConfig::ZOOM_LEVELS];
 
 	// Audio

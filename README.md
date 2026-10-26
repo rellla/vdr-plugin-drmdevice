@@ -218,6 +218,17 @@ Setup: /etc/vdr/setup.conf
 		1 = enable fast channel switch: video is presented immediately as a still-picture
 		2 = enable fast channel switch: video is presented immediately as a still-picture and audio starts as soon as possible
 
+	drmdevice.ZapAhead = 0
+		0 = off
+		1 = tune the next channel in zap direction ahead (experimental)
+		After a channel switch, the next channel in the direction of the last switch
+		(channel up or down) is received on a free device with the lowest priority.
+		A switch to this channel doesn't have to tune and to wait for the tuner lock,
+		because VDR prefers a device, which is tuned to the transponder already.
+		It only works, if a free device can receive the channel, and it is off while
+		pip is shown. The device isn't free for the EPG scan meanwhile, but it is
+		released for a recording or the live view.
+
 	drmdevice.AudioSoftvol = 0
 		0 = off, use hardware volume control
 		1 = on, use software volume control
