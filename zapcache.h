@@ -96,6 +96,10 @@ private:
  * before VDR's transfer receiver plays its first packet (Splice()), so it
  * doesn't have to wait for the next I-frame.
  *
+ * The receivers are released after a time without key press, so VDR's EPG scan
+ * (which starts 60s after the last key press) can use the devices. The next key
+ * press tunes the channels again.
+ *
  * The receiver is started and stopped by the main thread (MainThreadHook()),
  * like VDR's own channel switches. The channel switches are reported by
  * cOutputDevice::ChannelSwitch(), which may be called by another thread (SVDRP).
@@ -111,14 +115,15 @@ public:
 		ZAP_AHEAD_BOTH                     ///< the next channel and the channel in the opposite direction (three tuners)
 	};
 
-	cZapCache(void) {}
+	cZapCache(void);
 	~cZapCache(void);
 
 	static int NumTuners(void);
+	static int ReleaseSeconds(int);
 
 	void ChannelSwitchStarted(void);
 	void ChannelSwitched(int);
-	void MainThreadHook(int);
+	void MainThreadHook(int, int);
 	void Clear(void);
 
 	bool SpliceArmed(void) const { return m_spliceArmed; }   ///< true, if a channel switch may start with the buffered packets
@@ -130,6 +135,7 @@ private:
 	static constexpr int PLAY_RETRIES = 20;        ///< max. number of retries for a buffered packet (like cTransfer)
 	static constexpr int PLAY_RETRY_WAIT_MS = 5;   ///< time between two retries
 	static constexpr int MAX_RECEIVERS = 2;        ///< zap direction and opposite direction
+	static constexpr int RELEASE_TIMES = 5;        ///< number of the release times (drmdevice.ZapAheadRelease)
 
 	std::mutex m_mutex;                      ///< protects the members below
 	/** receivers of the next channel and of the channel in the opposite direction */
@@ -142,6 +148,8 @@ private:
 	std::atomic<bool> m_spliceArmed = false; ///< a channel switch may start with the buffered packets
 	int m_armedFromChannel = 0;              ///< live channel before the channel switch (its packets may still be played)
 	cTimeMs m_spliceTimer;                   ///< keeps the receiver of the new live channel until the splice
+	time_t m_lastSwitch;                     ///< time of the last channel switch (also by SVDRP)
+	bool m_released = false;                 ///< the receivers were released without key press (main thread only)
 
 	bool HasReceivers(void) const;
 	cZapReceiver *ReceiverFor(int) const;

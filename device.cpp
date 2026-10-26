@@ -139,7 +139,7 @@ void cOutputDevice::MainThreadHook(void)
 	if (m_pConfig->ConfigZapAhead && Transferring() && !IsDetached() && !PipIsEnabled())
 		mode = m_pConfig->ConfigZapAheadTuners >= 3 && cZapCache::NumTuners() >= 3 ? cZapCache::ZAP_AHEAD_BOTH : cZapCache::ZAP_AHEAD_NEXT;
 
-	m_zapCache.MainThreadHook(mode);
+	m_zapCache.MainThreadHook(mode, cZapCache::ReleaseSeconds(m_pConfig->ConfigZapAheadRelease));
 }
 
 /*********************************************************************
