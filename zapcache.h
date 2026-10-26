@@ -76,13 +76,21 @@ private:
 };
 
 /**
- * Tunes the next channel in zap direction on a free device ahead
+ * Tunes the neighbour channels of the live channel on free devices ahead
  *
  * After a channel switch the next channel in the direction of the last channel
- * switch (or the channel before for a switch back) is received by a cZapReceiver
- * on a free device. VDR prefers a device, which is tuned to the transponder of a
- * channel, so a switch to this channel doesn't have to tune and to wait for the
- * tuner lock.
+ * switch is received by a cZapReceiver on a free device. After a switch to
+ * another channel (or the first switch after VDR's start) the zap direction is
+ * up. VDR prefers a device, which is tuned to the transponder of a channel, so
+ * a switch to this channel doesn't have to tune and to wait for the tuner lock.
+ *
+ * The next channel doesn't take the device, which is tuned to the channel in the
+ * opposite direction (usually the device of the last live channel), if another
+ * device is free. So a switch back doesn't have to tune.
+ *
+ * In ZAP_AHEAD_BOTH mode (three tuners: live view, next and previous channel)
+ * the channel in the opposite direction is received, too, preferably on the
+ * device, which is tuned to it already.
  *
  * The switch to this channel starts with the packets since its last I-frame,
  * before VDR's transfer receiver plays its first packet (Splice()), so it
@@ -96,12 +104,21 @@ private:
  */
 class cZapCache {
 public:
+	/** the channels, which are tuned ahead (drmdevice.ZapAhead) */
+	enum Mode {
+		ZAP_AHEAD_OFF,                     ///< no channel
+		ZAP_AHEAD_NEXT,                    ///< the next channel in zap direction (two tuners)
+		ZAP_AHEAD_BOTH                     ///< the next channel and the channel in the opposite direction (three tuners)
+	};
+
 	cZapCache(void) {}
 	~cZapCache(void);
 
+	static int NumTuners(void);
+
 	void ChannelSwitchStarted(void);
 	void ChannelSwitched(int);
-	void MainThreadHook(bool);
+	void MainThreadHook(int);
 	void Clear(void);
 
 	bool SpliceArmed(void) const { return m_spliceArmed; }   ///< true, if a channel switch may start with the buffered packets
@@ -112,9 +129,11 @@ private:
 	static constexpr int SPLICE_TIMEOUT_MS = 3000; ///< max. time from a channel switch until the transfer plays its first packet
 	static constexpr int PLAY_RETRIES = 20;        ///< max. number of retries for a buffered packet (like cTransfer)
 	static constexpr int PLAY_RETRY_WAIT_MS = 5;   ///< time between two retries
+	static constexpr int MAX_RECEIVERS = 2;        ///< zap direction and opposite direction
 
 	std::mutex m_mutex;                      ///< protects the members below
-	cZapReceiver *m_pReceiver = nullptr;     ///< receiver of the next channel
+	/** receivers of the next channel and of the channel in the opposite direction */
+	cZapReceiver *m_pReceivers[MAX_RECEIVERS] = {};
 	int m_liveChannel = 0;                   ///< current live channel
 	int m_previousChannel = 0;               ///< live channel before the last channel switch
 	bool m_preparePending = false;           ///< a channel was switched, the next channel has to be tuned
@@ -124,8 +143,13 @@ private:
 	int m_armedFromChannel = 0;              ///< live channel before the channel switch (its packets may still be played)
 	cTimeMs m_spliceTimer;                   ///< keeps the receiver of the new live channel until the splice
 
-	void Prepare(int, int);
+	bool HasReceivers(void) const;
+	cZapReceiver *ReceiverFor(int) const;
+	void Prepare(int, int, int);
 	static const cChannel *Neighbour(const cChannels *, const cChannel *, int);
+	static cDevice *FreeDevice(const cChannel *, const cDevice *);
+	static cDevice *TunedDevice(const cChannel *);
+	static cZapReceiver *Attach(const cChannel *, cDevice *);
 };
 
 #endif

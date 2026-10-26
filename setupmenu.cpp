@@ -293,7 +293,9 @@ void cDeviceSetupMenu::Create(int current)
 		Add(new cMenuEditBoolItem(tr("Enable HDR"), &m_cVideoEnableHDR, trVDR("no"), trVDR("yes")));
 		Add(new cMenuEditStraItem(tr("Display mode"), &m_cVideoDisplayMode, m_displayModePtrs.size(), m_displayModePtrs.data()));
 		Add(new cMenuEditStraItem(tr("Enable fast channel switch"), &m_cVideoChannelSwitchMode, m_channelSwitchModePtrs.size(), m_channelSwitchModePtrs.data()));
-		Add(new cMenuEditBoolItem(tr("Tune the next channel ahead"), &m_cZapAhead, trVDR("no"), trVDR("yes")));
+		Add(new cMenuEditBoolItem(tr("Tune channels ahead"), &m_cZapAhead, trVDR("no"), trVDR("yes")));
+		if (m_cZapAhead && cZapCache::NumTuners() >= 3)
+			Add(new cMenuEditStraItem(tr(" Tuners for live view and cache"), &m_cZapAheadTuners, 2, m_zapAheadTuners));
 		for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 			Add(new cMenuEditIntItem(cString::sprintf(tr("Zoom level %d (/1000)"), i + 1), &m_cZoomLevel[i], 0, cDeviceConfig::ZOOM_MAX, trVDR("off")));
 	}
@@ -459,6 +461,7 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 	int old_cLogDefault = m_cLogDefault;
 	int old_cLogFFmpeg = m_cLogFFmpeg;
 	int old_cDecoderFallbackToSw = m_cDecoderFallbackToSw;
+	int old_cZapAhead = m_cZapAhead;
 
 	if (m_section == SECTION_OVERVIEW) {
 		// cMenuSetupPage would store the settings and close the menu with OK
@@ -507,7 +510,8 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 		    old_cAudioEq                 != m_cAudioEq ||
 		    old_cLogDefault              != m_cLogDefault ||
 		    old_cLogFFmpeg               != m_cLogFFmpeg ||
-		    old_cDecoderFallbackToSw     != m_cDecoderFallbackToSw) {
+		    old_cDecoderFallbackToSw     != m_cDecoderFallbackToSw ||
+		    old_cZapAhead                != m_cZapAhead) {
 
 			Create();	// update menu
 		}
@@ -529,6 +533,8 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_passthroughModes[PASSTHROUGH_OFF] = trVDR("off");
 	m_passthroughModes[PASSTHROUGH_MANUAL] = tr("manual");
 	m_passthroughModes[PASSTHROUGH_AUTO] = tr("automatic");
+	m_zapAheadTuners[0] = tr("2 (next channel)");
+	m_zapAheadTuners[1] = tr("3 (next and previous channel)");
 
 	LoadValues();
 	Create();
@@ -553,6 +559,7 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cVideoDisplayMode        = m_pConfig->ConfigVideoDisplayMode;
 	m_cVideoChannelSwitchMode  = m_pConfig->ConfigVideoChannelSwitchMode;
 	m_cZapAhead                = m_pConfig->ConfigZapAhead;
+	m_cZapAheadTuners          = m_pConfig->ConfigZapAheadTuners - 2;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		m_cZoomLevel[i] = m_pConfig->ConfigZoomLevel[i];
 
@@ -751,6 +758,7 @@ void cDeviceSetupMenu::Store(void)
 	if (StoreChanged("VideoChannelSwitchMode", m_pConfig->ConfigVideoChannelSwitchMode, m_cVideoChannelSwitchMode))
 		m_pDevice->SetChannelSwitchMode(static_cast<ChannelSwitchMode>(m_pConfig->ConfigVideoChannelSwitchMode));
 	StoreChanged("ZapAhead", m_pConfig->ConfigZapAhead, m_cZapAhead);
+	StoreChanged("ZapAheadTuners", m_pConfig->ConfigZapAheadTuners, m_cZapAheadTuners + 2);
 	bool zoomChanged = false;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		zoomChanged |= StoreChanged(cString::sprintf("ZoomLevel%d", i + 1), m_pConfig->ConfigZoomLevel[i], m_cZoomLevel[i]);

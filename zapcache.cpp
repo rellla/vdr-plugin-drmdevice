@@ -199,7 +199,7 @@ void cZapCache::ChannelSwitchStarted(void)
 	std::lock_guard<std::mutex> lock(m_mutex);
 
 	m_armedFromChannel = cDevice::CurrentChannel();
-	m_spliceArmed = m_pReceiver != nullptr;
+	m_spliceArmed = HasReceivers();
 	m_spliceTimer.Set(SPLICE_TIMEOUT_MS);
 }
 
@@ -222,45 +222,78 @@ void cZapCache::ChannelSwitched(int channelNum)
 		m_spliceArmed = false;
 
 	// the new channel isn't buffered
-	if (!m_pReceiver || m_pReceiver->ChannelNumber() != channelNum)
+	if (!ReceiverFor(channelNum))
 		m_spliceArmed = false;
 }
 
 /**
- * Stop the receiver of the next channel
+ * Check, if a channel is received ahead (the caller holds the mutex)
  */
-void cZapCache::Clear(void)
+bool cZapCache::HasReceivers(void) const
 {
-	cZapReceiver *receiver;
-	{
-		std::lock_guard<std::mutex> lock(m_mutex);
-		receiver = m_pReceiver;
-		m_pReceiver = nullptr;
+	for (cZapReceiver *receiver : m_pReceivers) {
+		if (receiver)
+			return true;
 	}
 
-	// detached outside the mutex, cDevice::Detach() waits for the receiver thread of the device
-	delete receiver;
+	return false;
 }
 
 /**
- * Tune the next channel after a channel switch
+ * Get the receiver of a channel (the caller holds the mutex)
+ *
+ * @param channelNum     number of the channel
+ *
+ * @return               the receiver (nullptr, if the channel isn't received ahead)
+ */
+cZapReceiver *cZapCache::ReceiverFor(int channelNum) const
+{
+	for (cZapReceiver *receiver : m_pReceivers) {
+		if (receiver && receiver->ChannelNumber() == channelNum)
+			return receiver;
+	}
+
+	return nullptr;
+}
+
+/**
+ * Stop the receivers of the neighbour channels
+ */
+void cZapCache::Clear(void)
+{
+	cZapReceiver *receivers[MAX_RECEIVERS];
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		for (int i = 0; i < MAX_RECEIVERS; i++) {
+			receivers[i] = m_pReceivers[i];
+			m_pReceivers[i] = nullptr;
+		}
+	}
+
+	// detached outside the mutex, cDevice::Detach() waits for the receiver thread of the device
+	for (cZapReceiver *receiver : receivers)
+		delete receiver;
+}
+
+/**
+ * Tune the neighbour channels after a channel switch
  *
  * Must be called by the main thread (cPlugin::MainThreadHook()).
  *
- * @param enabled       true, if the next channel should be tuned (the option is
- *                      enabled and the live view is in transfer mode)
+ * @param mode          channels to tune (enum Mode, ZAP_AHEAD_OFF, if the option is
+ *                      off or the live view isn't in transfer mode)
  */
-void cZapCache::MainThreadHook(bool enabled)
+void cZapCache::MainThreadHook(int mode)
 {
-	if (!enabled) {
-		bool hasReceiver;
+	if (mode == ZAP_AHEAD_OFF) {
+		bool hasReceivers;
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
 			m_preparePending = false;
 			m_spliceArmed = false;
-			hasReceiver = m_pReceiver;
+			hasReceivers = HasReceivers();
 		}
-		if (hasReceiver)
+		if (hasReceivers)
 			Clear();
 		return;
 	}
@@ -282,10 +315,10 @@ void cZapCache::MainThreadHook(bool enabled)
 		previousChannel = m_previousChannel;
 	}
 
-	// the receiver of the last prepared channel isn't needed anymore
+	// the receivers of the last neighbour channels aren't needed anymore
 	Clear();
 
-	Prepare(liveChannel, previousChannel);
+	Prepare(liveChannel, previousChannel, mode);
 }
 
 /**
@@ -316,51 +349,151 @@ const cChannel *cZapCache::Neighbour(const cChannels *channels, const cChannel *
 }
 
 /**
- * Tune the next channel in zap direction on a free device
+ * Get a device for a channel, which is tuned to its transponder or free
+ *
+ * A free device has no receiver and may be tuned without disturbing the live
+ * view (like the devices of VDR's EPG scan).
+ *
+ * @param channel       channel to receive
+ * @param avoid         device, which is only taken, if no other device is free
+ *                      (it is tuned to the channel in the opposite direction)
+ *
+ * @return              the device (nullptr, if there is none)
+ */
+cDevice *cZapCache::FreeDevice(const cChannel *channel, const cDevice *avoid)
+{
+	if (cDevice *device = TunedDevice(channel))
+		return device;
+
+	cDevice *fallback = nullptr;
+	for (int i = 0; i < cDevice::NumDevices(); i++) {
+		cDevice *device = cDevice::GetDevice(i);
+		if (device && device->ProvidesTransponder(channel) && device->MaySwitchTransponder(channel)) {
+			if (device != avoid)
+				return device;
+			fallback = device;
+		}
+	}
+
+	return fallback;
+}
+
+/**
+ * Get a device, which is tuned to the transponder of a channel
+ *
+ * @param channel       channel to receive
+ *
+ * @return              the device (nullptr, if there is none)
+ */
+cDevice *cZapCache::TunedDevice(const cChannel *channel)
+{
+	for (int i = 0; i < cDevice::NumDevices(); i++) {
+		cDevice *device = cDevice::GetDevice(i);
+		if (device && device->IsTunedToTransponder(channel))
+			return device;
+	}
+
+	return nullptr;
+}
+
+/**
+ * Get the number of the devices, which can receive channels (tuners)
+ *
+ * The devices are counted with every call, a plugin may add devices at runtime.
+ */
+int cZapCache::NumTuners(void)
+{
+	int numTuners = 0;
+
+	for (int i = 0; i < cDevice::NumDevices(); i++) {
+		cDevice *device = cDevice::GetDevice(i);
+		if (device && device->NumProvidedSystems() > 0)
+			numTuners++;
+	}
+
+	return numTuners;
+}
+
+/**
+ * Tune a channel on a device and attach a zap receiver for it
+ *
+ * @param channel       channel to receive
+ * @param device        device for the channel
+ *
+ * @return              the receiver (nullptr, if the channel can't be received)
+ */
+cZapReceiver *cZapCache::Attach(const cChannel *channel, cDevice *device)
+{
+	if (!device->IsTunedToTransponder(channel) && !device->SwitchChannel(channel, false)) {
+		LOGDEBUG("zapcache: can't tune channel %d (%s) on device %d", channel->Number(), channel->Name(), device->DeviceNumber() + 1);
+		return nullptr;
+	}
+
+	cZapReceiver *receiver = new cZapReceiver(channel, device);
+	if (!device->AttachReceiver(receiver)) {
+		LOGDEBUG("zapcache: can't attach the receiver for channel %d to device %d", channel->Number(), device->DeviceNumber() + 1);
+		delete receiver;
+		return nullptr;
+	}
+
+	return receiver;
+}
+
+/**
+ * Tune the neighbour channels of the live channel
  *
  * @param liveChannel       current live channel
  * @param previousChannel   live channel before the last switch
+ * @param mode              channels to tune (enum Mode)
  */
-void cZapCache::Prepare(int liveChannel, int previousChannel)
+void cZapCache::Prepare(int liveChannel, int previousChannel, int mode)
 {
-	LOCK_CHANNELS_READ;
-	const cChannel *live = Channels->GetByNumber(liveChannel);
-	if (!live)
-		return;
+	cZapReceiver *receivers[MAX_RECEIVERS] = {};
 
-	// a switch to the next or previous channel sets the zap direction, other switches keep it
-	if (const cChannel *previous = Channels->GetByNumber(previousChannel)) {
-		if (Neighbour(Channels, previous, 1) == live)
-			m_direction = 1;
-		else if (Neighbour(Channels, previous, -1) == live)
+	{
+		LOCK_CHANNELS_READ;
+		const cChannel *live = Channels->GetByNumber(liveChannel);
+		if (!live)
+			return;
+
+		// a switch to the next or previous channel sets the zap direction, a switch
+		// to another channel and the first switch after VDR's start zap up
+		const cChannel *previous = Channels->GetByNumber(previousChannel);
+		if (previous && Neighbour(Channels, previous, -1) == live)
 			m_direction = -1;
-	}
+		else
+			m_direction = 1;
 
-	const cChannel *next = Neighbour(Channels, live, m_direction);
-	if (!next || (!next->Vpid() && !next->Apid(0) && !next->Dpid(0)))
-		return;
+		const cChannel *next = Neighbour(Channels, live, m_direction);
+		if (next && !next->Vpid() && !next->Apid(0) && !next->Dpid(0))
+			next = nullptr;
 
-	// a device, which is tuned to the transponder already or may be tuned without disturbing a receiver
-	cDevice *device = cDevice::GetDeviceForTransponder(next, MINPRIORITY);
-	if (!device) {
-		LOGDEBUG("zapcache: no free device for channel %d (%s)", next->Number(), next->Name());
-		return;
-	}
+		const cChannel *opposite = Neighbour(Channels, live, -m_direction);
+		if (opposite == next || (opposite && !opposite->Vpid() && !opposite->Apid(0) && !opposite->Dpid(0)))
+			opposite = nullptr;
 
-	if (!device->IsTunedToTransponder(next) && !device->SwitchChannel(next, false)) {
-		LOGDEBUG("zapcache: can't tune channel %d (%s) on device %d", next->Number(), next->Name(), device->DeviceNumber() + 1);
-		return;
-	}
+		// The device, which is tuned to the channel in the opposite direction (usually
+		// the device of the last live channel), is only tuned to the next channel, if
+		// no other device is free. So a switch back doesn't have to tune.
+		if (next) {
+			if (cDevice *device = FreeDevice(next, opposite ? TunedDevice(opposite) : nullptr))
+				receivers[0] = Attach(next, device);
+			else
+				LOGDEBUG("zapcache: no free device for channel %d (%s)", next->Number(), next->Name());
+		}
 
-	cZapReceiver *receiver = new cZapReceiver(next, device);
-	if (!device->AttachReceiver(receiver)) {
-		LOGDEBUG("zapcache: can't attach the receiver for channel %d to device %d", next->Number(), device->DeviceNumber() + 1);
-		delete receiver;
-		return;
+		// the channel in the opposite direction preferably on a device, which is tuned to it already
+		if (opposite && mode == ZAP_AHEAD_BOTH) {
+			if (cDevice *device = FreeDevice(opposite, nullptr))
+				receivers[1] = Attach(opposite, device);
+			else
+				LOGDEBUG("zapcache: no free device for channel %d (%s)", opposite->Number(), opposite->Name());
+		}
 	}
 
 	std::lock_guard<std::mutex> lock(m_mutex);
-	m_pReceiver = receiver;
+	for (int i = 0; i < MAX_RECEIVERS; i++)
+		m_pReceivers[i] = receivers[i];
 }
 
 /**
@@ -395,32 +528,31 @@ void cZapCache::Splice(const uchar *data, const std::function<int(const uchar *,
 		if (!m_spliceArmed)
 			return;
 
-		if (!m_pReceiver) {
-			m_spliceArmed = false;
-			return;
-		}
-
-		// the PAT and PMT of the transfer
-		if (!m_pReceiver->HasPid(TsPid(data)))
-			return;
-
 		// a packet of the old channel
 		int currentChannel = cDevice::CurrentChannel();
 		if (currentChannel == m_armedFromChannel)
 			return;
 
-		m_spliceArmed = false;
-		channelNum = m_pReceiver->ChannelNumber();
-		if (currentChannel != channelNum)
+		cZapReceiver *receiver = ReceiverFor(currentChannel);
+		if (!receiver) {
+			m_spliceArmed = false;
+			return;
+		}
+
+		// the PAT and PMT of the transfer
+		if (!receiver->HasPid(TsPid(data)))
 			return;
 
-		cDevice *device = m_pReceiver->Device();
+		m_spliceArmed = false;
+		channelNum = currentChannel;
+
+		cDevice *device = receiver->Device();
 		if (!device || device != cTransferControl::ReceiverDevice()) {
 			LOGDEBUG("zapcache: the transfer of channel %d doesn't run on the device of the zap receiver", channelNum);
 			return;
 		}
 
-		packets = m_pReceiver->Take(data, &frames);
+		packets = receiver->Take(data, &frames);
 	}
 
 	if (packets.empty()) {
