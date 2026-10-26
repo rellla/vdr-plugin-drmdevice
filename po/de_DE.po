@@ -197,8 +197,11 @@ msgstr "Anzeigemodus"
 msgid "Enable fast channel switch"
 msgstr "Aktiviere schnelles Umschalten"
 
-msgid "Tune the next channel ahead"
-msgstr "Nächsten Kanal vorab tunen"
+msgid "Tune channels ahead"
+msgstr "Kanäle vorab tunen"
+
+msgid " Tuners for live view and cache"
+msgstr " Tuner für Live-Bild und Cache"
 
 #, c-format
 msgid "Zoom level %d (/1000)"
@@ -441,6 +444,12 @@ msgstr "manuell"
 
 msgid "automatic"
 msgstr "automatisch"
+
+msgid "2 (next channel)"
+msgstr "2 (nächster Kanal)"
+
+msgid "3 (next and previous channel)"
+msgstr "3 (nächster und vorheriger Kanal)"
 
 #, c-format
 msgid "default %dx%d@%.2f%s"

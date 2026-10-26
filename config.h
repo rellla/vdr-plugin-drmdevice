@@ -111,7 +111,8 @@ public:
 	int ConfigVideoChannelSwitchMode = CHANNEL_SWITCH_AVSYNC; ///< channel switch mode (enum ChannelSwitchMode)
 	/** zoom-in factor of the zoom levels in 1/10 % (0 = level disabled): +34.4% fills 2.39:1, +12.5% fills 2.00:1 on 16:9 */
 	int ConfigZoomLevel[ZOOM_LEVELS] = { 344, 125, 0, 0, 0 };
-	int ConfigZapAhead = 0;                     ///< tune the next channel in zap direction on a free device ahead
+	int ConfigZapAhead = 0;                     ///< tune the neighbour channels on free devices ahead
+	int ConfigZapAheadTuners = 2;               ///< tuners for the live view and the zap cache (2: next channel, 3: next and previous channel)
 
 	// Audio
 	bool ConfigAudioSoftvol = false;            ///< config use software volume

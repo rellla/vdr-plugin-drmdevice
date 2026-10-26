@@ -44,6 +44,7 @@ bool cDeviceConfig::SetupParse(const char *name, const char *value)
 	} else if (!strcasecmp(name, "VideoDisplayMode"))      { ConfigVideoDisplayMode = std::min(atoi(value), static_cast<int>(CONFIG_DISPLAY_MODE_FOLLOW_VIDEO_INTERLACED));
 	} else if (!strcasecmp(name, "VideoChannelSwitchMode")){ ConfigVideoChannelSwitchMode = atoi(value);
 	} else if (!strcasecmp(name, "ZapAhead"))              { ConfigZapAhead = atoi(value);
+	} else if (!strcasecmp(name, "ZapAheadTuners"))        { ConfigZapAheadTuners = std::clamp(atoi(value), 2, 3);
 	} else if (!strncasecmp(name, "ZoomLevel", 9) && name[9] >= '1' && name[9] < '1' + ZOOM_LEVELS && !name[10]) {
 	                                                         ConfigZoomLevel[name[9] - '1'] = std::clamp(atoi(value), 0, ZOOM_MAX);
 
