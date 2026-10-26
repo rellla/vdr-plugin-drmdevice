@@ -197,6 +197,9 @@ msgstr "Anzeigemodus"
 msgid "Enable fast channel switch"
 msgstr "Aktiviere schnelles Umschalten"
 
+msgid "Tune the next channel ahead"
+msgstr "Nächsten Kanal vorab tunen"
+
 #, c-format
 msgid "Zoom level %d (/1000)"
 msgstr "Zoomstufe %d (/1000)"
