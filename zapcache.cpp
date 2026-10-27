@@ -1034,6 +1034,16 @@ void cZapCache::Splice(const uchar *data, int64_t audioAhead, int64_t maxDelay, 
 }
 
 /**
+ * Check, if the current channel switch started with the buffered packets
+ */
+bool cZapCache::SwitchCached(void)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	return m_switchCached;
+}
+
+/**
  * Report the time of a channel switch for the statistics
  *
  * Called by the renderer for the first picture (in the fast channel switch modes)

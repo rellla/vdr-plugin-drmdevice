@@ -2446,7 +2446,12 @@ bool cOutputDevice::SchedulePlaybackStart(void)
 		if (!FastChannelSwitchAudioInTransferMode())
 			m_pAudio->DropSamplesOlderThanPtsMs(firstAudioPtsMs);
 
-		m_pRender->SchedulePlaybackStartAtPtsMs(firstVideoPtsMs);
+		// A switch, which started with the buffer of the zap cache, starts the video with the
+		// heard audio, if the audio plays already (fast audio channel switch mode): the frames
+		// before are skipped instead of being dropped by the A/V sync afterwards. Without the
+		// buffer, no frame is skipped.
+		bool startWithAudio = FastChannelSwitchAudioInTransferMode() && !m_pAudio->IsPaused() && m_zapCache.SwitchCached();
+		m_pRender->SchedulePlaybackStartAtPtsMs(firstVideoPtsMs, startWithAudio);
 	} else if (receivedAudio) {
 		LOGDEBUG("device: audio only detected");
 		m_playbackMode = AUDIO_ONLY;

@@ -769,6 +769,32 @@ bool cVideoRender::DisplayFrame(void)
 		}
 
 		if (m_schedulePlaybackStartAtPtsMs != AV_NOPTS_VALUE) {
+			// The audio plays already: start with the frame of the heard audio, so the A/V
+			// sync doesn't have to drop the older frames afterwards. The start is determined
+			// once and the older frames are skipped at once: a skipped frame below takes one
+			// display period, while the audio continues, so the start wouldn't be reached.
+			if (m_startWithAudio) {
+				m_startWithAudio = false;
+				int64_t audioPtsMs = m_pAudio->GetHardwareOutputPtsMs();
+				if (audioPtsMs != AV_NOPTS_VALUE) {
+					int64_t startPtsMs = audioPtsMs + m_pDevice->GetVideoAudioDelayMs() - AV_SYNC_THRESHOLD_AUDIO_AHEAD_VIDEO_MS;
+					startPtsMs = std::clamp<int64_t>(startPtsMs, m_schedulePlaybackStartAtPtsMs, m_schedulePlaybackStartAtPtsMs + MAX_START_WITH_AUDIO_SKIP_MS);
+					m_schedulePlaybackStartAtPtsMs = startPtsMs;
+
+					while (drmBuffer && PtsToMs(drmBuffer->frame->pts) < startPtsMs) {
+						drmBuffer->PresentationFinished();
+						m_drmBufferQueue.Pop();
+						drmBuffer = m_drmBufferQueue.Peek();
+					}
+
+					// wait for the next decoded frame
+					if (!drmBuffer) {
+						m_framePresentationCounter = 0;
+						return true;
+					}
+				}
+			}
+
 			// check if playback shall start
 			if (PtsToMs(drmBuffer->frame->pts) < m_schedulePlaybackStartAtPtsMs) {
 				drmBuffer->PresentationFinished();
@@ -1126,6 +1152,21 @@ int64_t cVideoRender::GetOutputPtsMs(void)
 	std::lock_guard<std::mutex> lock(m_timebaseMutex);
 
 	return GetVideoClock() * 1000 * av_q2d(m_timebase);
+}
+
+/**
+ * Start the playback at a pts
+ *
+ * The frames, which are older than the pts, are dropped without presentation.
+ *
+ * @param ptsMs             pts of the first frame to present (AV_NOPTS_VALUE: no scheduled start)
+ * @param startWithAudio    the audio plays already: the frames, which are older than the
+ *                          heard audio, are dropped, too (when the playback starts)
+ */
+void cVideoRender::SchedulePlaybackStartAtPtsMs(int64_t ptsMs, bool startWithAudio)
+{
+	m_startWithAudio = startWithAudio;
+	m_schedulePlaybackStartAtPtsMs = ptsMs;
 }
 
 /**
