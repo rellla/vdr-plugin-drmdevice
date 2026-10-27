@@ -266,7 +266,11 @@ Setup: /etc/vdr/setup.conf
 		2 = the next channel in zap direction is received
 		3 = the channel in the opposite direction (usually the last live channel) is
 		    received, too, preferably on the device, which is tuned to it already.
-		    So a switch back starts with its buffer, too.
+		    So a switch back starts with its buffer, too. The live channel has a
+		    receiver on its device, too, so its buffer continues after a switch
+		    and a quick switch back starts with it at once.
+		The receivers of channels, which are neighbours after a channel switch, too,
+		are kept with their buffers.
 
 	drmdevice.AudioSoftvol = 0
 		0 = off, use hardware volume control
