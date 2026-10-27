@@ -60,6 +60,7 @@ protected:
 	int m_cZapAheadRelease;
 	int m_cZapAheadSyncAudio;
 	int m_cZapAheadMaxDelay;
+	int m_cZapAheadCam;
 	int m_cZoomLevel[cDeviceConfig::ZOOM_LEVELS];
 
 	// Audio

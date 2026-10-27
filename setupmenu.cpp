@@ -366,6 +366,8 @@ void cDeviceSetupMenu::Create(int current)
 			Add(new cMenuEditBoolItem(tr(" Start with synchronous audio"), &m_cZapAheadSyncAudio, trVDR("no"), trVDR("yes")));
 		if (m_cZapAhead && m_cZapAheadSyncAudio)
 			Add(new cMenuEditStraItem(tr("  Max. delay"), &m_cZapAheadMaxDelay, 5, m_zapAheadMaxDelays));
+		if (m_cZapAhead)
+			Add(new cMenuEditBoolItem(tr(" Buffer encrypted channels (CAM)"), &m_cZapAheadCam, trVDR("no"), trVDR("yes")));
 		for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 			Add(new cMenuEditIntItem(cString::sprintf(tr("Zoom level %d (/1000)"), i + 1), &m_cZoomLevel[i], 0, cDeviceConfig::ZOOM_MAX, trVDR("off")));
 	}
@@ -651,6 +653,7 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cZapAheadRelease         = m_pConfig->ConfigZapAheadRelease;
 	m_cZapAheadSyncAudio       = m_pConfig->ConfigZapAheadSyncAudio;
 	m_cZapAheadMaxDelay        = m_pConfig->ConfigZapAheadMaxDelay;
+	m_cZapAheadCam             = m_pConfig->ConfigZapAheadCam;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		m_cZoomLevel[i] = m_pConfig->ConfigZoomLevel[i];
 
@@ -853,6 +856,7 @@ void cDeviceSetupMenu::Store(void)
 	StoreChanged("ZapAheadRelease", m_pConfig->ConfigZapAheadRelease, m_cZapAheadRelease);
 	StoreChanged("ZapAheadSyncAudio", m_pConfig->ConfigZapAheadSyncAudio, m_cZapAheadSyncAudio);
 	StoreChanged("ZapAheadMaxDelay", m_pConfig->ConfigZapAheadMaxDelay, m_cZapAheadMaxDelay);
+	StoreChanged("ZapAheadCam", m_pConfig->ConfigZapAheadCam, m_cZapAheadCam);
 	bool zoomChanged = false;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		zoomChanged |= StoreChanged(cString::sprintf("ZoomLevel%d", i + 1), m_pConfig->ConfigZoomLevel[i], m_cZoomLevel[i]);

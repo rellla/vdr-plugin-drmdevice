@@ -116,6 +116,7 @@ public:
 	int ConfigZapAheadRelease = 2;              ///< release the devices without key press (see cZapCache::ReleaseSeconds())
 	int ConfigZapAheadSyncAudio = 1;            ///< start a channel switch of the zap cache with synchronous audio
 	int ConfigZapAheadMaxDelay = 2;             ///< max. delay of a start with synchronous audio (see cZapCache::MaxDelayMs())
+	int ConfigZapAheadCam = 0;                  ///< receive encrypted channels of the zap cache with a CAM
 
 	// Audio
 	bool ConfigAudioSoftvol = false;            ///< config use software volume

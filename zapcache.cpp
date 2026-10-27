@@ -29,14 +29,17 @@
 /**
  * Create a receiver for the pids of a channel
  *
- * The receiver gets the same pids as VDR's transfer receiver. It doesn't pass
- * a channel to cReceiver, so no CAM is started for it.
+ * The receiver gets the same pids as VDR's transfer receiver. Without a CAM
+ * channel it doesn't pass a channel to cReceiver and has the lowest priority,
+ * so no CAM is started for it.
  *
  * @param channel    channel to receive
  * @param device     device, which receives the channel
+ * @param camChannel the channel, if a CAM of the device decrypts it (the caller
+ *                   holds the channels lock)
  */
-cZapReceiver::cZapReceiver(const sZapChannel &channel, cDevice *device)
-	: cReceiver(NULL, MINPRIORITY),
+cZapReceiver::cZapReceiver(const sZapChannel &channel, cDevice *device, const cChannel *camChannel)
+	: cReceiver(camChannel, camChannel ? CAM_PRIORITY : MINPRIORITY),
 	  m_channelNumber(channel.number),
 	  m_pDevice(device),
 	  m_vpid(channel.vpid)
@@ -57,7 +60,7 @@ cZapReceiver::cZapReceiver(const sZapChannel &channel, cDevice *device)
 	if (m_vpid)
 		m_frameDetector.SetPid(m_vpid, channel.vtype);
 
-	LOGDEBUG("zapcache: receive channel %d (%s) on device %d", m_channelNumber, channel.name.c_str(), device->DeviceNumber() + 1);
+	LOGDEBUG("zapcache: receive channel %d (%s) on device %d%s", m_channelNumber, channel.name.c_str(), device->DeviceNumber() + 1, camChannel ? " with CAM" : "");
 }
 
 /**
@@ -451,10 +454,21 @@ void cZapCache::Clear(void)
  *                      off or the live view isn't in transfer mode)
  * @param releaseSeconds  release the receivers after this time without key press
  *                      or channel switch (0: never)
+ * @param cam           receive encrypted channels with a CAM
  */
-void cZapCache::MainThreadHook(int mode, int releaseSeconds)
+void cZapCache::MainThreadHook(int mode, int releaseSeconds, bool cam)
 {
 	m_mode = mode;
+
+	// tune the channels again with or without CAM
+	if (cam != m_cam) {
+		m_cam = cam;
+		Clear();
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_spliceArmed = false;
+		m_preparePending = true;
+		m_prepareTimer.Set(0);
+	}
 
 	if (mode == ZAP_AHEAD_OFF) {
 		bool hasReceivers;
@@ -605,6 +619,63 @@ cDevice *cZapCache::FreeDevice(const cChannel *channel, const cDevice *avoid)
 }
 
 /**
+ * Get a device with a CAM, which decrypts an encrypted channel
+ *
+ * VDR selects the device and assigns a CAM slot, which can decrypt the channel,
+ * like for a recording with the priority of the receiver (cDevice::GetDevice()).
+ * A device, which is used by the live view or a recording, isn't taken: its CAM
+ * would have to decrypt another channel in parallel (and may stop decrypting
+ * the channel of the live view or the recording, if it can't).
+ *
+ * Must be called by the main thread.
+ *
+ * @param channel       encrypted channel
+ *
+ * @return              the device (nullptr, if there is none)
+ */
+cDevice *cZapCache::CamDevice(const cChannel *channel)
+{
+	// check the device first, the CAM slot is assigned by the second call
+	cDevice *device = cDevice::GetDevice(channel, cZapReceiver::CAM_PRIORITY, false, true);
+	if (!device || device->Priority() > cZapReceiver::CAM_PRIORITY)
+		return nullptr;
+
+	device = cDevice::GetDevice(channel, cZapReceiver::CAM_PRIORITY, false);
+	if (!device || device->Priority() > cZapReceiver::CAM_PRIORITY)
+		return nullptr;
+
+	return device;
+}
+
+/**
+ * Get a device for a channel
+ *
+ * An encrypted channel gets a device with a CAM (CamDevice()), if this is
+ * enabled. Otherwise or without such a device, the channel is only tuned
+ * (FreeDevice()), its scrambled packets aren't buffered.
+ *
+ * @param channel       channel to receive
+ * @param avoid         see FreeDevice()
+ * @param[out] cam      true, if a CAM of the device decrypts the channel
+ *
+ * @return              the device (nullptr, if there is none)
+ */
+cDevice *cZapCache::DeviceFor(const cChannel *channel, const cDevice *avoid, bool *cam) const
+{
+	*cam = false;
+
+	if (m_cam && channel->Ca() >= CA_ENCRYPTED_MIN) {
+		if (cDevice *device = CamDevice(channel)) {
+			*cam = true;
+			return device;
+		}
+		LOGDEBUG("zapcache: no device with a CAM for channel %d (%s)", channel->Number(), channel->Name());
+	}
+
+	return FreeDevice(channel, avoid);
+}
+
+/**
  * Get a device, which is tuned to the transponder of a channel
  *
  * @param channel       channel to receive
@@ -643,19 +714,28 @@ int cZapCache::NumTuners(void)
 /**
  * Tune a channel on a device and attach a zap receiver for it
  *
+ * A device with a CAM is switched to the channel like for a recording, even if
+ * it is tuned to its transponder already: so the CAM slot gets the pids of the
+ * channel.
+ *
  * @param channel       channel to receive
  * @param device        device for the channel
+ * @param cam           a CAM of the device decrypts the channel (see CamDevice())
+ * @param camHasChannel the CAM slot of the device has the pids of the channel
+ *                      already (it decrypts the live channel), the tuned device
+ *                      isn't switched
  *
  * @return              the receiver (nullptr, if the channel can't be received)
  */
-cZapReceiver *cZapCache::Attach(const cChannel *channel, cDevice *device)
+cZapReceiver *cZapCache::Attach(const cChannel *channel, cDevice *device, bool cam, bool camHasChannel)
 {
-	if (!device->IsTunedToTransponder(channel) && !device->SwitchChannel(channel, false)) {
+	bool switchChannel = !device->IsTunedToTransponder(channel) || (cam && !camHasChannel);
+	if (switchChannel && !device->SwitchChannel(channel, false)) {
 		LOGDEBUG("zapcache: can't tune channel %d (%s) on device %d", channel->Number(), channel->Name(), device->DeviceNumber() + 1);
 		return nullptr;
 	}
 
-	cZapReceiver *receiver = new cZapReceiver(sZapChannel::FromChannel(channel), device);
+	cZapReceiver *receiver = new cZapReceiver(sZapChannel::FromChannel(channel), device, cam ? channel : nullptr);
 	if (!device->AttachReceiver(receiver)) {
 		LOGDEBUG("zapcache: can't attach the receiver for channel %d to device %d", channel->Number(), device->DeviceNumber() + 1);
 		delete receiver;
@@ -763,25 +843,30 @@ void cZapCache::Prepare(int liveChannel, int previousChannel, int mode)
 		// no other device is free. So a switch back doesn't have to tune.
 		if (next && !receivers[0]) {
 			const cChannel *back = Neighbour(Channels, live, -m_direction);
-			if (cDevice *device = FreeDevice(next, back && back != next ? TunedDevice(back) : nullptr))
-				receivers[0] = Attach(next, device);
+			bool cam;
+			if (cDevice *device = DeviceFor(next, back && back != next ? TunedDevice(back) : nullptr, &cam))
+				receivers[0] = Attach(next, device, cam);
 			else
 				LOGDEBUG("zapcache: no free device for channel %d (%s)", next->Number(), next->Name());
 		}
 
 		// the channel in the opposite direction preferably on a device, which is tuned to it already
 		if (opposite && !receivers[1]) {
-			if (cDevice *device = FreeDevice(opposite, nullptr))
-				receivers[1] = Attach(opposite, device);
+			bool cam;
+			if (cDevice *device = DeviceFor(opposite, nullptr, &cam))
+				receivers[1] = Attach(opposite, device, cam);
 			else
 				LOGDEBUG("zapcache: no free device for channel %d (%s)", opposite->Number(), opposite->Name());
 		}
 
-		// the live channel on the device of its transfer
+		// the live channel on the device of its transfer (with its CAM, so the CAM
+		// keeps decrypting it after the switch, until another channel needs the CAM)
 		if (mode == ZAP_AHEAD_BOTH && live && !liveReceiver) {
 			cDevice *device = cTransferControl::ReceiverDevice();
-			if (device && device->IsTunedToTransponder(live))
-				liveReceiver = Attach(live, device);
+			if (device && device->IsTunedToTransponder(live)) {
+				bool cam = m_cam && live->Ca() >= CA_ENCRYPTED_MIN && device->CamSlot();
+				liveReceiver = Attach(live, device, cam, true);
+			}
 		}
 	}
 
@@ -823,7 +908,8 @@ void cZapCache::TuneEntered(int channelNum)
 		if (!channel || (!channel->Vpid() && !channel->Apid(0) && !channel->Dpid(0)))
 			return;
 
-		cDevice *device = FreeDevice(channel, nullptr);
+		bool cam;
+		cDevice *device = DeviceFor(channel, nullptr, &cam);
 		for (int i = MAX_RECEIVERS - 1; !device && i >= 0; i--) {
 			cZapReceiver *neighbour;
 			{
@@ -834,7 +920,7 @@ void cZapCache::TuneEntered(int channelNum)
 			// detached outside the mutex (see Clear())
 			if (neighbour) {
 				delete neighbour;
-				device = FreeDevice(channel, nullptr);
+				device = DeviceFor(channel, nullptr, &cam);
 			}
 		}
 
@@ -843,7 +929,7 @@ void cZapCache::TuneEntered(int channelNum)
 			return;
 		}
 
-		receiver = Attach(channel, device);
+		receiver = Attach(channel, device, cam);
 	}
 
 	std::lock_guard<std::mutex> lock(m_mutex);
