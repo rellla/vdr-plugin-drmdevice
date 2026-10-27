@@ -234,9 +234,30 @@ Setup: /etc/vdr/setup.conf
 		It only works, if a free device can receive the channel (or the channel is
 		on the transponder of the current channel), and it is off while pip is
 		shown. An encrypted channel isn't buffered (the device of the next channel
-		has no CAM), only tuned. The device isn't free for VDR's EPG scan meanwhile
+		has no CAM, see drmdevice.ZapAheadCam), only tuned. The device isn't free
+		for VDR's EPG scan meanwhile
 		(see drmdevice.ZapAheadRelease), but it is released for a recording or the
 		live view.
+
+	drmdevice.ZapAheadCam = 0
+		0 = an encrypted channel of drmdevice.ZapAhead is only tuned, not buffered
+		1 = an encrypted channel is received with a CAM (experimental): VDR selects
+		    the device and a CAM, which can decrypt the channel, like for a
+		    recording with the lowest priority (-98). A device, which is used by
+		    the live view or a recording, isn't taken, so their decryption isn't
+		    disturbed. A switch to the channel starts with its buffer and doesn't
+		    have to wait for the keys of the CAM.
+		    It only works, if a CAM is free for the channel: a CAM, which
+		    decrypts one channel only (most CI+ modules), is used by the live
+		    view, if the live channel is encrypted, too. A CAM with MTD
+		    (multi transponder decryption) or several CAMs can decrypt several
+		    channels. A recording or the live view takes the CAM back at any
+		    time. With three tuners the receiver of the live channel keeps its
+		    CAM after a switch, until another channel needs it.
+		    With several CAMs VDR detaches a receiver, whose channel isn't
+		    decrypted within 3s, and doesn't try this CAM for the channel for
+		    15s. Some CAMs don't like the frequent channel changes, so it is
+		    off by default.
 
 	drmdevice.ZapAheadRelease = 2
 		Release the devices of drmdevice.ZapAhead after a time without key press

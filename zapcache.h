@@ -61,6 +61,10 @@ struct sZapChannel {
  * channel is switched to. It has the lowest priority, so it never blocks a
  * recording or the live view.
  *
+ * The receiver of an encrypted channel may have a CAM (drmdevice.ZapAheadCam):
+ * it gets the channel and a priority above the lowest one, so VDR decrypts it
+ * on the device (a receiver with the lowest priority isn't decrypted).
+ *
  * The packets since the last I-frame are kept in a cZapBuffer, so a channel
  * switch can start with them (see cZapCache::Splice()).
  *
@@ -68,7 +72,9 @@ struct sZapChannel {
  */
 class cZapReceiver : public cReceiver {
 public:
-	cZapReceiver(const sZapChannel &, cDevice *);
+	static constexpr int CAM_PRIORITY = MINPRIORITY + 1;   ///< priority of a receiver with a CAM (VDR decrypts it)
+
+	cZapReceiver(const sZapChannel &, cDevice *, const cChannel * = nullptr);
 	virtual ~cZapReceiver(void);
 
 	int ChannelNumber(void) const { return m_channelNumber; }                ///< number of the received channel
@@ -129,6 +135,11 @@ private:
  * whose synchronous audio is buffered, too, so the audio doesn't have to be
  * waited for.
  *
+ * An encrypted channel is only tuned, its scrambled packets aren't buffered. With
+ * drmdevice.ZapAheadCam its receiver gets a CAM like a recording with the lowest
+ * priority, if a CAM can decrypt it on a device, which isn't used by the live
+ * view or a recording (see CamDevice()).
+ *
  * While a channel number is entered, the entered channel is received, too (on a
  * free device or on a device of the neighbour channels, which aren't neighbours
  * after the switch anymore), so the switch may start with its buffer, too.
@@ -182,7 +193,7 @@ public:
 	void SetMode(int mode) { m_mode = mode; }                     ///< set the current mode (enum Mode)
 	void ChannelSwitched(int);
 	void ChannelEntered(int);
-	void MainThreadHook(int, int);
+	void MainThreadHook(int, int, bool);
 	void Clear(void);
 
 	void ReportSwitchTime(bool, int);
@@ -219,6 +230,7 @@ private:
 	int m_enteredChannel = 0;                ///< number of the channel, which is entered (0: none)
 	bool m_enterPending = false;             ///< the entered channel changed, it has to be tuned
 	std::atomic<int> m_mode = ZAP_AHEAD_OFF; ///< current mode (enum Mode)
+	bool m_cam = false;                      ///< encrypted channels are received with a CAM (main thread only)
 
 	// statistics
 	int m_switches = 0;                      ///< channel switches with the zap cache
@@ -244,9 +256,11 @@ private:
 	void Prepare(int, int, int);
 	void TuneEntered(int);
 	static const cChannel *Neighbour(const cChannels *, const cChannel *, int);
+	cDevice *DeviceFor(const cChannel *, const cDevice *, bool *) const;
 	static cDevice *FreeDevice(const cChannel *, const cDevice *);
+	static cDevice *CamDevice(const cChannel *);
 	static cDevice *TunedDevice(const cChannel *);
-	static cZapReceiver *Attach(const cChannel *, cDevice *);
+	static cZapReceiver *Attach(const cChannel *, cDevice *, bool, bool = false);
 	static cZapReceiver *Keep(cZapReceiver **, int, const cChannel *);
 };
 

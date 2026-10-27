@@ -239,6 +239,9 @@ msgstr " Mit synchronem Ton starten"
 msgid "  Max. delay"
 msgstr "  Max. Verzögerung"
 
+msgid " Buffer encrypted channels (CAM)"
+msgstr " Verschlüsselte Sender puffern (CAM)"
+
 #, c-format
 msgid "Zoom level %d (/1000)"
 msgstr "Zoomstufe %d (/1000)"
