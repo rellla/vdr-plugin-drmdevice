@@ -120,7 +120,6 @@ void cSoftOsd::Flush(void)
 
 		// draw all bitmaps
 		for (i = 0; (bitmap = GetBitmap(i)); ++i) {
-			uint8_t *argb;
 			int xs;
 			int ys;
 			int x;
@@ -193,20 +192,18 @@ void cSoftOsd::Flush(void)
 			if (w > bitmap->Width() || h > bitmap->Height())
 				LOGDEBUG2(L_OSD, "osd: %s: dirty area too big", __FUNCTION__);
 
-			argb = (uint8_t *) malloc(w * h * sizeof(uint32_t));
+			// the buffer only grows, OsdDraw() copies the data
+			if (m_argb.size() < static_cast<size_t>(w) * h)
+				m_argb.resize(static_cast<size_t>(w) * h);
 			for (y = y1; y <= y2; ++y) {
 				for (x = x1; x <= x2; ++x) {
-					((uint32_t *) argb)[x - x1 + (y - y1) * w] =
-					bitmap->GetColor(x, y);
+					m_argb[x - x1 + (y - y1) * w] = bitmap->GetColor(x, y);
 				}
 			}
 			LOGDEBUG2(L_OSD, "osd: %s: draw %dx%d%+d%+d bm", __FUNCTION__, w, h, xs + x1, ys + y1);
-			m_pDevice->OsdDraw(0, 0, w, h, w * sizeof(uint32_t), argb, xs + x1, ys + y1);
+			m_pDevice->OsdDraw(0, 0, w, h, w * sizeof(uint32_t), reinterpret_cast<const uint8_t *>(m_argb.data()), xs + x1, ys + y1);
 
 			bitmap->Clean();
-
-			// FIXME: reuse argb
-			free(argb);
 		}
 		m_dirty = false;
 		return;
