@@ -535,7 +535,8 @@ int cOutputDevice::PlayTs(const uchar *data, int length, bool videoOnly)
 	if (m_zapCache.SpliceArmed() && data && length >= TS_SIZE) {
 		// the synchronous audio has to fill the buffer up to the playback start threshold
 		int64_t audioAhead = m_pConfig->ConfigZapAheadSyncAudio ? GetBufferFillLevelThresholdMs() * 90LL : cZapBuffer::NEWEST_I_FRAME;
-		m_zapCache.Splice(data, audioAhead, [this](const uchar *packet, int size) { return cDevice::PlayTs(packet, size); });
+		int64_t maxDelay = cZapCache::MaxDelayMs(m_pConfig->ConfigZapAheadMaxDelay) * 90LL;
+		m_zapCache.Splice(data, audioAhead, maxDelay, [this](const uchar *packet, int size) { return cDevice::PlayTs(packet, size); });
 	}
 
 	return cDevice::PlayTs(data, length, videoOnly);

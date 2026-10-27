@@ -232,6 +232,9 @@ msgstr " Tuner ohne Tastendruck freigeben"
 msgid " Start with synchronous audio"
 msgstr " Mit synchronem Ton starten"
 
+msgid "  Max. delay"
+msgstr "  Max. Verzögerung"
+
 #, c-format
 msgid "Zoom level %d (/1000)"
 msgstr "Zoomstufe %d (/1000)"

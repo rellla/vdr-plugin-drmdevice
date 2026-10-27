@@ -53,12 +53,14 @@ int CounterAt(const std::vector<uint8_t> &data, size_t n)
 	return data[n * TS_SIZE + TS_SIZE - 2] | (data[n * TS_SIZE + TS_SIZE - 1] << 8);
 }
 
+/** no limit for the delay of a start with synchronous audio */
+const int64_t NO_LIMIT = INT64_MAX;
+
 /** Take all packets from the newest I-frame */
 std::vector<uint8_t> TakeNewest(cZapBuffer &buffer, const uint8_t *next = nullptr)
 {
-	int frames;
-	bool synced;
-	return buffer.Take(next, cZapBuffer::NEWEST_I_FRAME, &frames, &synced);
+	cZapBuffer::sTaken taken;
+	return buffer.Take(next, cZapBuffer::NEWEST_I_FRAME, NO_LIMIT, &taken);
 }
 
 const int VPID = 0x100;
@@ -139,12 +141,12 @@ TEST_CASE("cZapBuffer - starts with the newest I-frame", "[zapbuffer]") {
 	REQUIRE(buffer.IFrames() == 2);
 	REQUIRE(buffer.Frames() == 3);
 
-	int frames;
-	bool synced;
-	std::vector<uint8_t> data = buffer.Take(nullptr, cZapBuffer::NEWEST_I_FRAME, &frames, &synced);
+	cZapBuffer::sTaken taken;
+	std::vector<uint8_t> data = buffer.Take(nullptr, cZapBuffer::NEWEST_I_FRAME, NO_LIMIT, &taken);
 	REQUIRE(data.size() == 3 * TS_SIZE);
-	REQUIRE(frames == 1);
-	REQUIRE_FALSE(synced);
+	REQUIRE(taken.frames == 1);
+	REQUIRE_FALSE(taken.synced);
+	REQUIRE(taken.delay == -1);    // no pts
 	REQUIRE(CounterAt(data, 0) == 4);
 	REQUIRE(CounterAt(data, 1) == 5);
 	REQUIRE(CounterAt(data, 2) == 6);
@@ -163,30 +165,46 @@ TEST_CASE("cZapBuffer - starts with the newest I-frame, whose audio is buffered"
 
 	SECTION("the audio covers the I-frame with the start threshold") {
 		cZapBuffer copy = buffer;
-		int frames;
-		bool synced;
-		std::vector<uint8_t> data = copy.Take(nullptr, 400 * 90, &frames, &synced);
-		REQUIRE(synced);
-		REQUIRE(frames == 3);
+		cZapBuffer::sTaken taken;
+		std::vector<uint8_t> data = copy.Take(nullptr, 400 * 90, NO_LIMIT, &taken);
+		REQUIRE(taken.synced);
+		REQUIRE(taken.frames == 3);
+		REQUIRE(taken.delay == 180000);     // 2s to the newest video PES packet
 		REQUIRE(CounterAt(data, 0) == 1);   // the I-frame at 0s (the audio covers it by 1.3s, the one at 1s by 0.3s)
+	}
+
+	SECTION("an I-frame with synchronous audio may delay the playback up to a limit") {
+		cZapBuffer copy = buffer;
+		cZapBuffer::sTaken taken;
+		std::vector<uint8_t> data = copy.Take(nullptr, 400 * 90, 2000 * 90, &taken);
+		REQUIRE(taken.synced);
+		REQUIRE(CounterAt(data, 0) == 1);   // the delay of 2s is just allowed
+	}
+
+	SECTION("an I-frame, which delays the playback too much, isn't taken") {
+		cZapBuffer copy = buffer;
+		cZapBuffer::sTaken taken;
+		std::vector<uint8_t> data = copy.Take(nullptr, 400 * 90, 1500 * 90, &taken);
+		REQUIRE_FALSE(taken.synced);
+		REQUIRE(taken.delay == 0);
+		REQUIRE(CounterAt(data, 0) == 5);   // the newest I-frame
 	}
 
 	SECTION("a smaller threshold takes a newer I-frame") {
 		cZapBuffer copy = buffer;
-		int frames;
-		bool synced;
-		std::vector<uint8_t> data = copy.Take(nullptr, 300 * 90, &frames, &synced);
-		REQUIRE(synced);
-		REQUIRE(frames == 2);
+		cZapBuffer::sTaken taken;
+		std::vector<uint8_t> data = copy.Take(nullptr, 300 * 90, NO_LIMIT, &taken);
+		REQUIRE(taken.synced);
+		REQUIRE(taken.frames == 2);
+		REQUIRE(taken.delay == 90000);
 		REQUIRE(CounterAt(data, 0) == 3);   // the I-frame at 1s (the audio covers it by 0.3s)
 	}
 
 	SECTION("no I-frame has enough audio") {
 		cZapBuffer copy = buffer;
-		int frames;
-		bool synced;
-		std::vector<uint8_t> data = copy.Take(nullptr, 2000 * 90, &frames, &synced);
-		REQUIRE_FALSE(synced);
+		cZapBuffer::sTaken taken;
+		std::vector<uint8_t> data = copy.Take(nullptr, 2000 * 90, NO_LIMIT, &taken);
+		REQUIRE_FALSE(taken.synced);
 		REQUIRE(CounterAt(data, 0) == 5);   // the newest I-frame
 	}
 }
@@ -262,10 +280,9 @@ TEST_CASE("cZapBuffer - the oldest I-frames are dropped", "[zapbuffer]") {
 	REQUIRE(buffer.Size() == static_cast<size_t>(buffer.Frames()) * TS_SIZE);
 
 	// the buffer starts with the oldest kept I-frame
-	int frames;
-	bool synced;
-	std::vector<uint8_t> data = buffer.Take(nullptr, 0, &frames, &synced);
-	REQUIRE_FALSE(synced);    // no audio
+	cZapBuffer::sTaken taken;
+	std::vector<uint8_t> data = buffer.Take(nullptr, 0, NO_LIMIT, &taken);
+	REQUIRE_FALSE(taken.synced);    // no audio
 	REQUIRE(CounterAt(data, 0) == cZapBuffer::MAX_FRAMES);
 }
 

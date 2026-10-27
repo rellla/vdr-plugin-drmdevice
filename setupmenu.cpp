@@ -345,6 +345,8 @@ void cDeviceSetupMenu::Create(int current)
 			Add(new cMenuEditStraItem(tr(" Release the tuners without key press"), &m_cZapAheadRelease, 5, m_zapAheadReleases));
 		if (m_cZapAhead)
 			Add(new cMenuEditBoolItem(tr(" Start with synchronous audio"), &m_cZapAheadSyncAudio, trVDR("no"), trVDR("yes")));
+		if (m_cZapAhead && m_cZapAheadSyncAudio)
+			Add(new cMenuEditStraItem(tr("  Max. delay"), &m_cZapAheadMaxDelay, 5, m_zapAheadMaxDelays));
 		for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 			Add(new cMenuEditIntItem(cString::sprintf(tr("Zoom level %d (/1000)"), i + 1), &m_cZoomLevel[i], 0, cDeviceConfig::ZOOM_MAX, trVDR("off")));
 	}
@@ -511,6 +513,7 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 	int old_cLogFFmpeg = m_cLogFFmpeg;
 	int old_cDecoderFallbackToSw = m_cDecoderFallbackToSw;
 	int old_cZapAhead = m_cZapAhead;
+	int old_cZapAheadSyncAudio = m_cZapAheadSyncAudio;
 
 	if (m_section == SECTION_OVERVIEW) {
 		// cMenuSetupPage would store the settings and close the menu with OK
@@ -566,7 +569,8 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 		    old_cLogDefault              != m_cLogDefault ||
 		    old_cLogFFmpeg               != m_cLogFFmpeg ||
 		    old_cDecoderFallbackToSw     != m_cDecoderFallbackToSw ||
-		    old_cZapAhead                != m_cZapAhead) {
+		    old_cZapAhead                != m_cZapAhead ||
+		    old_cZapAheadSyncAudio       != m_cZapAheadSyncAudio) {
 
 			Create();	// update menu
 		}
@@ -595,6 +599,11 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_zapAheadReleases[2] = tr("after 50s");
 	m_zapAheadReleases[3] = tr("after 5min");
 	m_zapAheadReleases[4] = tr("after 30min");
+	m_zapAheadMaxDelays[0] = "1s";
+	m_zapAheadMaxDelays[1] = "1.5s";
+	m_zapAheadMaxDelays[2] = "2s";
+	m_zapAheadMaxDelays[3] = "3s";
+	m_zapAheadMaxDelays[4] = "5s";
 
 	LoadValues();
 	Create();
@@ -622,6 +631,7 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cZapAheadTuners          = m_pConfig->ConfigZapAheadTuners - 2;
 	m_cZapAheadRelease         = m_pConfig->ConfigZapAheadRelease;
 	m_cZapAheadSyncAudio       = m_pConfig->ConfigZapAheadSyncAudio;
+	m_cZapAheadMaxDelay        = m_pConfig->ConfigZapAheadMaxDelay;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		m_cZoomLevel[i] = m_pConfig->ConfigZoomLevel[i];
 
@@ -823,6 +833,7 @@ void cDeviceSetupMenu::Store(void)
 	StoreChanged("ZapAheadTuners", m_pConfig->ConfigZapAheadTuners, m_cZapAheadTuners + 2);
 	StoreChanged("ZapAheadRelease", m_pConfig->ConfigZapAheadRelease, m_cZapAheadRelease);
 	StoreChanged("ZapAheadSyncAudio", m_pConfig->ConfigZapAheadSyncAudio, m_cZapAheadSyncAudio);
+	StoreChanged("ZapAheadMaxDelay", m_pConfig->ConfigZapAheadMaxDelay, m_cZapAheadMaxDelay);
 	bool zoomChanged = false;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		zoomChanged |= StoreChanged(cString::sprintf("ZoomLevel%d", i + 1), m_pConfig->ConfigZoomLevel[i], m_cZoomLevel[i]);

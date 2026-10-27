@@ -9,6 +9,7 @@
  * @license{AGPL-3.0-or-later}
  */
 
+#include <algorithm>
 #include <cstring>
 
 #include <vdr/remux.h>
@@ -151,31 +152,37 @@ void cZapBuffer::DropOldestIFrame(void)
  *                      packet, so its synchronous audio is buffered (NEWEST_I_FRAME:
  *                      start with the newest I-frame). If no I-frame has enough
  *                      audio, the buffer starts with the newest one.
- * @param[out] frames   number of the frames of the taken packets
- * @param[out] synced   true, if the packets start with an I-frame with synchronous audio
+ * @param maxDelay      an I-frame with synchronous audio is only taken, if it is at
+ *                      most this much (in 90kHz ticks) before the newest video PES
+ *                      packet, otherwise the buffer starts with the newest I-frame
+ * @param[out] taken    the frames, the delay and if the audio is synchronous
  *
  * @return              the packets from the I-frame up to the next packet
  *                      (empty, if no I-frame is buffered)
  */
-std::vector<uint8_t> cZapBuffer::Take(const uint8_t *next, int64_t audioAhead, int *frames, bool *synced)
+std::vector<uint8_t> cZapBuffer::Take(const uint8_t *next, int64_t audioAhead, int64_t maxDelay, sTaken *taken)
 {
 	std::vector<uint8_t> data;
-	*frames = 0;
-	*synced = false;
+	*taken = sTaken();
 
 	if (!m_iFrames.empty()) {
 		const sIFrame *start = &m_iFrames.back();
 		if (audioAhead != NEWEST_I_FRAME && m_audioPts >= 0) {
 			for (auto it = m_iFrames.rbegin(); it != m_iFrames.rend(); ++it) {
 				if (it->pts >= 0 && PtsDiff(it->pts, m_audioPts) >= audioAhead) {
+					// an older I-frame would delay the playback even more
+					if (m_pesPts >= 0 && PtsDiff(it->pts, m_pesPts) > maxDelay)
+						break;
 					start = &*it;
-					*synced = true;
+					taken->synced = true;
 					break;
 				}
 			}
 		}
 
-		*frames = m_frames - start->frame;
+		taken->frames = m_frames - start->frame;
+		if (start->pts >= 0 && m_pesPts >= 0)
+			taken->delay = std::max<int64_t>(0, PtsDiff(start->pts, m_pesPts));
 		data.assign(m_data.begin() + start->offset, m_data.end());
 		if (next && data.size() >= TS_SIZE && !memcmp(&data[data.size() - TS_SIZE], next, TS_SIZE))
 			data.resize(data.size() - TS_SIZE);
