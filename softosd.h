@@ -14,6 +14,9 @@
 #ifndef __DRMDEVICE_SOFTOSD_H
 #define __DRMDEVICE_SOFTOSD_H
 
+#include <cstdint>
+#include <vector>
+
 #include <vdr/osd.h>
 
 class cOutputDevice;
@@ -41,6 +44,7 @@ private:
 	cOutputDevice *m_pDevice;        ///< pointer to the cOutputDevice object
 	bool m_dirty = false;            ///< flag to force redrawing everything
 	int m_osdLevel;                  ///< current osd level
+	std::vector<uint32_t> m_argb;    ///< buffer for the converted area of a bitmap (reused by Flush())
 };
 
 #endif
