@@ -1297,8 +1297,12 @@ bool cOutputDevice::CheckAudioPlaybackStartConditions()
 	// drop audio data here, if the buffer fill level exceeds the threshold
 	// - otherwise a later playback start is unneccessarily delayed when all buffers
 	// reached their threshold but the rest of the audio data has still to be played out ...
+	// Don't drop the audio of the presented picture and the following ones: a channel switch,
+	// which starts with buffered packets (zap cache), buffers more audio than the threshold,
+	// the audio would be ahead of the video and the video had to drop frames to catch up.
 	int64_t bufferSurplus = audioBufferFillLevelMs - GetBufferFillLevelThresholdMs();
-	m_pAudio->DropSamplesOlderThanPtsMs(m_pAudio->GetOutputPtsMs() + bufferSurplus);
+	int64_t dropPtsMs = std::min(m_pAudio->GetOutputPtsMs() + bufferSurplus, m_pRender->GetOutputPtsMs() - GetVideoAudioDelayMs());
+	m_pAudio->DropSamplesOlderThanPtsMs(dropPtsMs);
 
 	// get new buffer filllevel for correct log message, because frames have been dropped in the meantime
 	int64_t newAudioBufferFillLevelMs = m_pAudio->GetInputPtsMs() - m_pAudio->GetOutputPtsMs();
