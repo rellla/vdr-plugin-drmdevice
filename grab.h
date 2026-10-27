@@ -17,6 +17,8 @@
 
 #include <vdr/osd.h>
 
+#include "framesnapshot.h"
+
 class cDrmBuffer;
 class cVideoRender;
 
@@ -38,6 +40,7 @@ public:
 	void Clear(void);
 	void Set(cDrmBuffer *);
 	bool IsSet(void) { return !m_outputRect.IsEmpty(); }  ///< true, if a buffer was grabbed
+	bool LoadInput(void);
 	uint8_t *ConvertToRgb(int *);
 
 	// setters and getters
@@ -64,9 +67,10 @@ private:
 	uint64_t m_modifier = 0;                            ///< format modifier
 	int m_numPlanes = 0;                                ///< number of planes
 	uint8_t *m_pPlane[4] = {};                          ///< copied data of the planes
+	uint8_t *m_pCopy[4] = {};                           ///< allocated copies (objects or planes), freed in FreeInput()
+	cFrameSnapshot m_snapshot;                          ///< snapshot of a DMA-BUF buffer, copied in LoadInput()
 	uint32_t m_offset[4] = {};                          ///< offsets of the planes
 	uint32_t m_pitch[4] = {};                           ///< pitches of the planes
-	uint32_t m_size[4] = {};                            ///< sizes of the planes
 
 	const char *m_identifier;                           ///< identifier string for logging
 };
