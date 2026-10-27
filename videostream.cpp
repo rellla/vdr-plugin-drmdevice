@@ -177,6 +177,8 @@ void cVideoStream::CloseDecoder(void)
 	m_naluTypesAtStart.clear();
 	m_dpbFrames.clear();
 	m_ptsForFramerateDetection = AV_NOPTS_VALUE;
+	m_framerateDetectionFrames = 0;
+	m_minFramerateDelta = 0;
 	m_lastDecodedPts = AV_NOPTS_VALUE;
 	m_framerate = 0.0;
 }
@@ -593,21 +595,24 @@ void cVideoStream::RenderFrame(AVFrame * frame)
 	if (frame->decode_error_flags || frame->flags & AV_FRAME_FLAG_CORRUPT)
 		LOGWARNING("videostream: %s: %s: error_flag or FRAME_FLAG_CORRUPT", m_identifier, __FUNCTION__);
 
-	if (!m_framerate) {
-		if (av_q2d(m_pDecoder->GetContext()->framerate) > 0.0) {
-			// the decoder has a valid framerate, use it
-			m_framerate = av_q2d(m_pDecoder->GetContext()->framerate);
-		} else if (frame->pts != AV_NOPTS_VALUE) {
-			// The decoder has no valid framerate, calculate it from pts and timebase
-			// @todo We are only using the first two frames here.
-			// If there are issues in the stream this might not be correct.
-			if (m_ptsForFramerateDetection != AV_NOPTS_VALUE) {
-				int64_t delta = frame->pts - m_ptsForFramerateDetection;
-				if (delta > 0 && av_q2d(m_timebase) > 0)  // e.g. a repeated or reordered pts
-					m_framerate = 1.0 / (delta * av_q2d(m_timebase));
+	if (!m_framerate && av_q2d(m_pDecoder->GetContext()->framerate) > 0.0) {
+		// the decoder has a valid framerate, use it
+		m_framerate = av_q2d(m_pDecoder->GetContext()->framerate);
+		m_framerateDetectionFrames = FRAMERATE_DETECTION_FRAMES;
+	} else if (m_framerateDetectionFrames < FRAMERATE_DETECTION_FRAMES && frame->pts != AV_NOPTS_VALUE) {
+		// The decoder has no valid framerate, calculate it from pts and timebase.
+		// The first two frames give the framerate at once. The following frames correct it,
+		// if they have a smaller pts difference: a missing frame makes the difference larger
+		// (a repeated or reordered pts isn't positive).
+		if (m_ptsForFramerateDetection != AV_NOPTS_VALUE) {
+			int64_t delta = frame->pts - m_ptsForFramerateDetection;
+			if (delta > 0 && av_q2d(m_timebase) > 0 && (!m_minFramerateDelta || delta < m_minFramerateDelta)) {
+				m_minFramerateDelta = delta;
+				m_framerate = 1.0 / (delta * av_q2d(m_timebase));
 			}
-			m_ptsForFramerateDetection = frame->pts;
+			m_framerateDetectionFrames++;
 		}
+		m_ptsForFramerateDetection = frame->pts;
 	}
 
 	// Filter thread will only be started, if the lambda function returns true

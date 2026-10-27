@@ -135,6 +135,9 @@ private:
 
 	int64_t m_inputPts = AV_NOPTS_VALUE;                 ///< PTS of the last packet (with a pts) pushed to the input buffer
 	int64_t m_ptsForFramerateDetection = AV_NOPTS_VALUE; ///< helper PTS to calculate a framerate at stream start
+	static constexpr int FRAMERATE_DETECTION_FRAMES = 8; ///< frames at stream start, whose pts differences are checked for the framerate
+	int m_framerateDetectionFrames = 0;                  ///< number of the checked pts differences
+	int64_t m_minFramerateDelta = 0;                     ///< smallest positive pts difference of two frames (0: none)
 	int64_t m_lastDecodedPts = AV_NOPTS_VALUE;           ///< PTS of the latest packet, which was sent to the decoder in order to detect stream discontinuity
 
 	// h264 parsing
