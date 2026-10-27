@@ -271,6 +271,10 @@ Setup: /etc/vdr/setup.conf
 		    and a quick switch back starts with it at once.
 		The receivers of channels, which are neighbours after a channel switch, too,
 		are kept with their buffers.
+		The statistics of the setup menu show the received channels, how many
+		switches started with a buffer and the average switch times (until the
+		first picture and until the playback started) with and without a buffer.
+		The red key resets them.
 
 	drmdevice.AudioSoftvol = 0
 		0 = off, use hardware volume control
