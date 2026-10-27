@@ -285,7 +285,9 @@ std::string cAudioProcessor::GetEqualizerOptions(void) const
  * @param count     number of bytes in sample buffer
  * @param volume    volume (0 .. 1000)
  *
- * @todo FIXME: this does hard clipping
+ * The amplifier factor is at most 1000 (cAudioStream::SetVolume() limits it), so
+ * the samples are only attenuated and never clipped. The limits below only
+ * protect against a larger factor.
  */
 void cAudioProcessor::Amplify(int16_t *samples, int count, int volume)
 {
