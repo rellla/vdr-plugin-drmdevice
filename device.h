@@ -147,6 +147,8 @@ public:
 	//
 protected:
 	virtual void ChannelSwitch(const cDevice *, int, bool);
+	virtual void OsdChannel(const char *);
+	virtual void OsdClear(void);
 	virtual void Replaying(const cControl *, const char *, const char *, bool);
 
 	//

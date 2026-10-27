@@ -17,6 +17,7 @@
 
 #include <chrono>
 #include <cinttypes>
+#include <cstdio>
 #include <mutex>
 #include <variant>
 #include <libintl.h>
@@ -951,6 +952,39 @@ void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool li
 	// the receiver may have been switched on meanwhile
 	if (!IsDetached())
 		m_pAudioDecoder->RetryPassthrough();
+}
+
+/**
+ * Monitor the channel display (cStatus::OsdChannel())
+ *
+ * While a channel number is entered, VDR's channel display shows the number
+ * followed by a "-" (see VDR's ChannelString()), e.g. "27-  Das Erste HD".
+ * The channel with this number is tuned ahead by the zap cache.
+ *
+ * @param text      text of the channel display
+ */
+void cOutputDevice::OsdChannel(const char *text)
+{
+	int number = 0;
+	char dash = 0;
+
+	if (!text || sscanf(text, "%d%c", &number, &dash) != 2 || dash != '-' || number <= 0)
+		number = 0;
+
+	m_zapCache.ChannelEntered(number);
+}
+
+/**
+ * Monitor the closing of the OSD (cStatus::OsdClear())
+ *
+ * The channel display may be closed, while a channel number is entered (e.g.
+ * by another key or after the channel info time), so the entry ends.
+ *
+ * @note This is the cStatus interface, see OsdClose() for closing the OSD.
+ */
+void cOutputDevice::OsdClear(void)
+{
+	m_zapCache.ChannelEntered(0);
 }
 
 /**

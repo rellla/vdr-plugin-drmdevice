@@ -129,6 +129,10 @@ private:
  * whose synchronous audio is buffered, too, so the audio doesn't have to be
  * waited for.
  *
+ * While a channel number is entered, the entered channel is received, too (on a
+ * free device or on a device of the neighbour channels, which aren't neighbours
+ * after the switch anymore), so the switch may start with its buffer, too.
+ *
  * The receivers are released after a time without key press, so VDR's EPG scan
  * (which starts 60s after the last key press) can use the devices. The next key
  * press tunes the channels again, but not, while a menu is shown.
@@ -177,6 +181,7 @@ public:
 	void ChannelSwitchStarted(void);
 	void SetMode(int mode) { m_mode = mode; }                     ///< set the current mode (enum Mode)
 	void ChannelSwitched(int);
+	void ChannelEntered(int);
 	void MainThreadHook(int, int);
 	void Clear(void);
 
@@ -194,6 +199,7 @@ private:
 	static constexpr int PLAY_RETRIES = 20;        ///< max. number of retries for a buffered packet (like cTransfer)
 	static constexpr int PLAY_RETRY_WAIT_MS = 5;   ///< time between two retries
 	static constexpr int MAX_RECEIVERS = 2;        ///< zap direction and opposite direction
+	static constexpr int ALL_RECEIVERS = MAX_RECEIVERS + 2; ///< with the receivers of the live channel and of the entered channel
 	static constexpr int RELEASE_TIMES = 5;        ///< number of the release times (drmdevice.ZapAheadRelease)
 	static constexpr int MAX_DELAYS = 5;           ///< number of the max. delays (drmdevice.ZapAheadMaxDelay)
 
@@ -209,6 +215,9 @@ private:
 	int m_armedFromChannel = 0;              ///< live channel before the channel switch (its packets may still be played)
 	cTimeMs m_spliceTimer;                   ///< keeps the receiver of the new live channel until the splice
 	cZapReceiver *m_pLive = nullptr;         ///< receiver of the live channel (ZAP_AHEAD_BOTH), it keeps its buffer after a switch
+	cZapReceiver *m_pEntered = nullptr;      ///< receiver of the channel, whose number is entered
+	int m_enteredChannel = 0;                ///< number of the channel, which is entered (0: none)
+	bool m_enterPending = false;             ///< the entered channel changed, it has to be tuned
 	std::atomic<int> m_mode = ZAP_AHEAD_OFF; ///< current mode (enum Mode)
 
 	// statistics
@@ -233,6 +242,7 @@ private:
 	bool HasReceivers(void) const;
 	cZapReceiver *ReceiverFor(int) const;
 	void Prepare(int, int, int);
+	void TuneEntered(int);
 	static const cChannel *Neighbour(const cChannels *, const cChannel *, int);
 	static cDevice *FreeDevice(const cChannel *, const cDevice *);
 	static cDevice *TunedDevice(const cChannel *);

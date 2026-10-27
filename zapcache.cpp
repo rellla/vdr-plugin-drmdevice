@@ -344,6 +344,10 @@ void cZapCache::ChannelSwitched(int channelNum)
 	m_preparePending = true;
 	m_prepareTimer.Set(PREPARE_DELAY_MS);
 
+	// the channel entry is done
+	m_enteredChannel = 0;
+	m_enterPending = false;
+
 	// a switch to the same channel: Splice() can't tell its packets from the ones before
 	if (channelNum == m_armedFromChannel)
 		m_spliceArmed = false;
@@ -351,6 +355,32 @@ void cZapCache::ChannelSwitched(int channelNum)
 	// the new channel isn't buffered
 	if (!ReceiverFor(channelNum))
 		m_spliceArmed = false;
+}
+
+/**
+ * Report the channel number, which is entered
+ *
+ * While a channel number is entered, VDR's channel display shows the number
+ * (cStatus::OsdChannel()). The channel with this number is tuned ahead. If the
+ * entry is cancelled, the neighbour channels are tuned again.
+ *
+ * @param channelNum     the entered number (0: no number is entered)
+ */
+void cZapCache::ChannelEntered(int channelNum)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	if (channelNum == m_enteredChannel)
+		return;
+
+	m_enteredChannel = channelNum;
+	m_enterPending = channelNum != 0;
+
+	// the entry ended (the switch follows or it was cancelled)
+	if (!channelNum) {
+		m_preparePending = true;
+		m_prepareTimer.Set(PREPARE_DELAY_MS);
+	}
 }
 
 /**
@@ -363,7 +393,7 @@ bool cZapCache::HasReceivers(void) const
 			return true;
 	}
 
-	return m_pLive != nullptr;
+	return m_pLive != nullptr || m_pEntered != nullptr;
 }
 
 /**
@@ -383,6 +413,9 @@ cZapReceiver *cZapCache::ReceiverFor(int channelNum) const
 	if (m_pLive && m_pLive->ChannelNumber() == channelNum)
 		return m_pLive;
 
+	if (m_pEntered && m_pEntered->ChannelNumber() == channelNum)
+		return m_pEntered;
+
 	return nullptr;
 }
 
@@ -391,7 +424,7 @@ cZapReceiver *cZapCache::ReceiverFor(int channelNum) const
  */
 void cZapCache::Clear(void)
 {
-	cZapReceiver *receivers[MAX_RECEIVERS + 1];
+	cZapReceiver *receivers[ALL_RECEIVERS];
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		for (int i = 0; i < MAX_RECEIVERS; i++) {
@@ -400,6 +433,8 @@ void cZapCache::Clear(void)
 		}
 		receivers[MAX_RECEIVERS] = m_pLive;
 		m_pLive = nullptr;
+		receivers[MAX_RECEIVERS + 1] = m_pEntered;
+		m_pEntered = nullptr;
 	}
 
 	// detached outside the mutex, cDevice::Detach() waits for the receiver thread of the device
@@ -427,6 +462,8 @@ void cZapCache::MainThreadHook(int mode, int releaseSeconds)
 			std::lock_guard<std::mutex> lock(m_mutex);
 			m_preparePending = false;
 			m_spliceArmed = false;
+			m_enteredChannel = 0;
+			m_enterPending = false;
 			hasReceivers = HasReceivers();
 		}
 		if (hasReceivers)
@@ -449,6 +486,8 @@ void cZapCache::MainThreadHook(int mode, int releaseSeconds)
 					std::lock_guard<std::mutex> lock(m_mutex);
 					m_preparePending = false;
 					m_spliceArmed = false;
+					m_enteredChannel = 0;
+					m_enterPending = false;
 					hasReceivers = HasReceivers();
 				}
 				if (hasReceivers) {
@@ -471,6 +510,22 @@ void cZapCache::MainThreadHook(int mode, int releaseSeconds)
 		m_preparePending = true;
 		m_prepareTimer.Set(0);
 	}
+
+	// a channel number is entered: tune the entered channel, the neighbour
+	// channels are tuned after the switch (or after a cancelled entry)
+	int enteredChannel = 0;
+	bool entering;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (m_enterPending)
+			enteredChannel = m_enteredChannel;
+		m_enterPending = false;
+		entering = m_enteredChannel != 0;
+	}
+	if (enteredChannel)
+		TuneEntered(enteredChannel);
+	if (entering)
+		return;
 
 	int liveChannel;
 	int previousChannel;
@@ -654,7 +709,7 @@ cZapReceiver *cZapCache::Keep(cZapReceiver **receivers, int count, const cChanne
  */
 void cZapCache::Prepare(int liveChannel, int previousChannel, int mode)
 {
-	cZapReceiver *old[MAX_RECEIVERS + 1];
+	cZapReceiver *old[ALL_RECEIVERS];
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		for (int i = 0; i < MAX_RECEIVERS; i++) {
@@ -663,6 +718,8 @@ void cZapCache::Prepare(int liveChannel, int previousChannel, int mode)
 		}
 		old[MAX_RECEIVERS] = m_pLive;
 		m_pLive = nullptr;
+		old[MAX_RECEIVERS + 1] = m_pEntered;
+		m_pEntered = nullptr;
 	}
 
 	cZapReceiver *receivers[MAX_RECEIVERS] = {};
@@ -691,10 +748,10 @@ void cZapCache::Prepare(int liveChannel, int previousChannel, int mode)
 			if (opposite == next || (opposite && !opposite->Vpid() && !opposite->Apid(0) && !opposite->Dpid(0)))
 				opposite = nullptr;
 
-			receivers[0] = Keep(old, MAX_RECEIVERS + 1, next);
-			receivers[1] = Keep(old, MAX_RECEIVERS + 1, opposite);
+			receivers[0] = Keep(old, ALL_RECEIVERS, next);
+			receivers[1] = Keep(old, ALL_RECEIVERS, opposite);
 			if (mode == ZAP_AHEAD_BOTH)
-				liveReceiver = Keep(old, MAX_RECEIVERS + 1, live);
+				liveReceiver = Keep(old, ALL_RECEIVERS, live);
 		}
 
 		// the other receivers aren't needed anymore, their devices may be needed below
@@ -732,6 +789,65 @@ void cZapCache::Prepare(int liveChannel, int previousChannel, int mode)
 	for (int i = 0; i < MAX_RECEIVERS; i++)
 		m_pReceivers[i] = receivers[i];
 	m_pLive = liveReceiver;
+}
+
+/**
+ * Tune the channel, whose number is entered
+ *
+ * If no device is free, the devices of the neighbour channels are taken: they
+ * aren't neighbours after the switch to the entered channel anymore. The tuner
+ * may not lock or no I-frame may be buffered, before the entry is done, but VDR
+ * prefers the tuned device for the switch then.
+ *
+ * Must be called by the main thread (see MainThreadHook()).
+ *
+ * @param channelNum    number of the entered channel
+ */
+void cZapCache::TuneEntered(int channelNum)
+{
+	cZapReceiver *old;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		// the live channel or a channel, which is received already
+		if (channelNum == m_liveChannel || ReceiverFor(channelNum))
+			return;
+		old = m_pEntered;
+		m_pEntered = nullptr;
+	}
+	delete old;
+
+	cZapReceiver *receiver = nullptr;
+	{
+		LOCK_CHANNELS_READ;
+		const cChannel *channel = Channels->GetByNumber(channelNum);
+		if (!channel || (!channel->Vpid() && !channel->Apid(0) && !channel->Dpid(0)))
+			return;
+
+		cDevice *device = FreeDevice(channel, nullptr);
+		for (int i = MAX_RECEIVERS - 1; !device && i >= 0; i--) {
+			cZapReceiver *neighbour;
+			{
+				std::lock_guard<std::mutex> lock(m_mutex);
+				neighbour = m_pReceivers[i];
+				m_pReceivers[i] = nullptr;
+			}
+			// detached outside the mutex (see Clear())
+			if (neighbour) {
+				delete neighbour;
+				device = FreeDevice(channel, nullptr);
+			}
+		}
+
+		if (!device) {
+			LOGDEBUG("zapcache: no free device for the entered channel %d (%s)", channel->Number(), channel->Name());
+			return;
+		}
+
+		receiver = Attach(channel, device);
+	}
+
+	std::lock_guard<std::mutex> lock(m_mutex);
+	m_pEntered = receiver;
 }
 
 /**
@@ -920,7 +1036,7 @@ void cZapCache::GetStats(sStats *stats)
 	std::lock_guard<std::mutex> lock(m_mutex);
 
 	stats->receivers.clear();
-	for (cZapReceiver *receiver : m_pReceivers) {
+	for (cZapReceiver *receiver : { m_pReceivers[0], m_pReceivers[1], m_pEntered }) {
 		if (!receiver)
 			continue;
 		cDevice *device = receiver->Device();
