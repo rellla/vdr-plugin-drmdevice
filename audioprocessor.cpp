@@ -163,7 +163,7 @@ void cAudioProcessor::Compress(int16_t *samples, int count)
 	// calculate compression factor
 	if (maxSample > 0) {
 		factor = (INT16_MAX * 1000) / maxSample;
-		// smooth compression (FIXME: make configurable?)
+		// smooth compression
 		m_compressionFactor = (m_compressionFactor * 950 + factor * 50) / 1000;
 		if (m_compressionFactor > factor) {
 			m_compressionFactor = factor;	// no clipping
