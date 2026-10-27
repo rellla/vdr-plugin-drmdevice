@@ -15,6 +15,7 @@
 #include <atomic>
 #include <functional>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include <vdr/receiver.h>
@@ -33,6 +34,26 @@ class cDevice;
  */
 
 /**
+ * The data of a channel, which a zap receiver needs
+ *
+ * A copy, so a receiver can be created without the channels lock.
+ *
+ * @ingroup zapcache
+ */
+struct sZapChannel {
+	int number = 0;                 ///< channel number (0: none)
+	std::string name;               ///< channel name (for the log)
+	int vpid = 0;                   ///< video pid
+	int vtype = 0;                  ///< video stream type
+	int ppid = 0;                   ///< pcr pid
+	std::vector<int> apids;         ///< audio pids
+	std::vector<int> dpids;         ///< dolby pids
+	std::vector<int> spids;         ///< subtitle pids
+
+	static sZapChannel FromChannel(const cChannel *);
+};
+
+/**
  * Receiver for the channel, which is expected to be switched to next
  *
  * It receives the pids of the channel like VDR's transfer receiver does, so
@@ -47,12 +68,13 @@ class cDevice;
  */
 class cZapReceiver : public cReceiver {
 public:
-	cZapReceiver(const cChannel *, cDevice *);
+	cZapReceiver(const sZapChannel &, cDevice *);
 	virtual ~cZapReceiver(void);
 
 	int ChannelNumber(void) const { return m_channelNumber; }                ///< number of the received channel
 	cDevice *Device(void) const { return m_attached ? m_pDevice : nullptr; } ///< the receiving device (nullptr, if detached)
 	bool HasPid(int) const;
+	bool IsTaken(void);
 	std::vector<uint8_t> Take(const uint8_t *, int64_t, int *, bool *);
 
 protected:
@@ -92,7 +114,13 @@ private:
  *
  * In ZAP_AHEAD_BOTH mode (three tuners: live view, next and previous channel)
  * the channel in the opposite direction is received, too, preferably on the
- * device, which is tuned to it already.
+ * device, which is tuned to it already. The live channel has a receiver on the
+ * device of its transfer, too. VDR stops the transfer, before it reports a
+ * channel switch, so this receiver keeps the stream and the buffer of the last
+ * live channel, a switch back can start with it at once.
+ *
+ * The receivers of the channels, which are neighbours after a channel switch,
+ * too, are kept with their buffers.
  *
  * The switch to this channel starts with the packets since a buffered I-frame,
  * before VDR's transfer receiver plays its first packet (Splice()), so it
@@ -126,6 +154,7 @@ public:
 	static int ReleaseSeconds(int);
 
 	void ChannelSwitchStarted(void);
+	void SetMode(int mode) { m_mode = mode; }                     ///< set the current mode (enum Mode)
 	void ChannelSwitched(int);
 	void MainThreadHook(int, int);
 	void Clear(void);
@@ -152,6 +181,8 @@ private:
 	std::atomic<bool> m_spliceArmed = false; ///< a channel switch may start with the buffered packets
 	int m_armedFromChannel = 0;              ///< live channel before the channel switch (its packets may still be played)
 	cTimeMs m_spliceTimer;                   ///< keeps the receiver of the new live channel until the splice
+	cZapReceiver *m_pLive = nullptr;         ///< receiver of the live channel (ZAP_AHEAD_BOTH), it keeps its buffer after a switch
+	std::atomic<int> m_mode = ZAP_AHEAD_OFF; ///< current mode (enum Mode)
 	time_t m_lastSwitch;                     ///< time of the last channel switch (also by SVDRP)
 	bool m_released = false;                 ///< the receivers were released without key press (main thread only)
 
@@ -162,6 +193,7 @@ private:
 	static cDevice *FreeDevice(const cChannel *, const cDevice *);
 	static cDevice *TunedDevice(const cChannel *);
 	static cZapReceiver *Attach(const cChannel *, cDevice *);
+	static cZapReceiver *Keep(cZapReceiver **, int, const cChannel *);
 };
 
 #endif
