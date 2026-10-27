@@ -450,6 +450,16 @@ void cGrabBuffer::Set(cDrmBuffer *src)
 	void *src_buffer = nullptr;
 	void *dst_buffer = nullptr;
 
+	// on an error the buffers, which were copied already, are freed again
+	void *copied[4] = {};
+	int numCopied = 0;
+	auto freeCopied = [&]() {
+		for (int i = 0; i < numCopied; i++)
+			free(copied[i]);
+		for (int plane = 0; plane < 4; plane++)
+			m_pPlane[plane] = nullptr;
+	};
+
 	// planes aren't mmapped, do it (PRIME)
 	if (!src->Plane(0)) {
 		for (int object = 0; object < src->NumObjects(); object++) {
@@ -458,7 +468,7 @@ void cGrabBuffer::Set(cDrmBuffer *src)
 			dst_buffer = malloc(src->Size(object));
 			if (!dst_buffer) {
 				LOGERROR("%s: %s: cannot allocate destination buffer (%d): %m", m_identifier, __FUNCTION__, errno);
-				// @todo handle possible leaks of previous objects
+				freeCopied();
 				return;
 			}
 
@@ -467,9 +477,10 @@ void cGrabBuffer::Set(cDrmBuffer *src)
 				free(dst_buffer);
 				LOGERROR("%s: %s: cannot map buffer size %d prime_fd %d (%d): %m",
 					m_identifier, __FUNCTION__, src->Size(object), src->DmaBufHandle(object), errno);
-				// @todo handle possible leaks of previous objects
+				freeCopied();
 				return;
 			}
+			copied[numCopied++] = dst_buffer;
 
 			memcpy(dst_buffer, src_buffer, src->Size(object));
 			munmap(src_buffer, src->Size(object));
@@ -489,8 +500,10 @@ void cGrabBuffer::Set(cDrmBuffer *src)
 			dst_buffer = malloc(src->Size(plane));
 			if (!dst_buffer) {
 				LOGERROR("%s: %s: cannot allocate destination buffer (%d): %m", m_identifier, __FUNCTION__, errno);
+				freeCopied();
 				return;
 			}
+			copied[numCopied++] = dst_buffer;
 			memcpy(dst_buffer, src->Plane(plane), src->Size(plane));
 			m_pPlane[plane] = (uint8_t *)dst_buffer;
 		}
