@@ -148,6 +148,7 @@ OBJS = $(PLUGINENTRY).o \
 	drmhdr.o \
 	drmplane.o \
 	filllevel.o \
+	framesampler.o \
 	framesnapshot.o \
 	grab.o \
 	h264parser.o \
