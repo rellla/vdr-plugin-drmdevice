@@ -16,6 +16,7 @@
 #include <vdr/config.h>
 #include <vdr/device.h>
 #include <vdr/remote.h>
+#include <vdr/skins.h>
 #include <vdr/transfer.h>
 
 #include "logger.h"
@@ -381,8 +382,11 @@ void cZapCache::MainThreadHook(int mode, int releaseSeconds)
 		}
 	}
 
-	// a key was pressed after the release, tune the channels again
+	// a key was pressed after the release, tune the channels again, but not
+	// for the keys of a menu (the next channel switch would tune them anyway)
 	if (m_released) {
+		if (dynamic_cast<cSkinDisplayMenu *>(cSkinDisplay::Current()))
+			return;
 		m_released = false;
 		std::lock_guard<std::mutex> lock(m_mutex);
 		m_preparePending = true;
