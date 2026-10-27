@@ -79,6 +79,8 @@ public:
 	const cRect &CropRect(void) const { return m_cropRect; }    ///< shown part of the buffer (empty: all)
 	AVColorSpace ColorSpace(void) const { return m_colorspace; }///< color matrix of the frame
 	AVColorRange ColorRange(void) const { return m_colorRange; }///< color range of the frame
+	AVColorTransferCharacteristic ColorTrc(void) const { return m_colorTrc; } ///< transfer function of the frame
+	AVColorPrimaries ColorPrimaries(void) const { return m_colorPrimaries; }  ///< color primaries of the frame
 
 private:
 	uint32_t m_width = 0;               ///< buffer width
@@ -102,6 +104,8 @@ private:
 	cRect m_cropRect;                   ///< shown part of the buffer
 	AVColorSpace m_colorspace = AVCOL_SPC_UNSPECIFIED; ///< color matrix
 	AVColorRange m_colorRange = AVCOL_RANGE_UNSPECIFIED; ///< color range
+	AVColorTransferCharacteristic m_colorTrc = AVCOL_TRC_UNSPECIFIED; ///< transfer function
+	AVColorPrimaries m_colorPrimaries = AVCOL_PRI_UNSPECIFIED; ///< color primaries
 };
 
 #endif
