@@ -281,6 +281,11 @@ Setup: /etc/vdr/setup.conf
 		    than with 0 then. If no I-frame has enough audio yet (e.g. right after
 		    the channel was tuned), the switch starts with the newest one.
 		    The delay is limited by drmdevice.ZapAheadMaxDelay.
+		    In the fast channel switch mode with audio
+		    (drmdevice.VideoChannelSwitchMode = 2) the audio starts with the
+		    first picture. The video of a switch with the buffer starts with
+		    the heard audio then, the frames before are skipped (a switch
+		    without the buffer doesn't skip frames).
 
 	drmdevice.ZapAheadMaxDelay = 2
 		Max. delay of a channel switch of drmdevice.ZapAheadSyncAudio (the time

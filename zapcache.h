@@ -202,6 +202,7 @@ public:
 	void ResetStats(void);
 
 	bool SpliceArmed(void) const { return m_spliceArmed; }   ///< true, if a channel switch may start with the buffered packets
+	bool SwitchCached(void);
 	void Splice(const uchar *, int64_t, int64_t, const std::function<int(const uchar *, int)> &);
 
 private:

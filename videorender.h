@@ -243,8 +243,7 @@ public:
 	void ClearDecoderToDisplayQueue(void);
 	bool IsOutputBufferFull(void);
 	void SetDisplayOneFrameThenPause(bool pause) { m_displayOneFrameThenPause = pause; } ///< display one more frame, then pause
-	/** start the playback at the given pts, older frames are dropped */
-	void SchedulePlaybackStartAtPtsMs(int64_t ptsMs) { m_schedulePlaybackStartAtPtsMs = ptsMs; }
+	void SchedulePlaybackStartAtPtsMs(int64_t, bool = false);
 	void ScheduleResyncAtPtsMs(int64_t ptsMs) { m_scheduleResyncAtPtsMs = ptsMs; }       ///< force a resync at the given pts
 	cQueue<cDrmBuffer> *GetMainOutputBuffer(void) { return &m_drmBufferQueue; }          ///< get the queue of frames to be displayed
 	cQueue<cDrmBuffer> *GetPipOutputBuffer(void) { return &m_pipDrmBufferQueue; }        ///< get the queue of pip frames to be displayed
@@ -351,6 +350,8 @@ private:
 	std::atomic<int64_t> m_videoPlaybackPauseScheduledAt = AV_NOPTS_VALUE; ///< if set, video will be paused at the given pts
 	std::atomic<bool> m_displayOneFrameThenPause = false;                  ///< set, if only one frame shall be displayed and then pause playback
 	std::atomic<int64_t> m_schedulePlaybackStartAtPtsMs = AV_NOPTS_VALUE;  ///< if set, frames with PTS older than this will be dropped
+	static constexpr int MAX_START_WITH_AUDIO_SKIP_MS = 1000;              ///< max. time, which is skipped to start the video with the heard audio
+	std::atomic<bool> m_startWithAudio = false;                            ///< the scheduled playback start skips the frames, which are older than the playing audio
 	std::atomic<int64_t> m_scheduleResyncAtPtsMs = AV_NOPTS_VALUE;         ///< if set, a resync (enter state BUFFERING) will be forced at the given pts
 
 	cDrmBufferPool m_drmBufferPool;                                        ///< pool of drm buffers
