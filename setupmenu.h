@@ -170,6 +170,8 @@ private:
 	void Create(int = KEEP_CURRENT);
 	void BuildDisplayModeList(void);                    ///< fill the display mode selection
 	void BuildChannelSwitchModeList(void);              ///< fill the channel switch mode selection
+	bool StoreChanged(const char *, int &, int);
+	bool StoreChanged(const char *, bool &, int);
 
 protected:
 	virtual void Store(void);

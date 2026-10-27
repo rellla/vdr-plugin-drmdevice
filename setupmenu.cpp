@@ -687,111 +687,134 @@ void cDeviceSetupMenu::BuildChannelSwitchModeList(void)
 }
 
 /**
+ * Store a setup value, if it changed
+ *
+ * @param name      name of the setup value
+ * @param config    the value in the config, it gets the new value
+ * @param value     the new value
+ *
+ * @return          true, if the value changed
+ */
+bool cDeviceSetupMenu::StoreChanged(const char *name, int &config, int value)
+{
+	if (config == value)
+		return false;
+
+	SetupStore(name, config = value);
+	return true;
+}
+
+/**
+ * Store a setup flag, if it changed
+ *
+ * @param name      name of the setup value
+ * @param config    the flag in the config, it gets the new value
+ * @param value     the new value (0: false)
+ *
+ * @return          true, if the flag changed
+ */
+bool cDeviceSetupMenu::StoreChanged(const char *name, bool &config, int value)
+{
+	if (config == (value != 0))
+		return false;
+
+	config = value != 0;
+	SetupStore(name, config);
+	return true;
+}
+
+/**
  * Store settings
+ *
+ * Only the changed values are stored and applied.
  */
 void cDeviceSetupMenu::Store(void)
 {
 	//
 	// General
 	//
-	SetupStore("HideMainMenuEntry", m_pConfig->ConfigHideMainMenuEntry = m_cHideMainMenuEntry);
+	StoreChanged("HideMainMenuEntry", m_pConfig->ConfigHideMainMenuEntry, m_cHideMainMenuEntry);
 
 	//
 	// Video
 	//
-	SetupStore("VideoEnableHDR", m_pConfig->ConfigVideoEnableHDR = m_cVideoEnableHDR);
+	bool hdrChanged = StoreChanged("VideoEnableHDR", m_pConfig->ConfigVideoEnableHDR, m_cVideoEnableHDR);
 	bool displayModeChanged = m_pConfig->ConfigVideoDisplayMode != m_cVideoDisplayMode;
-	m_pConfig->ConfigVideoDisplayMode = m_cVideoDisplayMode;
-	// only save default and auto adjusted modes
-	if (m_pConfig->ConfigVideoDisplayMode < CONFIG_DISPLAY_MODE_MANUAL)
-		SetupStore("VideoDisplayMode", m_cVideoDisplayMode);
-	SetupStore("VideoChannelSwitchMode", m_pConfig->ConfigVideoChannelSwitchMode = m_cVideoChannelSwitchMode);
-	m_pDevice->SetChannelSwitchMode(static_cast<ChannelSwitchMode>(m_pConfig->ConfigVideoChannelSwitchMode));
+	if (displayModeChanged) {
+		m_pConfig->ConfigVideoDisplayMode = m_cVideoDisplayMode;
+		// only save default and auto adjusted modes
+		if (m_pConfig->ConfigVideoDisplayMode < CONFIG_DISPLAY_MODE_MANUAL)
+			SetupStore("VideoDisplayMode", m_cVideoDisplayMode);
+	}
+	if (StoreChanged("VideoChannelSwitchMode", m_pConfig->ConfigVideoChannelSwitchMode, m_cVideoChannelSwitchMode))
+		m_pDevice->SetChannelSwitchMode(static_cast<ChannelSwitchMode>(m_pConfig->ConfigVideoChannelSwitchMode));
+	bool zoomChanged = false;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
-		SetupStore(cString::sprintf("ZoomLevel%d", i + 1), m_pConfig->ConfigZoomLevel[i] = m_cZoomLevel[i]);
+		zoomChanged |= StoreChanged(cString::sprintf("ZoomLevel%d", i + 1), m_pConfig->ConfigZoomLevel[i], m_cZoomLevel[i]);
 	// a disabled zoom level can't stay active
-	if (m_pDevice->GetZoomLevel() && !m_pDevice->GetZoom())
+	if (zoomChanged && m_pDevice->GetZoomLevel() && !m_pDevice->GetZoom())
 		m_pDevice->SetZoomLevel(0);
 
 	//
 	// Audio
 	//
-	SetupStore("AudioSoftvol", m_pConfig->ConfigAudioSoftvol = m_cAudioSoftvol);
-	// FIXME: can handle more audio state changes here
-	// downmix changed reset audio, to get change direct
-	bool downmixChanged = m_pConfig->ConfigAudioDownmix != m_cAudioDownmix;
-	SetupStore("AudioDownmix", m_pConfig->ConfigAudioDownmix = m_cAudioDownmix);
+	bool softvolChanged = StoreChanged("AudioSoftvol", m_pConfig->ConfigAudioSoftvol, m_cAudioSoftvol);
+	// a changed downmix resets the audio, so it is applied at once
+	bool downmixChanged = StoreChanged("AudioDownmix", m_pConfig->ConfigAudioDownmix, m_cAudioDownmix);
 	if (downmixChanged)
 		m_pDevice->ResetChannelId();
-	m_pConfig->ConfigAudioPassthroughMask = (m_cAudioPassthroughAC3 ? CODEC_AC3 : 0)
-	                                      | (m_cAudioPassthroughEAC3 ? CODEC_EAC3 : 0)
-	                                      | (m_cAudioPassthroughDTS ? CODEC_DTS : 0)
-	                                      | (m_cAudioPassthroughTrueHD ? CODEC_TRUEHD : 0)
-	                                      | (m_cAudioPassthroughDTSHD ? CODEC_DTSHD : 0);
-	m_pConfig->ConfigAudioPassthroughState = m_cAudioPassthroughMode != PASSTHROUGH_OFF;
+
+	int passthroughMask = (m_cAudioPassthroughAC3 ? CODEC_AC3 : 0)
+	                    | (m_cAudioPassthroughEAC3 ? CODEC_EAC3 : 0)
+	                    | (m_cAudioPassthroughDTS ? CODEC_DTS : 0)
+	                    | (m_cAudioPassthroughTrueHD ? CODEC_TRUEHD : 0)
+	                    | (m_cAudioPassthroughDTSHD ? CODEC_DTSHD : 0);
+	bool passthroughState = m_cAudioPassthroughMode != PASSTHROUGH_OFF;
 	// switching the passthrough off keeps the automatic mode for the passthrough toggle
-	if (m_cAudioPassthroughMode != PASSTHROUGH_OFF)
-		m_pConfig->ConfigAudioPassthroughAuto = m_cAudioPassthroughMode == PASSTHROUGH_AUTO;
-	// the automatic mode is stored as an additional bit, the sign is the on/off state
-	int passthrough = m_pConfig->ConfigAudioPassthroughMask | (m_pConfig->ConfigAudioPassthroughAuto ? CODEC_PASSTHROUGH_AUTO : 0);
-	SetupStore("AudioPassthrough", m_pConfig->ConfigAudioPassthroughState ? passthrough : -passthrough);
-	m_pDevice->SetPassthroughOn(m_pConfig->ConfigAudioPassthroughState);
-	SetupStore("AudioDisableAutoAES", m_pConfig->ConfigAudioDisableAutoAES = m_cAudioDisableAutoAES);
-	SetupStore("AudioDelay", m_pConfig->ConfigVideoAudioDelayMs = m_cAudioDelay);
-	SetupStore("AudioNormalize", m_pConfig->ConfigAudioNormalize = m_cAudioNormalize);
-	SetupStore("AudioMaxNormalize", m_pConfig->ConfigAudioMaxNormalize = m_cAudioMaxNormalize);
-	SetupStore("AudioCompression", m_pConfig->ConfigAudioCompression = m_cAudioCompression);
-	SetupStore("AudioMaxCompression", m_pConfig->ConfigAudioMaxCompression = m_cAudioMaxCompression);
-	SetupStore("AudioStereoDescent", m_pConfig->ConfigAudioStereoDescent = m_cAudioStereoDescent);
+	bool passthroughAuto = passthroughState ? m_cAudioPassthroughMode == PASSTHROUGH_AUTO : m_pConfig->ConfigAudioPassthroughAuto;
+	if (m_pConfig->ConfigAudioPassthroughMask != passthroughMask ||
+	    m_pConfig->ConfigAudioPassthroughState != passthroughState ||
+	    m_pConfig->ConfigAudioPassthroughAuto != passthroughAuto) {
+		m_pConfig->ConfigAudioPassthroughMask = passthroughMask;
+		m_pConfig->ConfigAudioPassthroughState = passthroughState;
+		m_pConfig->ConfigAudioPassthroughAuto = passthroughAuto;
+		// the automatic mode is stored as an additional bit, the sign is the on/off state
+		int passthrough = passthroughMask | (passthroughAuto ? CODEC_PASSTHROUGH_AUTO : 0);
+		SetupStore("AudioPassthrough", passthroughState ? passthrough : -passthrough);
+		m_pDevice->SetPassthroughOn(passthroughState);
+	}
+	bool autoAesChanged = StoreChanged("AudioDisableAutoAES", m_pConfig->ConfigAudioDisableAutoAES, m_cAudioDisableAutoAES);
+	StoreChanged("AudioDelay", m_pConfig->ConfigVideoAudioDelayMs, m_cAudioDelay);
+	bool normalizeChanged = StoreChanged("AudioNormalize", m_pConfig->ConfigAudioNormalize, m_cAudioNormalize);
+	normalizeChanged |= StoreChanged("AudioMaxNormalize", m_pConfig->ConfigAudioMaxNormalize, m_cAudioMaxNormalize);
+	bool compressionChanged = StoreChanged("AudioCompression", m_pConfig->ConfigAudioCompression, m_cAudioCompression);
+	compressionChanged |= StoreChanged("AudioMaxCompression", m_pConfig->ConfigAudioMaxCompression, m_cAudioMaxCompression);
+	bool stereoDescentChanged = StoreChanged("AudioStereoDescent", m_pConfig->ConfigAudioStereoDescent, m_cAudioStereoDescent);
 
 	//
 	// Audio equalizer
 	//
-	SetupStore("AudioEq", m_pConfig->ConfigAudioEq = m_cAudioEq);
-	SetupStore("AudioEqBand01b", m_pConfig->ConfigAudioEqBand[0]  = m_cAudioEqBand[0]);
-	SetupStore("AudioEqBand02b", m_pConfig->ConfigAudioEqBand[1]  = m_cAudioEqBand[1]);
-	SetupStore("AudioEqBand03b", m_pConfig->ConfigAudioEqBand[2]  = m_cAudioEqBand[2]);
-	SetupStore("AudioEqBand04b", m_pConfig->ConfigAudioEqBand[3]  = m_cAudioEqBand[3]);
-	SetupStore("AudioEqBand05b", m_pConfig->ConfigAudioEqBand[4]  = m_cAudioEqBand[4]);
-	SetupStore("AudioEqBand06b", m_pConfig->ConfigAudioEqBand[5]  = m_cAudioEqBand[5]);
-	SetupStore("AudioEqBand07b", m_pConfig->ConfigAudioEqBand[6]  = m_cAudioEqBand[6]);
-	SetupStore("AudioEqBand08b", m_pConfig->ConfigAudioEqBand[7]  = m_cAudioEqBand[7]);
-	SetupStore("AudioEqBand09b", m_pConfig->ConfigAudioEqBand[8]  = m_cAudioEqBand[8]);
-	SetupStore("AudioEqBand10b", m_pConfig->ConfigAudioEqBand[9]  = m_cAudioEqBand[9]);
-	SetupStore("AudioEqBand11b", m_pConfig->ConfigAudioEqBand[10] = m_cAudioEqBand[10]);
-	SetupStore("AudioEqBand12b", m_pConfig->ConfigAudioEqBand[11] = m_cAudioEqBand[11]);
-	SetupStore("AudioEqBand13b", m_pConfig->ConfigAudioEqBand[12] = m_cAudioEqBand[12]);
-	SetupStore("AudioEqBand14b", m_pConfig->ConfigAudioEqBand[13] = m_cAudioEqBand[13]);
-	SetupStore("AudioEqBand15b", m_pConfig->ConfigAudioEqBand[14] = m_cAudioEqBand[14]);
-	SetupStore("AudioEqBand16b", m_pConfig->ConfigAudioEqBand[15] = m_cAudioEqBand[15]);
-	SetupStore("AudioEqBand17b", m_pConfig->ConfigAudioEqBand[16] = m_cAudioEqBand[16]);
-	SetupStore("AudioEqBand18b", m_pConfig->ConfigAudioEqBand[17] = m_cAudioEqBand[17]);
+	bool equalizerChanged = StoreChanged("AudioEq", m_pConfig->ConfigAudioEq, m_cAudioEq);
+	for (int i = 0; i < 18; i++)
+		equalizerChanged |= StoreChanged(cString::sprintf("AudioEqBand%02db", i + 1), m_pConfig->ConfigAudioEqBand[i], m_cAudioEqBand[i]);
 
 	//
 	// Picture-in-picture
 	//
-	bool pipChanged = m_pConfig->ConfigPipScalePercent    != m_cPipScalePercent ||
-	                  m_pConfig->ConfigPipLeftPercent     != m_cPipLeftPercent ||
-	                  m_pConfig->ConfigPipTopPercent      != m_cPipTopPercent ||
-	                  m_pConfig->ConfigPipUseAlt          != m_cPipUseAlt ||
-	                  m_pConfig->ConfigPipAltScalePercent != m_cPipAltScalePercent ||
-	                  m_pConfig->ConfigPipAltLeftPercent  != m_cPipAltLeftPercent ||
-	                  m_pConfig->ConfigPipAltTopPercent   != m_cPipAltTopPercent;
-
-	SetupStore("PipScalePercent", m_pConfig->ConfigPipScalePercent = m_cPipScalePercent);
-	SetupStore("PipLeftPercent", m_pConfig->ConfigPipLeftPercent = m_cPipLeftPercent);
-	SetupStore("PipTopPercent", m_pConfig->ConfigPipTopPercent = m_cPipTopPercent);
-	SetupStore("PipUseAlt", m_pConfig->ConfigPipUseAlt = m_cPipUseAlt);
-	SetupStore("PipAltScalePercent", m_pConfig->ConfigPipAltScalePercent = m_cPipAltScalePercent);
-	SetupStore("PipAltLeftPercent", m_pConfig->ConfigPipAltLeftPercent = m_cPipAltLeftPercent);
-	SetupStore("PipAltTopPercent", m_pConfig->ConfigPipAltTopPercent = m_cPipAltTopPercent);
+	bool pipChanged = StoreChanged("PipScalePercent", m_pConfig->ConfigPipScalePercent, m_cPipScalePercent);
+	pipChanged |= StoreChanged("PipLeftPercent", m_pConfig->ConfigPipLeftPercent, m_cPipLeftPercent);
+	pipChanged |= StoreChanged("PipTopPercent", m_pConfig->ConfigPipTopPercent, m_cPipTopPercent);
+	pipChanged |= StoreChanged("PipUseAlt", m_pConfig->ConfigPipUseAlt, m_cPipUseAlt);
+	pipChanged |= StoreChanged("PipAltScalePercent", m_pConfig->ConfigPipAltScalePercent, m_cPipAltScalePercent);
+	pipChanged |= StoreChanged("PipAltLeftPercent", m_pConfig->ConfigPipAltLeftPercent, m_cPipAltLeftPercent);
+	pipChanged |= StoreChanged("PipAltTopPercent", m_pConfig->ConfigPipAltTopPercent, m_cPipAltTopPercent);
 	if (m_pDevice->UsePip() && pipChanged)
 		m_pDevice->PipSetSize();
 
 	//
 	// Logging
 	//
-	m_pConfig->ConfigLogLevels =
+	int logLevels =
 		(m_cLogDebug_    ? L_DEBUG : 0) |
 		(m_cLogDRM       ? L_DRM : 0) |
 		(m_cLogCodec     ? L_CODEC : 0) |
@@ -807,38 +830,43 @@ void cDeviceSetupMenu::Store(void)
 		(m_cLogGL        ? L_OPENGL : 0) |
 		(m_cLogGLTime    ? L_OPENGL_TIME : 0) |
 		(m_cLogGLTimeAll ? L_OPENGL_TIME_ALL : 0);
-	m_pConfig->ConfigLogState = m_cLogDefault;
-	SetupStore("LogFFmpegLevel", m_pConfig->ConfigLogFFmpegLevel = m_cLogFFmpegLevel);
-	LOGGER->SetFFmpegLogLevel(cDeviceConfig::FFmpegLogLevel(m_pConfig->ConfigLogFFmpegLevel));
-	if (m_pConfig->ConfigLogState) {
-		SetupStore("LogLevel", m_pConfig->ConfigLogLevels);
-		if (LOGGER->GetLogLevel() != m_pConfig->ConfigLogLevels) {
-			m_pConfig->PrintLogLevel(m_pConfig->ConfigLogLevels);
-			LOGGER->SetLogLevel(m_pConfig->ConfigLogLevels);
+	if (StoreChanged("LogFFmpegLevel", m_pConfig->ConfigLogFFmpegLevel, m_cLogFFmpegLevel))
+		LOGGER->SetFFmpegLogLevel(cDeviceConfig::FFmpegLogLevel(m_pConfig->ConfigLogFFmpegLevel));
+	if (m_pConfig->ConfigLogLevels != logLevels || m_pConfig->ConfigLogState != m_cLogDefault) {
+		m_pConfig->ConfigLogLevels = logLevels;
+		m_pConfig->ConfigLogState = m_cLogDefault;
+		// the sign is the on/off state
+		if (m_pConfig->ConfigLogState) {
+			SetupStore("LogLevel", m_pConfig->ConfigLogLevels);
+			if (LOGGER->GetLogLevel() != m_pConfig->ConfigLogLevels) {
+				m_pConfig->PrintLogLevel(m_pConfig->ConfigLogLevels);
+				LOGGER->SetLogLevel(m_pConfig->ConfigLogLevels);
+			}
+		} else {
+			SetupStore("LogLevel", -m_pConfig->ConfigLogLevels);
+			LOGGER->SetLogLevel(0);
 		}
-	} else {
-		SetupStore("LogLevel", -m_pConfig->ConfigLogLevels);
-		LOGGER->SetLogLevel(0);
 	}
 
 	//
 	// Expert settings
 	//
-	SetupStore("AdditionalBufferLengthMs", m_pConfig->ConfigAdditionalBufferLengthMs = m_cAdditionalBufferLengthMs);
-	SetupStore("DisableDeint", m_pConfig->ConfigDisableDeint = m_cDisableDeint);
-	if (m_pConfig->ConfigDisableDeint) {
-		LOGDEBUG("Disable deinterlacer!");
+	StoreChanged("AdditionalBufferLengthMs", m_pConfig->ConfigAdditionalBufferLengthMs, m_cAdditionalBufferLengthMs);
+	if (StoreChanged("DisableDeint", m_pConfig->ConfigDisableDeint, m_cDisableDeint)) {
+		if (m_pConfig->ConfigDisableDeint)
+			LOGDEBUG("Disable deinterlacer!");
+		m_pDevice->SetDisableDeint();
 	}
-	m_pDevice->SetDisableDeint();
-	SetupStore("DecoderFallbackToSw", m_pConfig->ConfigDecoderFallbackToSw = m_cDecoderFallbackToSw);
-	SetupStore("DecoderFallbackToSwNumPkts", m_pConfig->ConfigDecoderFallbackToSwNumPkts = m_cDecoderFallbackToSwNumPkts);
-	m_pDevice->SetDecoderFallbackToSw(m_pConfig->ConfigDecoderFallbackToSw);
-	SetupStore("ParseH264StreamStart", m_pConfig->ConfigParseH264StreamStart = m_cParseH264StreamStart);
-	SetupStore("DropInvalidH264PFrames", m_pConfig->ConfigDropInvalidH264PFrames = m_cDropInvalidH264PFrames);
+	bool fallbackChanged = StoreChanged("DecoderFallbackToSw", m_pConfig->ConfigDecoderFallbackToSw, m_cDecoderFallbackToSw);
+	fallbackChanged |= StoreChanged("DecoderFallbackToSwNumPkts", m_pConfig->ConfigDecoderFallbackToSwNumPkts, m_cDecoderFallbackToSwNumPkts);
+	if (fallbackChanged)
+		m_pDevice->SetDecoderFallbackToSw(m_pConfig->ConfigDecoderFallbackToSw);
+	StoreChanged("ParseH264StreamStart", m_pConfig->ConfigParseH264StreamStart, m_cParseH264StreamStart);
+	StoreChanged("DropInvalidH264PFrames", m_pConfig->ConfigDropInvalidH264PFrames, m_cDropInvalidH264PFrames);
 #ifdef USE_GLES
-	SetupStore("MaxSizeGPUImageCache", m_pConfig->ConfigMaxSizeGPUImageCache = m_cMaxSizeGPUImageCache);
+	StoreChanged("MaxSizeGPUImageCache", m_pConfig->ConfigMaxSizeGPUImageCache, m_cMaxSizeGPUImageCache);
 #endif
-	SetupStore("ShowChannelSwitchDurationMessage", m_pConfig->ConfigShowChannelSwitchDurationMessage = m_cShowChannelSwitchDurationMessage);
+	StoreChanged("ShowChannelSwitchDurationMessage", m_pConfig->ConfigShowChannelSwitchDurationMessage, m_cShowChannelSwitchDurationMessage);
 
 	//
 	// Apply the settings to the output objects
@@ -848,17 +876,25 @@ void cDeviceSetupMenu::Store(void)
 	if (m_pDevice->IsDetached())
 		return;
 
-	m_pDevice->SetEnableHdr(m_pConfig->ConfigVideoEnableHDR);
+	if (hdrChanged)
+		m_pDevice->SetEnableHdr(m_pConfig->ConfigVideoEnableHDR);
 
 	// the audio stream is recreated on an attach, so don't store its pointer in the menu
 	cAudioStream *audio = m_pDevice->Audio();
-	audio->SetSoftvol(m_pConfig->ConfigAudioSoftvol);
-	audio->SetDownmix(m_pConfig->ConfigAudioDownmix);
-	audio->SetAutoAES(!m_pConfig->ConfigAudioDisableAutoAES);
-	audio->SetNormalize(m_pConfig->ConfigAudioNormalize, m_pConfig->ConfigAudioMaxNormalize);
-	audio->SetCompression(m_pConfig->ConfigAudioCompression, m_pConfig->ConfigAudioMaxCompression);
-	audio->SetStereoDescent(m_pConfig->ConfigAudioStereoDescent);
-	audio->SetEqualizer(m_pConfig->ConfigAudioEq, m_pConfig->ConfigAudioEqBand);
+	if (softvolChanged)
+		audio->SetSoftvol(m_pConfig->ConfigAudioSoftvol);
+	if (downmixChanged)
+		audio->SetDownmix(m_pConfig->ConfigAudioDownmix);
+	if (autoAesChanged)
+		audio->SetAutoAES(!m_pConfig->ConfigAudioDisableAutoAES);
+	if (normalizeChanged)
+		audio->SetNormalize(m_pConfig->ConfigAudioNormalize, m_pConfig->ConfigAudioMaxNormalize);
+	if (compressionChanged)
+		audio->SetCompression(m_pConfig->ConfigAudioCompression, m_pConfig->ConfigAudioMaxCompression);
+	if (stereoDescentChanged)
+		audio->SetStereoDescent(m_pConfig->ConfigAudioStereoDescent);
+	if (equalizerChanged)
+		audio->SetEqualizer(m_pConfig->ConfigAudioEq, m_pConfig->ConfigAudioEqBand);
 
 	if (displayModeChanged)
 		m_pDevice->SetDisplayMode(m_pConfig->ConfigVideoDisplayMode);
