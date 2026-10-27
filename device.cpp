@@ -239,7 +239,6 @@ void cOutputDevice::SetVideoFormat(bool videoFormat16_9)
 {
 	LOGDEBUG("device: %s: %d", __FUNCTION__, videoFormat16_9);
 
-	// FIXME: 4:3 / 16:9 video format not supported.
 	SetVideoDisplayFormat(eVideoDisplayFormat(Setup.VideoDisplayFormat));
 }
 
