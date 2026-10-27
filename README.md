@@ -259,6 +259,18 @@ Setup: /etc/vdr/setup.conf
 		    I-frames within 150 frames for it. The picture is up to one GOP later
 		    than with 0 then. If no I-frame has enough audio yet (e.g. right after
 		    the channel was tuned), the switch starts with the newest one.
+		    The delay is limited by drmdevice.ZapAheadMaxDelay.
+
+	drmdevice.ZapAheadMaxDelay = 2
+		Max. delay of a channel switch of drmdevice.ZapAheadSyncAudio (the time
+		from the I-frame with synchronous audio to the newest buffered video
+		packet). If the I-frame is older, the switch starts with the newest
+		I-frame and waits for its audio.
+		0 = 1s
+		1 = 1.5s
+		2 = 2s
+		3 = 3s
+		4 = 5s
 
 	drmdevice.ZapAheadTuners = 2
 		Tuners for the live view and drmdevice.ZapAhead (only, if VDR has at least

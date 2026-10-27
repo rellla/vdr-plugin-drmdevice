@@ -76,7 +76,7 @@ public:
 	bool HasPid(int) const;
 	bool IsTaken(void);
 	void Info(int *, bool *);
-	std::vector<uint8_t> Take(const uint8_t *, int64_t, int *, bool *);
+	std::vector<uint8_t> Take(const uint8_t *, int64_t, int64_t, cZapBuffer::sTaken *);
 
 protected:
 	virtual void Activate(bool);
@@ -170,6 +170,7 @@ public:
 
 	static int NumTuners(void);
 	static int ReleaseSeconds(int);
+	static int MaxDelayMs(int);
 
 	void ChannelSwitchStarted(void);
 	void SetMode(int mode) { m_mode = mode; }                     ///< set the current mode (enum Mode)
@@ -182,7 +183,7 @@ public:
 	void ResetStats(void);
 
 	bool SpliceArmed(void) const { return m_spliceArmed; }   ///< true, if a channel switch may start with the buffered packets
-	void Splice(const uchar *, int64_t, const std::function<int(const uchar *, int)> &);
+	void Splice(const uchar *, int64_t, int64_t, const std::function<int(const uchar *, int)> &);
 
 private:
 	static constexpr int PREPARE_DELAY_MS = 500;   ///< delay after a channel switch (the live view gets the tuner first)
@@ -191,6 +192,7 @@ private:
 	static constexpr int PLAY_RETRY_WAIT_MS = 5;   ///< time between two retries
 	static constexpr int MAX_RECEIVERS = 2;        ///< zap direction and opposite direction
 	static constexpr int RELEASE_TIMES = 5;        ///< number of the release times (drmdevice.ZapAheadRelease)
+	static constexpr int MAX_DELAYS = 5;           ///< number of the max. delays (drmdevice.ZapAheadMaxDelay)
 
 	std::mutex m_mutex;                      ///< protects the members below
 	/** receivers of the next channel and of the channel in the opposite direction */

@@ -59,6 +59,7 @@ protected:
 	int m_cZapAheadTuners;
 	int m_cZapAheadRelease;
 	int m_cZapAheadSyncAudio;
+	int m_cZapAheadMaxDelay;
 	int m_cZoomLevel[cDeviceConfig::ZOOM_LEVELS];
 
 	// Audio
@@ -151,6 +152,7 @@ private:
 	std::vector<const char *> m_channelSwitchModePtrs; ///< pointers to m_channelSwitchMode for cMenuEditStraItem
 	const char *m_zapAheadTuners[2];                   ///< texts of the zap cache tuners selection
 	const char *m_zapAheadReleases[5];                 ///< texts of the release time selection
+	const char *m_zapAheadMaxDelays[5];                ///< texts of the max. delay selection
 	static constexpr int FFMPEG_LOG_LEVELS = 4;        ///< number of the FFmpeg log levels
 	/** texts of the FFmpeg log level selection (see cDeviceConfig::ConfigLogFFmpegLevel) */
 	const char *m_ffmpegLogLevels[FFMPEG_LOG_LEVELS] = { "info", "verbose", "debug", "trace" };

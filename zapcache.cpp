@@ -238,12 +238,12 @@ int cZapReceiver::PesStartFlags(const uchar *packet) const
  *
  * @param next          TS packet, which is played next
  * @param audioAhead    see cZapBuffer::Take()
- * @param[out] frames   number of the taken frames
- * @param[out] synced   true, if the packets start with synchronous audio
+ * @param maxDelay      see cZapBuffer::Take()
+ * @param[out] taken    see cZapBuffer::Take()
  *
  * @return              the packets from an I-frame up to the next packet
  */
-std::vector<uint8_t> cZapReceiver::Take(const uint8_t *next, int64_t audioAhead, int *frames, bool *synced)
+std::vector<uint8_t> cZapReceiver::Take(const uint8_t *next, int64_t audioAhead, int64_t maxDelay, cZapBuffer::sTaken *taken)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -256,7 +256,7 @@ std::vector<uint8_t> cZapReceiver::Take(const uint8_t *next, int64_t audioAhead,
 		m_buffer.Put(&m_pending[pos], PesStartFlags(&m_pending[pos]));
 	m_pending.clear();
 
-	return m_buffer.Take(next, audioAhead, frames, synced);
+	return m_buffer.Take(next, audioAhead, maxDelay, taken);
 }
 
 /*****************************************************************************
@@ -286,6 +286,24 @@ int cZapCache::ReleaseSeconds(int release)
 	static const int seconds[RELEASE_TIMES] = { 0, 20, 50, 5 * 60, 30 * 60 };
 
 	return seconds[std::clamp(release, 0, RELEASE_TIMES - 1)];
+}
+
+/**
+ * Get the max. delay of a channel switch, which starts with synchronous audio
+ *
+ * An older I-frame, whose audio is buffered, delays the playback more. The
+ * delay is the time from the I-frame to the newest buffered video packet.
+ *
+ * @param maxDelay  max. delay (drmdevice.ZapAheadMaxDelay): 0 = 1s, 1 = 1.5s,
+ *                  2 = 2s, 3 = 3s, 4 = 5s
+ *
+ * @return          the delay in ms
+ */
+int cZapCache::MaxDelayMs(int maxDelay)
+{
+	static const int ms[MAX_DELAYS] = { 1000, 1500, 2000, 3000, 5000 };
+
+	return ms[std::clamp(maxDelay, 0, MAX_DELAYS - 1)];
 }
 
 /**
@@ -736,13 +754,14 @@ void cZapCache::Prepare(int liveChannel, int previousChannel, int mode)
  * @param audioAhead    start with an I-frame, whose synchronous audio is buffered
  *                      this much (in 90kHz ticks) ahead (cZapBuffer::NEWEST_I_FRAME:
  *                      start with the newest I-frame)
+ * @param maxDelay      max. delay of a start with synchronous audio (in 90kHz ticks,
+ *                      see cZapBuffer::Take())
  * @param play          plays a TS packet (cDevice::PlayTs())
  */
-void cZapCache::Splice(const uchar *data, int64_t audioAhead, const std::function<int(const uchar *, int)> &play)
+void cZapCache::Splice(const uchar *data, int64_t audioAhead, int64_t maxDelay, const std::function<int(const uchar *, int)> &play)
 {
 	std::vector<uint8_t> packets;
-	int frames = 0;
-	bool synced = false;
+	cZapBuffer::sTaken taken;
 	int channelNum;
 
 	{
@@ -775,7 +794,7 @@ void cZapCache::Splice(const uchar *data, int64_t audioAhead, const std::functio
 			return;
 		}
 
-		packets = receiver->Take(data, audioAhead, &frames, &synced);
+		packets = receiver->Take(data, audioAhead, maxDelay, &taken);
 	}
 
 	if (packets.empty()) {
@@ -798,12 +817,13 @@ void cZapCache::Splice(const uchar *data, int64_t audioAhead, const std::functio
 		std::lock_guard<std::mutex> lock(m_mutex);
 		m_switchCached = true;
 		m_cached++;
-		if (synced)
+		if (taken.synced)
 			m_synced++;
 	}
 
-	LOGDEBUG("zapcache: channel %d started with %d buffered frames (%zu packets)%s", channelNum, frames, packets.size() / TS_SIZE,
-		audioAhead == cZapBuffer::NEWEST_I_FRAME ? "" : synced ? " and synchronous audio" : ", the audio isn't buffered yet");
+	LOGDEBUG("zapcache: channel %d started with %d buffered frames (%zu packets, %dms delay)%s", channelNum, taken.frames, packets.size() / TS_SIZE,
+		taken.delay >= 0 ? static_cast<int>(taken.delay / 90) : 0,
+		audioAhead == cZapBuffer::NEWEST_I_FRAME ? "" : taken.synced ? " and synchronous audio" : ", without synchronous audio");
 }
 
 /**

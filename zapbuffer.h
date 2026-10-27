@@ -29,6 +29,8 @@
  * channel is sent ahead of its audio, so the audio of the newest I-frame may
  * not be received yet. Take() can start with the newest I-frame, whose audio
  * is buffered already, so the playback starts with synchronous audio at once.
+ * The older the I-frame, the more the playback is delayed, so the delay is
+ * limited.
  *
  * The buffer starts with the video PES packet of an I-frame: a frame detector
  * may detect the start of a frame in a later TS packet of the PES packet (e.g.
@@ -51,8 +53,15 @@ public:
 	static constexpr size_t MAX_BYTES = 12 * 1024 * 1024; ///< max. size of the buffered packets
 	static constexpr int64_t NEWEST_I_FRAME = -1;         ///< Take(): start with the newest I-frame
 
+	/** the taken packets (see Take()) */
+	struct sTaken {
+		int frames = 0;                 ///< number of the frames
+		bool synced = false;            ///< the packets start with an I-frame with synchronous audio
+		int64_t delay = -1;             ///< time from the I-frame to the newest video PES packet (90kHz ticks, -1: unknown)
+	};
+
 	void Put(const uint8_t *, int);
-	std::vector<uint8_t> Take(const uint8_t *, int64_t, int *, bool *);
+	std::vector<uint8_t> Take(const uint8_t *, int64_t, int64_t, sTaken *);
 	void Reset(void);
 
 	bool Ready(void) const { return !m_iFrames.empty(); }    ///< true, if the buffer starts with an I-frame
