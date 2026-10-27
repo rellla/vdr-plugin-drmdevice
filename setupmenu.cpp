@@ -162,6 +162,20 @@ static cString SwitchTime(int ms)
 }
 
 /**
+ * Format the average frame corrections after a channel switch for the statistics
+ *
+ * @param corrections   average number of the dropped and repeated frames (-1: unknown)
+ *
+ * @return              e.g. "0.4" or "-"
+ *
+ * @ingroup menu
+ */
+static cString Corrections(double corrections)
+{
+	return corrections >= 0 ? cString::sprintf("%.1f", corrections) : cString("-");
+}
+
+/**
  * Add a statistics item, whose text is updated, while the menu is shown
  *
  * @param text      creates the current text of the item
@@ -281,12 +295,17 @@ void cDeviceSetupMenu::AddStatistics(void)
 		AddLiveItem([this]() {
 			cZapCache::sStats stats;
 			m_pDevice->ZapCache()->GetStats(&stats);
-			return cString::sprintf(tr("Switch time buffered: picture %s, playback %s"), *SwitchTime(stats.pictureMs[1]), *SwitchTime(stats.startMs[1]));
+			return cString::sprintf(tr("Switch time buffered: picture %s, playback %s, delay %s"), *SwitchTime(stats.pictureMs[1]), *SwitchTime(stats.startMs[1]), *SwitchTime(stats.delayMs));
 		});
 		AddLiveItem([this]() {
 			cZapCache::sStats stats;
 			m_pDevice->ZapCache()->GetStats(&stats);
 			return cString::sprintf(tr("Switch time without buffer: picture %s, playback %s"), *SwitchTime(stats.pictureMs[0]), *SwitchTime(stats.startMs[0]));
+		});
+		AddLiveItem([this]() {
+			cZapCache::sStats stats;
+			m_pDevice->ZapCache()->GetStats(&stats);
+			return cString::sprintf(tr("Frame corrections after a switch: buffered %s, without buffer %s"), *Corrections(stats.corrections[1]), *Corrections(stats.corrections[0]));
 		});
 	}
 

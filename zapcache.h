@@ -156,6 +156,8 @@ public:
 		int synced = 0;                     ///< switches, which started with synchronous audio
 		int pictureMs[2] = {};              ///< average time until the first picture [0: without buffer, 1: with buffer] (0: unknown)
 		int startMs[2] = {};                ///< average time until the playback started [0: without buffer, 1: with buffer] (0: unknown)
+		int delayMs = 0;                    ///< average delay of the switches with buffer (0: unknown, see cZapBuffer::sTaken::delay)
+		double corrections[2] = { -1, -1 }; ///< average frame corrections of the A/V sync after a switch [0: without buffer, 1: with buffer] (-1: unknown)
 	};
 
 	/** the channels, which are tuned ahead (drmdevice.ZapAhead) */
@@ -179,6 +181,7 @@ public:
 	void Clear(void);
 
 	void ReportSwitchTime(bool, int);
+	void ReportSwitchCorrections(int);
 	void GetStats(sStats *);
 	void ResetStats(void);
 
@@ -219,6 +222,11 @@ private:
 	int m_pictureCount[2] = {};              ///< number of these times
 	int64_t m_startSumMs[2] = {};            ///< sum of the times until the playback started [without buffer, with buffer]
 	int m_startCount[2] = {};                ///< number of these times
+	int64_t m_delaySumMs = 0;                ///< sum of the delays of the switches with buffer
+	int m_delayCount = 0;                    ///< number of these delays
+	bool m_countingCorrections = false;      ///< the frame corrections of the current switch are counted
+	int64_t m_correctionSum[2] = {};         ///< sum of the frame corrections after a switch [without buffer, with buffer]
+	int m_correctionCount[2] = {};           ///< number of these switches
 	time_t m_lastSwitch;                     ///< time of the last channel switch (also by SVDRP)
 	bool m_released = false;                 ///< the receivers were released without key press (main thread only)
 
