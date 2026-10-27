@@ -242,7 +242,7 @@ Setup: /etc/vdr/setup.conf
 		Release the devices of drmdevice.ZapAhead after a time without key press
 		(and without channel switch), so VDR's EPG scan can use them. The EPG
 		scan starts 60s after the last key press. The next key press tunes the
-		channels again.
+		channels again, but not, while a menu is shown (only after it is closed).
 		0 = never
 		1 = after 20s
 		2 = after 50s

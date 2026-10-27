@@ -102,7 +102,7 @@ private:
  *
  * The receivers are released after a time without key press, so VDR's EPG scan
  * (which starts 60s after the last key press) can use the devices. The next key
- * press tunes the channels again.
+ * press tunes the channels again, but not, while a menu is shown.
  *
  * The receiver is started and stopped by the main thread (MainThreadHook()),
  * like VDR's own channel switches. The channel switches are reported by
