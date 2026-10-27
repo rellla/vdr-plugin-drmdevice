@@ -55,7 +55,6 @@ extern "C" {
 
 #include <cinttypes>
 
-#include <sys/mman.h>
 
 #include <drm_fourcc.h>
 
@@ -398,16 +397,15 @@ extern "C" uint8_t * CreateJpeg(uint8_t * image, int *size, int quality,
  */
 void cGrabBuffer::FreeInput(void)
 {
-	// early return, because the grab buffer wasn't set
-	if (m_outputRect.IsEmpty())
-		return;
+	m_snapshot.Release();
 
 	// free the allocated memory
-	for (int plane = 0; plane < m_numPlanes; plane++) {
-		if (m_size[plane]) {
-			LOGDEBUG2(L_GRAB, "%s: %s: free buf %p (plane %d)", m_identifier, __FUNCTION__, m_pPlane[plane], plane);
-			free(m_pPlane[plane]);
+	for (int i = 0; i < 4; i++) {
+		if (m_pCopy[i]) {
+			LOGDEBUG2(L_GRAB, "%s: %s: free buf %p (%d)", m_identifier, __FUNCTION__, m_pCopy[i], i);
+			free(m_pCopy[i]);
 		}
+		m_pCopy[i] = nullptr;
 	}
 
 	// reset member variables
@@ -420,7 +418,6 @@ void cGrabBuffer::FreeInput(void)
 	for (int i = 0; i < 4; i++) {
 		m_offset[i] = 0;
 		m_pitch[i] = 0;
-		m_size[i] = 0;
 		m_pPlane[i] = nullptr;
 	}
 }
@@ -440,6 +437,13 @@ void cGrabBuffer::Clear(void)
 /**
  * Set the grab buffer and the dimensions how it is presented on the screen
  *
+ * This is called in the display thread, so it must not block:
+ * A buffer with a DMA-BUF descriptor (hardware decoded video (PRIME), software
+ * decoded video (dumb buffer), OpenGL osd) is only referenced by a snapshot
+ * (the descriptors are duplicated).
+ * Its data is copied later by LoadInput() in the thread, which requested the grab.
+ * Only a buffer without DMA-BUF objects (software osd) is copied here.
+ *
  * @param src          original drm buffer, where the parameters and data is copied from
  */
 void cGrabBuffer::Set(cDrmBuffer *src)
@@ -447,48 +451,11 @@ void cGrabBuffer::Set(cDrmBuffer *src)
 	if (src->GetScreenRect().IsEmpty())
 		return;
 
-	void *src_buffer = nullptr;
-	void *dst_buffer = nullptr;
-
-	// on an error the buffers, which were copied already, are freed again
-	void *copied[4] = {};
-	int numCopied = 0;
-	auto freeCopied = [&]() {
-		for (int i = 0; i < numCopied; i++)
-			free(copied[i]);
-		for (int plane = 0; plane < 4; plane++)
-			m_pPlane[plane] = nullptr;
-	};
-
-	// planes aren't mmapped, do it (PRIME)
-	if (!src->Plane(0)) {
-		for (int object = 0; object < src->NumObjects(); object++) {
-
-			// memcpy mmapped data
-			dst_buffer = malloc(src->Size(object));
-			if (!dst_buffer) {
-				LOGERROR("%s: %s: cannot allocate destination buffer (%d): %m", m_identifier, __FUNCTION__, errno);
-				freeCopied();
-				return;
-			}
-
-			src_buffer = mmap(NULL, src->Size(object), PROT_READ, MAP_SHARED, src->DmaBufHandle(object), 0);
-			if (src_buffer == MAP_FAILED) {
-				free(dst_buffer);
-				LOGERROR("%s: %s: cannot map buffer size %d prime_fd %d (%d): %m",
-					m_identifier, __FUNCTION__, src->Size(object), src->DmaBufHandle(object), errno);
-				freeCopied();
-				return;
-			}
-			copied[numCopied++] = dst_buffer;
-
-			memcpy(dst_buffer, src_buffer, src->Size(object));
-			munmap(src_buffer, src->Size(object));
-
-			for (int plane = 0; plane < src->NumPlanes(); plane++) {
-				if (src->ObjectIndex(plane) == object)
-					m_pPlane[plane] = (uint8_t *)dst_buffer;
-			}
+	if (cFrameSnapshot::CanTake(src)) {
+		// the frame is kept until LoadInput(), so it isn't overwritten meanwhile
+		if (!m_snapshot.Take(src, true)) {
+			LOGERROR("%s: %s: cannot take a snapshot of the buffer", m_identifier, __FUNCTION__);
+			return;
 		}
 	} else {
 		for (int plane = 0; plane < src->NumPlanes(); plane++) {
@@ -497,15 +464,15 @@ void cGrabBuffer::Set(cDrmBuffer *src)
 				continue;
 			}
 
-			dst_buffer = malloc(src->Size(plane));
-			if (!dst_buffer) {
+			uint8_t *dst = (uint8_t *)malloc(src->Size(plane));
+			if (!dst) {
 				LOGERROR("%s: %s: cannot allocate destination buffer (%d): %m", m_identifier, __FUNCTION__, errno);
-				freeCopied();
+				FreeInput();
 				return;
 			}
-			copied[numCopied++] = dst_buffer;
-			memcpy(dst_buffer, src->Plane(plane), src->Size(plane));
-			m_pPlane[plane] = (uint8_t *)dst_buffer;
+			memcpy(dst, src->Plane(plane), src->Size(plane));
+			m_pPlane[plane] = dst;
+			m_pCopy[plane] = dst;
 		}
 	}
 
@@ -518,18 +485,47 @@ void cGrabBuffer::Set(cDrmBuffer *src)
 	for (int i = 0; i < src->NumPlanes(); i++) {
 		m_offset[i] = src->Offset(i);
 		m_pitch[i] = src->Pitch(i);
-		m_size[i] = src->Size(i);
 	}
 
 	m_outputRect.Set(src->GetScreenRect().Point(), src->GetScreenRect().Size());
 	m_cropRect.Set(src->GetCropRect().Point(), src->GetCropRect().Size());
 
-	LOGDEBUG2(L_GRAB, "%s: %s: Set input buffer: %dx%d pixFmt %u modifier 0x%" PRIx64 " num planes %d with %dx%d at %d|%d",
-		m_identifier, __FUNCTION__, m_width, m_height, m_pixFmt, m_modifier, m_numPlanes, m_outputRect.Width(), m_outputRect.Height(), m_outputRect.X(), m_outputRect.Y());
-	for (int plane = 0; plane < m_numPlanes; plane++) {
-		LOGDEBUG2(L_GRAB, "%s: %s: Copied plane %d address %p pitch %d offset %d size %d",
-			m_identifier, __FUNCTION__, plane, m_pPlane[plane], m_pitch[plane], m_offset[plane], m_size[plane]);
+	LOGDEBUG2(L_GRAB, "%s: %s: Set input buffer: %dx%d pixFmt %u modifier 0x%" PRIx64 " num planes %d with %dx%d at %d|%d (%s)",
+		m_identifier, __FUNCTION__, m_width, m_height, m_pixFmt, m_modifier, m_numPlanes, m_outputRect.Width(), m_outputRect.Height(), m_outputRect.X(), m_outputRect.Y(),
+		m_snapshot.IsValid() ? "snapshot" : "copied");
+}
+
+/**
+ * Load the data of a snapshot
+ *
+ * Copies the DMA-BUF objects of the snapshot. This is the expensive part of a
+ * grab (uncached memory), it is done in the thread which requested the grab,
+ * not in the display thread.
+ *
+ * @return              true, if the plane data is available
+ */
+bool cGrabBuffer::LoadInput(void)
+{
+	if (!m_snapshot.IsValid())
+		return m_pPlane[0] != nullptr;
+
+	size_t sizes[4];
+	if (!m_snapshot.CopyObjects(m_pCopy, sizes)) {
+		LOGERROR("%s: %s: cannot copy the buffer", m_identifier, __FUNCTION__);
+		return false;
 	}
+
+	for (int plane = 0; plane < m_snapshot.NumPlanes(); plane++)
+		m_pPlane[plane] = m_pCopy[m_snapshot.ObjectIndex(plane)];
+
+	m_snapshot.Release();
+
+	for (int plane = 0; plane < m_numPlanes; plane++) {
+		LOGDEBUG2(L_GRAB, "%s: %s: Copied plane %d address %p pitch %d offset %d",
+			m_identifier, __FUNCTION__, plane, m_pPlane[plane], m_pitch[plane], m_offset[plane]);
+	}
+
+	return true;
 }
 
 /**
@@ -569,9 +565,9 @@ uint8_t *cGrabBuffer::ConvertToRgb(int *size)
 	struct SwsContext *swsCtx;
 	int ret;
 
-	// planes aren't mmapped, return
-	if (!m_pPlane[0]) {
-		LOGERROR("%s: %s: prime data is not mapped!", m_identifier, __FUNCTION__);
+	// copy the data of the snapshot
+	if (!LoadInput()) {
+		LOGERROR("%s: %s: buffer data is not available!", m_identifier, __FUNCTION__);
 		return NULL;
 	}
 
