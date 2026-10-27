@@ -1074,9 +1074,7 @@ int cAudioStream::LazyInit()
 /**
  * Cleanup audio output module (alsa)
  *
- * This currently also stops the audio thread.
- *
- * @todo Move stopping the thread to AlsaExit()
+ * The audio thread is stopped first, because it writes to the alsa device.
  */
 void cAudioStream::Exit(void)
 {
