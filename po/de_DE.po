@@ -206,6 +206,9 @@ msgstr " Tuner für Live-Bild und Cache"
 msgid " Release the tuners without key press"
 msgstr " Tuner ohne Tastendruck freigeben"
 
+msgid " Start with synchronous audio"
+msgstr " Mit synchronem Ton starten"
+
 #, c-format
 msgid "Zoom level %d (/1000)"
 msgstr "Zoomstufe %d (/1000)"

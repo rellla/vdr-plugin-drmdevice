@@ -53,7 +53,7 @@ public:
 	int ChannelNumber(void) const { return m_channelNumber; }                ///< number of the received channel
 	cDevice *Device(void) const { return m_attached ? m_pDevice : nullptr; } ///< the receiving device (nullptr, if detached)
 	bool HasPid(int) const;
-	std::vector<uint8_t> Take(const uint8_t *, int *);
+	std::vector<uint8_t> Take(const uint8_t *, int64_t, int *, bool *);
 
 protected:
 	virtual void Activate(bool);
@@ -64,6 +64,7 @@ private:
 	cDevice *m_pDevice;                     ///< device, which receives the channel
 	std::atomic<bool> m_attached = false;   ///< the receiver is attached (VDR may detach it, if it needs the device)
 	std::vector<int> m_pids;                ///< received pids
+	std::vector<int> m_audioPids;           ///< received audio pids
 	int m_vpid;                             ///< video pid (0: radio channel, nothing is buffered)
 
 	std::mutex m_mutex;                     ///< protects the members below (receiver thread and Take())
@@ -73,6 +74,7 @@ private:
 	bool m_taken = false;                   ///< the buffer was taken, the receiver doesn't buffer anymore
 
 	void AddChannelPid(int);
+	int PesStartFlags(const uchar *) const;
 };
 
 /**
@@ -92,9 +94,11 @@ private:
  * the channel in the opposite direction is received, too, preferably on the
  * device, which is tuned to it already.
  *
- * The switch to this channel starts with the packets since its last I-frame,
+ * The switch to this channel starts with the packets since a buffered I-frame,
  * before VDR's transfer receiver plays its first packet (Splice()), so it
- * doesn't have to wait for the next I-frame.
+ * doesn't have to wait for the next I-frame. It may start with an older I-frame,
+ * whose synchronous audio is buffered, too, so the audio doesn't have to be
+ * waited for.
  *
  * The receivers are released after a time without key press, so VDR's EPG scan
  * (which starts 60s after the last key press) can use the devices. The next key
@@ -127,7 +131,7 @@ public:
 	void Clear(void);
 
 	bool SpliceArmed(void) const { return m_spliceArmed; }   ///< true, if a channel switch may start with the buffered packets
-	void Splice(const uchar *, const std::function<int(const uchar *, int)> &);
+	void Splice(const uchar *, int64_t, const std::function<int(const uchar *, int)> &);
 
 private:
 	static constexpr int PREPARE_DELAY_MS = 500;   ///< delay after a channel switch (the live view gets the tuner first)
