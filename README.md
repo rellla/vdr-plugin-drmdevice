@@ -230,7 +230,7 @@ Setup: /etc/vdr/setup.conf
 		for it, if no other device is free, so a switch back doesn't have to tune.
 		The packets of the channel since its last I-frame are buffered, so the switch
 		starts with this I-frame instead of waiting for the next one. The picture is
-		up to one GOP (max. 64 frames) later than without the buffer then.
+		up to one GOP later than without the buffer then.
 		It only works, if a free device can receive the channel (or the channel is
 		on the transponder of the current channel), and it is off while pip is
 		shown. An encrypted channel isn't buffered (the device of the next channel
@@ -248,6 +248,17 @@ Setup: /etc/vdr/setup.conf
 		2 = after 50s
 		3 = after 5min
 		4 = after 30min
+
+	drmdevice.ZapAheadSyncAudio = 1
+		0 = a channel switch of drmdevice.ZapAhead starts with the newest buffered
+		    I-frame. Its audio is sent later by the broadcaster (the video is sent
+		    ahead of the audio, often about 1s), so the playback waits for it.
+		1 = the switch starts with the newest buffered I-frame, whose synchronous
+		    audio is buffered, too (up to the playback start threshold), so the
+		    audio doesn't have to be waited for. The buffer keeps the last
+		    I-frames within 150 frames for it. The picture is up to one GOP later
+		    than with 0 then. If no I-frame has enough audio yet (e.g. right after
+		    the channel was tuned), the switch starts with the newest one.
 
 	drmdevice.ZapAheadTuners = 2
 		Tuners for the live view and drmdevice.ZapAhead (only, if VDR has at least

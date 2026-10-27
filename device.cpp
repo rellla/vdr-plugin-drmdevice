@@ -522,7 +522,7 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
  * Play TS packets
  *
  * A channel switch to the channel of the zap cache starts with its buffered
- * packets since the last I-frame (see cZapCache::Splice()).
+ * packets since an I-frame (see cZapCache::Splice()).
  *
  * @param data        TS packets
  * @param length      length of the data
@@ -532,8 +532,11 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
  */
 int cOutputDevice::PlayTs(const uchar *data, int length, bool videoOnly)
 {
-	if (m_zapCache.SpliceArmed() && data && length >= TS_SIZE)
-		m_zapCache.Splice(data, [this](const uchar *packet, int size) { return cDevice::PlayTs(packet, size); });
+	if (m_zapCache.SpliceArmed() && data && length >= TS_SIZE) {
+		// the synchronous audio has to fill the buffer up to the playback start threshold
+		int64_t audioAhead = m_pConfig->ConfigZapAheadSyncAudio ? GetBufferFillLevelThresholdMs() * 90LL : cZapBuffer::NEWEST_I_FRAME;
+		m_zapCache.Splice(data, audioAhead, [this](const uchar *packet, int size) { return cDevice::PlayTs(packet, size); });
+	}
 
 	return cDevice::PlayTs(data, length, videoOnly);
 }

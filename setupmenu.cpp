@@ -298,6 +298,8 @@ void cDeviceSetupMenu::Create(int current)
 			Add(new cMenuEditStraItem(tr(" Tuners for live view and cache"), &m_cZapAheadTuners, 2, m_zapAheadTuners));
 		if (m_cZapAhead)
 			Add(new cMenuEditStraItem(tr(" Release the tuners without key press"), &m_cZapAheadRelease, 5, m_zapAheadReleases));
+		if (m_cZapAhead)
+			Add(new cMenuEditBoolItem(tr(" Start with synchronous audio"), &m_cZapAheadSyncAudio, trVDR("no"), trVDR("yes")));
 		for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 			Add(new cMenuEditIntItem(cString::sprintf(tr("Zoom level %d (/1000)"), i + 1), &m_cZoomLevel[i], 0, cDeviceConfig::ZOOM_MAX, trVDR("off")));
 	}
@@ -568,6 +570,7 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cZapAhead                = m_pConfig->ConfigZapAhead;
 	m_cZapAheadTuners          = m_pConfig->ConfigZapAheadTuners - 2;
 	m_cZapAheadRelease         = m_pConfig->ConfigZapAheadRelease;
+	m_cZapAheadSyncAudio       = m_pConfig->ConfigZapAheadSyncAudio;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		m_cZoomLevel[i] = m_pConfig->ConfigZoomLevel[i];
 
@@ -768,6 +771,7 @@ void cDeviceSetupMenu::Store(void)
 	StoreChanged("ZapAhead", m_pConfig->ConfigZapAhead, m_cZapAhead);
 	StoreChanged("ZapAheadTuners", m_pConfig->ConfigZapAheadTuners, m_cZapAheadTuners + 2);
 	StoreChanged("ZapAheadRelease", m_pConfig->ConfigZapAheadRelease, m_cZapAheadRelease);
+	StoreChanged("ZapAheadSyncAudio", m_pConfig->ConfigZapAheadSyncAudio, m_cZapAheadSyncAudio);
 	bool zoomChanged = false;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		zoomChanged |= StoreChanged(cString::sprintf("ZoomLevel%d", i + 1), m_pConfig->ConfigZoomLevel[i], m_cZoomLevel[i]);

@@ -42,10 +42,14 @@ cZapReceiver::cZapReceiver(const cChannel *channel, cDevice *device)
 {
 	AddChannelPid(channel->Vpid());
 	AddChannelPid(channel->Ppid());
-	for (const int *pid = channel->Apids(); *pid; pid++)
+	for (const int *pid = channel->Apids(); *pid; pid++) {
 		AddChannelPid(*pid);
-	for (const int *pid = channel->Dpids(); *pid; pid++)
+		m_audioPids.push_back(*pid);
+	}
+	for (const int *pid = channel->Dpids(); *pid; pid++) {
 		AddChannelPid(*pid);
+		m_audioPids.push_back(*pid);
+	}
 	for (const int *pid = channel->Spids(); *pid; pid++)
 		AddChannelPid(*pid);
 
@@ -144,8 +148,12 @@ void cZapReceiver::Receive(const uchar *data, int length)
 		bool independentFrame = frameStart && m_frameDetector.IndependentFrame();
 		for (int i = 0; i < n; i += TS_SIZE) {
 			const uchar *packet = &m_pending[pos + i];
-			bool videoPesStart = TsPid(packet) == m_vpid && TsPayloadStart(packet);
-			m_buffer.Put(packet, videoPesStart, !i && frameStart, !i && independentFrame);
+			int flags = PesStartFlags(packet);
+			if (!i && frameStart)
+				flags |= cZapBuffer::FRAME_START;
+			if (!i && independentFrame)
+				flags |= cZapBuffer::INDEPENDENT_FRAME;
+			m_buffer.Put(packet, flags);
 		}
 
 		pos += n;
@@ -155,30 +163,53 @@ void cZapReceiver::Receive(const uchar *data, int length)
 }
 
 /**
+ * Get the PES start flags of a TS packet for the buffer
+ *
+ * @param packet    TS packet of the channel
+ *
+ * @return          cZapBuffer::VIDEO_PES_START, cZapBuffer::AUDIO_PES_START or 0
+ */
+int cZapReceiver::PesStartFlags(const uchar *packet) const
+{
+	if (!TsPayloadStart(packet))
+		return 0;
+
+	int pid = TsPid(packet);
+	if (pid == m_vpid)
+		return cZapBuffer::VIDEO_PES_START;
+	if (std::find(m_audioPids.begin(), m_audioPids.end(), pid) != m_audioPids.end())
+		return cZapBuffer::AUDIO_PES_START;
+
+	return 0;
+}
+
+/**
  * Take the buffered packets, which precede a given packet, and stop buffering
  *
  * Must be called by the receiver thread of the device (see cZapCache::Splice()),
  * so the receiver doesn't get a packet meanwhile.
  *
  * @param next          TS packet, which is played next
- * @param[out] frames   number of the buffered frames
+ * @param audioAhead    see cZapBuffer::Take()
+ * @param[out] frames   number of the taken frames
+ * @param[out] synced   true, if the packets start with synchronous audio
  *
- * @return              the packets from the last I-frame up to the next packet
+ * @return              the packets from an I-frame up to the next packet
  */
-std::vector<uint8_t> cZapReceiver::Take(const uint8_t *next, int *frames)
+std::vector<uint8_t> cZapReceiver::Take(const uint8_t *next, int64_t audioAhead, int *frames, bool *synced)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
 	m_taken = true;
 
-	// the packets, which wait for the frame detector, belong to the last frame
+	// The packets, which wait for the frame detector, belong to the last frame. Their
+	// frames aren't detected, but their PES starts update the pts of the newest video
+	// and audio (for the I-frame with synchronous audio).
 	for (size_t pos = 0; pos + TS_SIZE <= m_pending.size(); pos += TS_SIZE)
-		m_buffer.Put(&m_pending[pos], false, false, false);
+		m_buffer.Put(&m_pending[pos], PesStartFlags(&m_pending[pos]));
 	m_pending.clear();
 
-	*frames = m_buffer.Frames();
-
-	return m_buffer.Take(next);
+	return m_buffer.Take(next, audioAhead, frames, synced);
 }
 
 /*****************************************************************************
@@ -573,13 +604,17 @@ void cZapCache::Prepare(int liveChannel, int previousChannel, int mode)
  * The PAT and PMT of the transfer are played before (cTransfer::Activate()), the
  * packets of the old channel may still be played after the start of the switch.
  *
- * @param data      TS packet, which the transfer plays next
- * @param play      plays a TS packet (cDevice::PlayTs())
+ * @param data          TS packet, which the transfer plays next
+ * @param audioAhead    start with an I-frame, whose synchronous audio is buffered
+ *                      this much (in 90kHz ticks) ahead (cZapBuffer::NEWEST_I_FRAME:
+ *                      start with the newest I-frame)
+ * @param play          plays a TS packet (cDevice::PlayTs())
  */
-void cZapCache::Splice(const uchar *data, const std::function<int(const uchar *, int)> &play)
+void cZapCache::Splice(const uchar *data, int64_t audioAhead, const std::function<int(const uchar *, int)> &play)
 {
 	std::vector<uint8_t> packets;
 	int frames = 0;
+	bool synced = false;
 	int channelNum;
 
 	{
@@ -612,7 +647,7 @@ void cZapCache::Splice(const uchar *data, const std::function<int(const uchar *,
 			return;
 		}
 
-		packets = receiver->Take(data, &frames);
+		packets = receiver->Take(data, audioAhead, &frames, &synced);
 	}
 
 	if (packets.empty()) {
@@ -631,5 +666,6 @@ void cZapCache::Splice(const uchar *data, const std::function<int(const uchar *,
 		}
 	}
 
-	LOGDEBUG("zapcache: channel %d started with %d buffered frames (%zu packets)", channelNum, frames, packets.size() / TS_SIZE);
+	LOGDEBUG("zapcache: channel %d started with %d buffered frames (%zu packets)%s", channelNum, frames, packets.size() / TS_SIZE,
+		audioAhead == cZapBuffer::NEWEST_I_FRAME ? "" : synced ? " and synchronous audio" : ", the audio isn't buffered yet");
 }
