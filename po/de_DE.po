@@ -191,12 +191,16 @@ msgid "Zap cache: %d of %d switches buffered, %d with synchronous audio"
 msgstr "Zap-Cache: %d von %d Umschaltungen gepuffert, %d mit synchronem Ton"
 
 #, c-format
-msgid "Switch time buffered: picture %s, playback %s"
-msgstr "Umschaltzeit gepuffert: Bild %s, Wiedergabe %s"
+msgid "Switch time buffered: picture %s, playback %s, delay %s"
+msgstr "Umschaltzeit gepuffert: Bild %s, Wiedergabe %s, Verzögerung %s"
 
 #, c-format
 msgid "Switch time without buffer: picture %s, playback %s"
 msgstr "Umschaltzeit ohne Puffer: Bild %s, Wiedergabe %s"
+
+#, c-format
+msgid "Frame corrections after a switch: buffered %s, without buffer %s"
+msgstr "Bildkorrekturen nach Umschaltung: gepuffert %s, ohne Puffer %s"
 
 #, c-format
 msgid "OSD: Using %s rendering"

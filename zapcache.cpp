@@ -322,6 +322,7 @@ void cZapCache::ChannelSwitchStarted(void)
 
 	// statistics
 	m_measuring = m_mode != ZAP_AHEAD_OFF;
+	m_countingCorrections = m_measuring;
 	if (m_measuring)
 		m_switches++;
 	m_switchCached = false;
@@ -819,6 +820,10 @@ void cZapCache::Splice(const uchar *data, int64_t audioAhead, int64_t maxDelay, 
 		m_cached++;
 		if (taken.synced)
 			m_synced++;
+		if (taken.delay >= 0) {
+			m_delaySumMs += taken.delay / 90;
+			m_delayCount++;
+		}
 	}
 
 	LOGDEBUG("zapcache: channel %d started with %d buffered frames (%zu packets, %dms delay)%s", channelNum, taken.frames, packets.size() / TS_SIZE,
@@ -859,6 +864,29 @@ void cZapCache::ReportSwitchTime(bool start, int ms)
 }
 
 /**
+ * Report the frame corrections of the A/V sync after a channel switch
+ *
+ * Called by the renderer, when the first frames after the playback start were
+ * shown (see cVideoRender::SWITCH_CORRECTION_FRAMES). A switch, which starts
+ * with audio, which isn't synchronous to the video, has to drop or to repeat
+ * frames.
+ *
+ * @param corrections   number of the dropped and repeated frames
+ */
+void cZapCache::ReportSwitchCorrections(int corrections)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	if (!m_countingCorrections)
+		return;
+
+	int cached = m_switchCached ? 1 : 0;
+	m_correctionSum[cached] += corrections;
+	m_correctionCount[cached]++;
+	m_countingCorrections = false;
+}
+
+/**
  * Reset the statistics of the zap cache (the current switch isn't measured anymore)
  */
 void cZapCache::ResetStats(void)
@@ -874,7 +902,12 @@ void cZapCache::ResetStats(void)
 		m_pictureCount[i] = 0;
 		m_startSumMs[i] = 0;
 		m_startCount[i] = 0;
+		m_correctionSum[i] = 0;
+		m_correctionCount[i] = 0;
 	}
+	m_delaySumMs = 0;
+	m_delayCount = 0;
+	m_countingCorrections = false;
 }
 
 /**
@@ -902,5 +935,7 @@ void cZapCache::GetStats(sStats *stats)
 	for (int i = 0; i < 2; i++) {
 		stats->pictureMs[i] = m_pictureCount[i] ? m_pictureSumMs[i] / m_pictureCount[i] : 0;
 		stats->startMs[i] = m_startCount[i] ? m_startSumMs[i] / m_startCount[i] : 0;
+		stats->corrections[i] = m_correctionCount[i] ? static_cast<double>(m_correctionSum[i]) / m_correctionCount[i] : -1;
 	}
+	stats->delayMs = m_delayCount ? m_delaySumMs / m_delayCount : 0;
 }

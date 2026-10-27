@@ -285,8 +285,11 @@ Setup: /etc/vdr/setup.conf
 		are kept with their buffers.
 		The statistics of the setup menu show the received channels, how many
 		switches started with a buffer and the average switch times (until the
-		first picture and until the playback started) with and without a buffer.
-		The red key resets them.
+		first picture and until the playback started) with and without a buffer,
+		the average delay of the switches with a buffer (see
+		drmdevice.ZapAheadMaxDelay) and the average frame corrections of the
+		A/V sync (dropped and repeated frames) within the first 250 frames after
+		a switch. The red key resets them.
 
 	drmdevice.AudioSoftvol = 0
 		0 = off, use hardware volume control

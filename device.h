@@ -94,6 +94,7 @@ public:
 	cZapCache *ZapCache(void) { return &m_zapCache; }                          ///< get the zap cache (for the statistics)
 	/** report the time of a channel switch (see cZapCache::ReportSwitchTime()) */
 	void ReportChannelSwitchTime(bool start, int ms) { m_zapCache.ReportSwitchTime(start, ms); }
+	void ReportChannelSwitchCorrections(int corrections) { m_zapCache.ReportSwitchCorrections(corrections); }
 
 	//
 	// VDR cDevice interface

@@ -806,6 +806,8 @@ bool cVideoRender::DisplayFrame(void)
 				(now - LOGGER->GetChannelSwitchDataReceivedTime()).count();
 
 			m_pDevice->ReportChannelSwitchTime(m_startCounter != 0, channelSwitchDurationMs);
+			if (m_startCounter != 0)
+				m_switchCorrectionsBase = m_framesDropped + m_framesDuped;
 
 			if (m_startCounter == 0) {
 				LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms first frame displayed (+%5dms after first data was received)", (int)channelSwitchDurationMs, (int)durationSinceFirstPacketMs);
@@ -815,6 +817,10 @@ bool cVideoRender::DisplayFrame(void)
 				LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms playback start fired (+%5dms after first data was received)", (int)channelSwitchDurationMs, (int)durationSinceFirstPacketMs);
 			}
 		}
+
+		// the frame corrections of the A/V sync after a channel switch (statistics)
+		if (m_pDevice->Transferring() && m_startCounter == SWITCH_CORRECTION_FRAMES)
+			m_pDevice->ReportChannelSwitchCorrections(m_framesDropped + m_framesDuped - m_switchCorrectionsBase);
 
 		if (m_displayOneFrameThenPause) {
 			m_videoPlaybackPaused = true;
