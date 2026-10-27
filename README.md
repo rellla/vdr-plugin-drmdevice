@@ -283,6 +283,12 @@ Setup: /etc/vdr/setup.conf
 		    and a quick switch back starts with it at once.
 		The receivers of channels, which are neighbours after a channel switch, too,
 		are kept with their buffers.
+		While a channel number is entered with the number keys, the entered
+		channel is tuned ahead, too (on a free device or on a device of the
+		neighbour channels). So the switch may start with its buffer, when the
+		entry is done (by OK or by VDR's channel entry timeout). If the entry
+		takes less time than the tuner lock and the first I-frame, the switch
+		still doesn't have to tune.
 		The statistics of the setup menu show the received channels, how many
 		switches started with a buffer and the average switch times (until the
 		first picture and until the playback started) with and without a buffer,
