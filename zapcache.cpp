@@ -115,6 +115,20 @@ bool cZapReceiver::HasPid(int pid) const
 }
 
 /**
+ * Get the state of the buffer for the statistics
+ *
+ * @param[out] frames   number of the buffered frames
+ * @param[out] ready    true, if an I-frame is buffered
+ */
+void cZapReceiver::Info(int *frames, bool *ready)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	*frames = m_buffer.Frames();
+	*ready = m_buffer.Ready();
+}
+
+/**
  * Check, if the buffer was taken by a channel switch (the receiver doesn't buffer anymore)
  */
 bool cZapReceiver::IsTaken(void)
@@ -287,6 +301,13 @@ void cZapCache::ChannelSwitchStarted(void)
 	m_armedFromChannel = cDevice::CurrentChannel();
 	m_spliceArmed = HasReceivers();
 	m_spliceTimer.Set(SPLICE_TIMEOUT_MS);
+
+	// statistics
+	m_measuring = m_mode != ZAP_AHEAD_OFF;
+	if (m_measuring)
+		m_switches++;
+	m_switchCached = false;
+	m_pictureReported = false;
 }
 
 /**
@@ -773,6 +794,93 @@ void cZapCache::Splice(const uchar *data, int64_t audioAhead, const std::functio
 		}
 	}
 
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_switchCached = true;
+		m_cached++;
+		if (synced)
+			m_synced++;
+	}
+
 	LOGDEBUG("zapcache: channel %d started with %d buffered frames (%zu packets)%s", channelNum, frames, packets.size() / TS_SIZE,
 		audioAhead == cZapBuffer::NEWEST_I_FRAME ? "" : synced ? " and synchronous audio" : ", the audio isn't buffered yet");
+}
+
+/**
+ * Report the time of a channel switch for the statistics
+ *
+ * Called by the renderer for the first picture (in the fast channel switch modes)
+ * and for the start of the playback. Without a fast channel switch mode, the
+ * playback starts with the first picture.
+ *
+ * @param start         false: the first picture was shown, true: the playback started
+ * @param ms            time since the start of the channel switch in ms
+ */
+void cZapCache::ReportSwitchTime(bool start, int ms)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	if (!m_measuring)
+		return;
+
+	int cached = m_switchCached ? 1 : 0;
+
+	if (!start || !m_pictureReported) {
+		m_pictureSumMs[cached] += ms;
+		m_pictureCount[cached]++;
+		m_pictureReported = true;
+	}
+
+	if (start) {
+		m_startSumMs[cached] += ms;
+		m_startCount[cached]++;
+		m_measuring = false;
+	}
+}
+
+/**
+ * Reset the statistics of the zap cache (the current switch isn't measured anymore)
+ */
+void cZapCache::ResetStats(void)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	m_switches = 0;
+	m_cached = 0;
+	m_synced = 0;
+	m_measuring = false;
+	for (int i = 0; i < 2; i++) {
+		m_pictureSumMs[i] = 0;
+		m_pictureCount[i] = 0;
+		m_startSumMs[i] = 0;
+		m_startCount[i] = 0;
+	}
+}
+
+/**
+ * Get the statistics of the zap cache
+ *
+ * @param[out] stats    the statistics
+ */
+void cZapCache::GetStats(sStats *stats)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	stats->receivers.clear();
+	for (cZapReceiver *receiver : m_pReceivers) {
+		if (!receiver)
+			continue;
+		cDevice *device = receiver->Device();
+		sStats::sReceiver r = { receiver->ChannelNumber(), device ? device->DeviceNumber() + 1 : 0, 0, false };
+		receiver->Info(&r.frames, &r.ready);
+		stats->receivers.push_back(r);
+	}
+
+	stats->switches = m_switches;
+	stats->cached = m_cached;
+	stats->synced = m_synced;
+	for (int i = 0; i < 2; i++) {
+		stats->pictureMs[i] = m_pictureCount[i] ? m_pictureSumMs[i] / m_pictureCount[i] : 0;
+		stats->startMs[i] = m_startCount[i] ? m_startSumMs[i] / m_startCount[i] : 0;
+	}
 }

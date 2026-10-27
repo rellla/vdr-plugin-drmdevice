@@ -75,6 +75,7 @@ public:
 	cDevice *Device(void) const { return m_attached ? m_pDevice : nullptr; } ///< the receiving device (nullptr, if detached)
 	bool HasPid(int) const;
 	bool IsTaken(void);
+	void Info(int *, bool *);
 	std::vector<uint8_t> Take(const uint8_t *, int64_t, int *, bool *);
 
 protected:
@@ -140,6 +141,23 @@ private:
  */
 class cZapCache {
 public:
+	/** statistics of the zap cache (see GetStats()) */
+	struct sStats {
+		/** a receiver */
+		struct sReceiver {
+			int channel;            ///< channel number
+			int device;             ///< device number (starting with 1)
+			int frames;             ///< buffered frames
+			bool ready;             ///< an I-frame is buffered
+		};
+		std::vector<sReceiver> receivers;   ///< current receivers
+		int switches = 0;                   ///< channel switches with the zap cache
+		int cached = 0;                     ///< switches, which started with a buffer
+		int synced = 0;                     ///< switches, which started with synchronous audio
+		int pictureMs[2] = {};              ///< average time until the first picture [0: without buffer, 1: with buffer] (0: unknown)
+		int startMs[2] = {};                ///< average time until the playback started [0: without buffer, 1: with buffer] (0: unknown)
+	};
+
 	/** the channels, which are tuned ahead (drmdevice.ZapAhead) */
 	enum Mode {
 		ZAP_AHEAD_OFF,                     ///< no channel
@@ -158,6 +176,10 @@ public:
 	void ChannelSwitched(int);
 	void MainThreadHook(int, int);
 	void Clear(void);
+
+	void ReportSwitchTime(bool, int);
+	void GetStats(sStats *);
+	void ResetStats(void);
 
 	bool SpliceArmed(void) const { return m_spliceArmed; }   ///< true, if a channel switch may start with the buffered packets
 	void Splice(const uchar *, int64_t, const std::function<int(const uchar *, int)> &);
@@ -183,6 +205,18 @@ private:
 	cTimeMs m_spliceTimer;                   ///< keeps the receiver of the new live channel until the splice
 	cZapReceiver *m_pLive = nullptr;         ///< receiver of the live channel (ZAP_AHEAD_BOTH), it keeps its buffer after a switch
 	std::atomic<int> m_mode = ZAP_AHEAD_OFF; ///< current mode (enum Mode)
+
+	// statistics
+	int m_switches = 0;                      ///< channel switches with the zap cache
+	int m_cached = 0;                        ///< switches, which started with a buffer
+	int m_synced = 0;                        ///< switches, which started with synchronous audio
+	bool m_measuring = false;                ///< the times of the current switch are measured
+	bool m_switchCached = false;             ///< the current switch started with a buffer
+	bool m_pictureReported = false;          ///< the time until the first picture of the current switch was reported
+	int64_t m_pictureSumMs[2] = {};          ///< sum of the times until the first picture [without buffer, with buffer]
+	int m_pictureCount[2] = {};              ///< number of these times
+	int64_t m_startSumMs[2] = {};            ///< sum of the times until the playback started [without buffer, with buffer]
+	int m_startCount[2] = {};                ///< number of these times
 	time_t m_lastSwitch;                     ///< time of the last channel switch (also by SVDRP)
 	bool m_released = false;                 ///< the receivers were released without key press (main thread only)
 

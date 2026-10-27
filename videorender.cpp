@@ -805,6 +805,8 @@ bool cVideoRender::DisplayFrame(void)
 			auto durationSinceFirstPacketMs = std::chrono::duration_cast<std::chrono::milliseconds>
 				(now - LOGGER->GetChannelSwitchDataReceivedTime()).count();
 
+			m_pDevice->ReportChannelSwitchTime(m_startCounter != 0, channelSwitchDurationMs);
+
 			if (m_startCounter == 0) {
 				LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms first frame displayed (+%5dms after first data was received)", (int)channelSwitchDurationMs, (int)durationSinceFirstPacketMs);
 			} else {

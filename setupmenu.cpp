@@ -149,6 +149,19 @@ static std::string PassthroughCodecs(int mask)
 }
 
 /**
+ * Format an average channel switch time for the statistics
+ *
+ * @param ms        time in ms (0: unknown)
+ * @return          e.g. "420ms" or "-"
+ *
+ * @ingroup menu
+ */
+static cString SwitchTime(int ms)
+{
+	return ms ? cString::sprintf("%dms", ms) : cString("-");
+}
+
+/**
  * Add a statistics item, whose text is updated, while the menu is shown
  *
  * @param text      creates the current text of the item
@@ -247,6 +260,36 @@ void cDeviceSetupMenu::AddStatistics(void)
 		return cString::sprintf(" %s", *m_pDevice->PassthroughString());
 	});
 
+	// zap cache
+	if (m_pConfig->ConfigZapAhead) {
+		AddLiveItem([this]() {
+			cZapCache::sStats stats;
+			m_pDevice->ZapCache()->GetStats(&stats);
+			std::string channels;
+			for (const auto &r : stats.receivers) {
+				if (!channels.empty())
+					channels += ", ";
+				channels += *cString::sprintf(tr("%d (device %d, %d frames)"), r.channel, r.device, r.ready ? r.frames : 0);
+			}
+			return cString::sprintf(tr("Zap cache: %s"), channels.empty() ? "-" : channels.c_str());
+		});
+		AddLiveItem([this]() {
+			cZapCache::sStats stats;
+			m_pDevice->ZapCache()->GetStats(&stats);
+			return cString::sprintf(tr("Zap cache: %d of %d switches buffered, %d with synchronous audio"), stats.cached, stats.switches, stats.synced);
+		});
+		AddLiveItem([this]() {
+			cZapCache::sStats stats;
+			m_pDevice->ZapCache()->GetStats(&stats);
+			return cString::sprintf(tr("Switch time buffered: picture %s, playback %s"), *SwitchTime(stats.pictureMs[1]), *SwitchTime(stats.startMs[1]));
+		});
+		AddLiveItem([this]() {
+			cZapCache::sStats stats;
+			m_pDevice->ZapCache()->GetStats(&stats);
+			return cString::sprintf(tr("Switch time without buffer: picture %s, playback %s"), *SwitchTime(stats.pictureMs[0]), *SwitchTime(stats.startMs[0]));
+		});
+	}
+
 	// osd
 #ifdef USE_GLES
 	Add(new cOsdItem(cString::sprintf(tr("OSD: Using %s rendering"), m_pConfig->ConfigDisableOglOsd ? "software" : "hardware"), osUnknown, false));
@@ -269,6 +312,8 @@ void cDeviceSetupMenu::Create(int current)
 	// Overview: OK opens the section under the cursor
 	//
 	SetHasHotkeys(m_section == SECTION_OVERVIEW);
+	// the statistics of the zap cache can be reset
+	SetHelp(m_section == SECTION_STATISTICS && m_pConfig->ConfigZapAhead ? tr("Button$Reset zap cache") : NULL);
 	if (m_section == SECTION_OVERVIEW) {
 		m_overviewSections.clear();
 		for (int section = 0; section < SECTION_COUNT; section++) {
@@ -492,6 +537,12 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 	// OK of an edited item (e.g. the end of a string input)
 	if (state == osContinue && key == kOk)
 		state = OK_HANDLED;
+	// reset the statistics of the zap cache
+	if (state == osUnknown && key == kRed && m_section == SECTION_STATISTICS && m_pConfig->ConfigZapAhead) {
+		m_pDevice->ZapCache()->ResetStats();
+		UpdateLiveItems();
+		return osContinue;
+	}
 	if (state == osBack) {
 		// discard the changes of the section
 		LoadValues();

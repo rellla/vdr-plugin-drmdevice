@@ -179,11 +179,34 @@ msgid "Audio device: %s"
 msgstr "Audiogerät: %s"
 
 #, c-format
+msgid "%d (device %d, %d frames)"
+msgstr "%d (Gerät %d, %d Frames)"
+
+#, c-format
+msgid "Zap cache: %s"
+msgstr "Zap-Cache: %s"
+
+#, c-format
+msgid "Zap cache: %d of %d switches buffered, %d with synchronous audio"
+msgstr "Zap-Cache: %d von %d Umschaltungen gepuffert, %d mit synchronem Ton"
+
+#, c-format
+msgid "Switch time buffered: picture %s, playback %s"
+msgstr "Umschaltzeit gepuffert: Bild %s, Wiedergabe %s"
+
+#, c-format
+msgid "Switch time without buffer: picture %s, playback %s"
+msgstr "Umschaltzeit ohne Puffer: Bild %s, Wiedergabe %s"
+
+#, c-format
 msgid "OSD: Using %s rendering"
 msgstr "OSD: Benutze %s rendering"
 
 msgid "OSD: Using software rendering"
 msgstr "OSD: Benutze software rendering"
+
+msgid "Button$Reset zap cache"
+msgstr "Zap-Cache zurücksetzen"
 
 msgid "Hide main menu entry"
 msgstr "Verstecke Hauptmenüeintrag"
