@@ -331,6 +331,7 @@ private:
 	void DeleteDecoderAndOutput(void);
 	void ResetPipStreamLocked(void);
 	int64_t GetFirstAudioPtsMsToPlay();
+	int64_t GetAudibleAudioPtsMs(void);
 	int64_t GetFirstVideoPtsMsToPlay();
 	int GetBufferFillLevelThresholdMs();
 	int GetPassthroughSetting(void);

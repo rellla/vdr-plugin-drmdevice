@@ -1260,11 +1260,12 @@ bool cOutputDevice::CheckPlaybackStartConditions()
 	if (videoIsReady && audioIsReady && videoPlaybackMayStart) {
 		auto now = std::chrono::steady_clock::now();
 		auto durationSinceChannelSwitchMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchStartTime()).count();
+		int64_t audiblePtsMs = GetAudibleAudioPtsMs();
 		LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms firing BufferingThresholdReached - PTS: %s (a), %s (v) -> diff %" PRId64 "ms - buffer fill levels: %" PRId64 "ms (a) %" PRId64 "ms (v) render queue %d",
 			(int)durationSinceChannelSwitchMs,
-			Timestamp2StringMs(m_pAudio->GetOutputPtsMs()),
+			Timestamp2StringMs(audiblePtsMs),
 			Timestamp2StringMs(m_pRender->GetOutputPtsMs()),
-			audioBehindVideoMs,
+			m_pRender->GetOutputPtsMs() - audiblePtsMs - GetVideoAudioDelayMs(),
 			syncedAudioBufferFillLevelMs,
 			syncedVideoBufferFillLevelMs,
 			m_pRender->GetFramesFilled());
@@ -1275,11 +1276,12 @@ bool cOutputDevice::CheckPlaybackStartConditions()
 	if (allBuffersReachedThreshold && m_logPlaybackStart) {
 		auto now = std::chrono::steady_clock::now();
 		auto durationSinceChannelSwitchMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - LOGGER->GetChannelSwitchStartTime()).count();
+		int64_t audiblePtsMs = GetAudibleAudioPtsMs();
 		LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms BufferingThresholdReached, video waits for audio - PTS: %s (a), %s (v) -> diff %" PRId64 "ms - buffer fill levels: %" PRId64 "ms (a) %" PRId64 "ms (v) render queue %d",
 			(int)durationSinceChannelSwitchMs,
-			Timestamp2StringMs(m_pAudio->GetOutputPtsMs()),
+			Timestamp2StringMs(audiblePtsMs),
 			Timestamp2StringMs(m_pRender->GetOutputPtsMs()),
-			audioBehindVideoMs,
+			m_pRender->GetOutputPtsMs() - audiblePtsMs - GetVideoAudioDelayMs(),
 			syncedAudioBufferFillLevelMs,
 			syncedVideoBufferFillLevelMs,
 			m_pRender->GetFramesFilled());
@@ -1287,6 +1289,27 @@ bool cOutputDevice::CheckPlaybackStartConditions()
 	}
 
 	return false;
+}
+
+/**
+ * Get the pts of the audio, which is heard (for the log)
+ *
+ * The output pts of the audio stream is the pts of the audio, which is passed
+ * to ALSA next. While the audio plays, the audio in the hardware buffer isn't
+ * heard yet, so this pts is ahead of the heard audio by the hardware delay
+ * (e.g. about 70ms right after the start of the audio).
+ *
+ * @return  the pts of the heard audio in ms (the output pts, while the audio is paused)
+ */
+int64_t cOutputDevice::GetAudibleAudioPtsMs(void)
+{
+	if (!m_pAudio->IsPaused()) {
+		int64_t ptsMs = m_pAudio->GetHardwareOutputPtsMs();
+		if (ptsMs != AV_NOPTS_VALUE)
+			return ptsMs;
+	}
+
+	return m_pAudio->GetOutputPtsMs();
 }
 
 /**
