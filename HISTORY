@@ -171,3 +171,41 @@ https://github.com/rellla/vdr-plugin-softhddevice-drm-gles
 - Pip: fixed crashes with SVDRP pip commands during a detach, with an
   external player in detached state and with a deleted pip channel. The pip
   channel is only used with the channels lock.
+
+2026-10-27: Version 2.1.1
+
+- The setup menu only stores and applies the changed settings (e.g. the
+  passthrough toggle isn't reset anymore, when a section is closed with OK).
+- The framerate of a stream without a framerate in the decoder is checked
+  with the first frames, a missing frame doesn't halve it anymore.
+- Fixed a memory leak of a screenshot, if copying a frame failed.
+- The software OSD reuses its conversion buffer.
+- Removed outdated fixmes and todos.
+
+2026-10-28: Version 2.2.0
+
+- Zap cache (experimental, ZapAhead): the next channel in zap direction is
+  tuned ahead on a free device, so a channel switch to it doesn't have to tune.
+  The packets since its last I-frames are buffered, the switch starts with
+  them instead of waiting for the next I-frame.
+  - With three tuners the channel in the opposite direction and the last live
+    channel are buffered, too (ZapAheadTuners).
+  - The switch starts with an I-frame, whose audio is buffered, too, so the
+    playback starts with synchronous audio (ZapAheadSyncAudio). The delay to
+    the live stream is limited (ZapAheadMaxDelay).
+  - The devices are released after a time without key press for VDR's EPG
+    scan (ZapAheadRelease), the next key press (not in a menu) tunes them
+    again.
+  - The receivers of channels, which are still neighbours after a switch, are
+    kept with their buffers.
+  - While a channel number is entered, the entered channel is tuned ahead.
+  - Encrypted channels can be buffered with a CAM (ZapAheadCam, untested).
+  - The statistics show the buffered channels, the hits, the switch times, the
+    delay and the frame corrections after a switch with and without a buffer.
+    The red key resets them.
+- Fixed old, unrelated frames, which were shown alternately with the current
+  ones until the next channel switch, after the hardware decoder was reopened
+  during the playback (e.g. after the stream stalled).
+- In the fast audio channel switch mode the audio of the first picture isn't
+  dropped anymore (the audio was ahead and the video dropped frames).
+- The log shows the heard audio pts at the start of the playback.
