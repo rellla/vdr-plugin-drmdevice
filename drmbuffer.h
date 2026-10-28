@@ -13,6 +13,7 @@
 #define __DRMDEVICE_DRMBUFFER_H
 
 #include <cstdint>
+#include <sys/types.h>
 
 extern "C" {
 #include <libavutil/frame.h>
@@ -70,6 +71,8 @@ public:
 	int DmaBufHandle(void) { return m_dmaBufHandle[0]; }      ///< DMA-BUF handle of the first object
 	int DmaBufHandle(int idx) { return m_dmaBufHandle[idx]; } ///< DMA-BUF handle of the given object
 	void SetDmaBufHandle(uint32_t fd) { m_dmaBufHandle[0] = fd; };
+	ino_t DmaBufInode(void) { return m_dmaBufInode; }  ///< inode of the imported DMA-BUF of the first object (0: none)
+	static ino_t FdInode(int);
 	void SetNumObjects(int numObjects) { m_numObjects = numObjects; };
 	int NumObjects(void) { return m_numObjects; }       ///< number of prime objects
 	void SetObjectIndex(int idx, uint32_t objIdx) { m_objIdx[idx] = objIdx; };
@@ -114,6 +117,7 @@ private:
 	int m_numPlanes = 0;        ///< number of planes in the buffer
 
 	int m_dmaBufHandle[4]{0};           ///< DMA-BUF file descriptor
+	ino_t m_dmaBufInode = 0;            ///< inode of the imported DMA-BUF of the first object (identifies it, the fd number may be reused)
 	int m_numObjects = 0;               ///< number of prime objects in the buffer
 	int m_objIdx[4]{0};                 ///< index of the objects
 	uint32_t m_objectPrimeHandle[4]{0}; ///< primedata objects prime handles (count is numObjects, index is objIdx)
@@ -149,6 +153,7 @@ public:
 	cDrmBuffer *FindNoPresentationPending(void);
 	cDrmBuffer *FindByDmaBufHandle(int);
 	void DestroyAllExcept(cDrmBuffer *);
+	int DestroyStaleImports(void);
 private:
 	constexpr static int RENDERBUFFERS = 36;    ///< number of render video buffers
 };
