@@ -1615,8 +1615,15 @@ cDrmBuffer *cBufferStrategyReuseHardware::GetBuffer(cDrmBufferPool *pool, AVDRMF
 
 	if (buf)
 		return buf;
-	else
-		return pool->FindUninitilized();
+
+	buf = pool->FindUninitilized();
+	if (buf)
+		return buf;
+
+	// the pool is full of the buffers of DMA-BUFs, which the decoder closed meanwhile
+	pool->DestroyStaleImports();
+
+	return pool->FindUninitilized();
 }
 
 cDrmBuffer *cBufferStrategyReuseSoftware::GetBuffer(cDrmBufferPool *pool, AVDRMFrameDescriptor *)

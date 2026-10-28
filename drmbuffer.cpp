@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 
 extern "C" {
 #include <libavutil/frame.h>
@@ -126,6 +127,7 @@ void cDrmBuffer::Destroy(void)
 	}
 	m_numObjects = 0;
 	m_dmaBufHandle[0] = 0;
+	m_dmaBufInode = 0;
 
 	m_width = 0;
 	m_height = 0;
@@ -190,6 +192,8 @@ void cDrmBuffer::Setup(int drmDeviceFd, uint32_t width, uint32_t height, uint32_
 
 			m_dmaBufHandle[object] = primedata->objects[object].fd;
 			m_size[object] = primedata->objects[object].size;
+			if (object == 0)
+				m_dmaBufInode = FdInode(primedata->objects[object].fd);
 			//LOGDEBUG2(L_DRM, "drmbuffer: %s: PRIMEDATA create handle for PrimeFD (%d|%i): PrimeFD %i ToHandle %i size %zu modifier %" PRIx64 "",
 			//	__FUNCTION__, object, primedata->nb_objects, primedata->objects[object].fd, m_primehandle[object],
 			//	primedata->objects[object].size, primedata->objects[object].format_modifier);
@@ -296,6 +300,27 @@ void cDrmBuffer::Setup(int drmDeviceFd, uint32_t width, uint32_t height, uint32_
 }
 
 /**
+ * Get the inode of a file descriptor
+ *
+ * Every DMA-BUF has its own inode, so it identifies the DMA-BUF, while the
+ * number of its file descriptor may be reused for another one after it was
+ * closed (e.g. when the decoder is reopened).
+ *
+ * @param fd    file descriptor
+ *
+ * @return      the inode (0: invalid file descriptor)
+ */
+ino_t cDrmBuffer::FdInode(int fd)
+{
+	struct stat st;
+
+	if (fd < 0 || fstat(fd, &st))
+		return 0;
+
+	return st.st_ino;
+}
+
+/**
  * Color the buffer black
  */
 void cDrmBuffer::FillBlack(void)
@@ -329,15 +354,58 @@ void cDrmBuffer::PresentationFinished(void)
 
 /**
  * Find a drm buffer from the buffer pool by a given prime handle
+ *
+ * The buffer must have imported the same DMA-BUF: after the decoder was reopened,
+ * a new DMA-BUF may get the file descriptor number of an old one. The buffer of
+ * the old one still holds its framebuffer, which would show the old frame. Then
+ * the buffers of the closed DMA-BUFs are destroyed (DestroyStaleImports()).
+ *
+ * @param primeFd   DMA-BUF file descriptor of the first object of the frame
+ *
+ * @return          the buffer (nullptr, if there is none)
  */
 cDrmBuffer *cDrmBufferPool::FindByDmaBufHandle(int primeFd)
 {
 	for (const auto &buf : buffer) {
-		if (buf->IsDirty() && buf->DmaBufHandle() == primeFd)
-			return buf.get();
+		if (buf->IsDirty() && buf->DmaBufHandle() == primeFd) {
+			if (!buf->DmaBufInode() || buf->DmaBufInode() == cDrmBuffer::FdInode(primeFd))
+				return buf.get();
+
+			int destroyed = DestroyStaleImports();
+			LOGDEBUG2(L_DRM, "drmbuffer: %s: DMA-BUF handle %d was reused, destroyed %d stale buffers", __FUNCTION__, primeFd, destroyed);
+			return nullptr;
+		}
 	}
 
 	return nullptr;
+}
+
+/**
+ * Destroy the buffers, whose imported DMA-BUF was closed
+ *
+ * The DMA-BUF of such a buffer was released by the decoder (e.g. it was reopened),
+ * its file descriptor is closed or belongs to another DMA-BUF now. A buffer, which
+ * is queued or displayed (presentation pending), keeps its DMA-BUF open, so it is
+ * never destroyed here.
+ *
+ * @return          number of the destroyed buffers
+ */
+int cDrmBufferPool::DestroyStaleImports(void)
+{
+	int destroyed = 0;
+
+	for (const auto &buf : buffer) {
+		if (!buf->IsDirty() || !buf->DmaBufInode() || buf->IsPresentationPending())
+			continue;
+
+		if (buf->DmaBufInode() != cDrmBuffer::FdInode(buf->DmaBufHandle())) {
+			av_frame_free(&buf->frame);
+			buf->Destroy();
+			destroyed++;
+		}
+	}
+
+	return destroyed;
 }
 
 /**
