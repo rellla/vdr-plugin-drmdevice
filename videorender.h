@@ -45,6 +45,7 @@ extern "C" {
 #include "queue.h"
 #include "statemachine.h"
 
+class cAmbientService;
 class cAudioStream;
 #ifndef USE_GLES
 class cDrmDevice;
@@ -299,6 +300,7 @@ private:
 	cGrabBuffer m_grabOsd;                 ///< keeps the current grabbed osd
 	cGrabBuffer m_grabVideo;               ///< keeps the current grabbed video
 	cGrabBuffer m_grabPip;                 ///< keeps the current grabbed pip video
+	cAmbientService *m_pAmbient;           ///< provides the image for ambient lighting plugins, owned by the device
 
 	/**
 	 * Sync Corridor

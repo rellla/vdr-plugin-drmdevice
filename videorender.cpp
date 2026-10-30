@@ -42,6 +42,7 @@ extern "C" {
 #include "device.h"
 #include "drmdevice.h"
 #include "drmhdr.h"
+#include "ambient.h"
 #include "grab.h"
 #include "logger.h"
 #include "misc.h"
@@ -63,6 +64,7 @@ cVideoRender::cVideoRender(cOutputDevice *device)
 	  m_grabOsd("OSD"),
 	  m_grabVideo("VIDEO"),
 	  m_grabPip("PIP"),
+	  m_pAmbient(device->Ambient()),
 	  m_pDrmDevice(new cDrmDevice(this, m_pConfig)),
 	  m_pHdrMetadata(this),
 	  m_enableHdr(m_pConfig->ConfigVideoEnableHDR)
@@ -874,6 +876,10 @@ bool cVideoRender::DisplayFrame(void)
 		m_framePresentationCounter--;
 
 	CreateGrabBuffers(!m_videoIsScaled);
+
+	// never blocks: takes a snapshot only, if a consumer waits for a new frame
+	if (m_pAmbient)
+		m_pAmbient->Offer(m_pCurrentlyDisplayed, m_pDrmDevice->DisplayWidth(), m_pDrmDevice->DisplayHeight());
 
 	return pageFlipDone;
 }
@@ -1714,6 +1720,11 @@ AVFrame *cDecodingStrategySoftware::PrepareDrmBuffer(cDrmBuffer *buf, int drmDev
 	frame->height = inframe->height;
 	frame->format = AV_PIX_FMT_DRM_PRIME;
 	frame->sample_aspect_ratio = inframe->sample_aspect_ratio;
+	// keep the color description (needed to read the buffer, e.g. for the ambient image)
+	frame->colorspace = inframe->colorspace;
+	frame->color_range = inframe->color_range;
+	frame->color_primaries = inframe->color_primaries;
+	frame->color_trc = inframe->color_trc;
 
 	frame->format = AV_PIX_FMT_DRM_PRIME;
 	AVDRMFrameDescriptor *primedata = (AVDRMFrameDescriptor *)av_mallocz(sizeof(AVDRMFrameDescriptor));
