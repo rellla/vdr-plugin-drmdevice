@@ -37,6 +37,7 @@ class cAudioDecoder;
 class cAudioStream;
 class cDeviceOsdProvider;
 class cDvbSpuDecoder;
+class cAmbientService;
 class cGrabber;
 class cOutputDevice;
 class cPipHandler;
@@ -161,6 +162,7 @@ public:
 	void SetDisableDeint(void);
 	void SetDecoderFallbackToSw(bool);
 	void SetEnableHdr(bool);
+	cAmbientService *Ambient(void) { return m_pAmbient; }  ///< get the ambient image service
 	void SetChannelSwitchMode(ChannelSwitchMode mode) { m_channelSwitchMode = mode; }  ///< set the channel switch mode
 	void SetDisplayMode(int);
 	/** true, if audio starts before a/v sync in transfer mode */
@@ -300,6 +302,7 @@ private:
 	std::atomic<PlaybackMode> m_playbackMode = NONE; ///< current playback mode
 	int m_audioChannelID = -1;       ///< current audio channel ID
 	cGrabber *m_pGrab = nullptr;     ///< pointer to grabber object (nullptr, if detached)
+	cAmbientService *m_pAmbient = nullptr; ///< provides the image for ambient lighting plugins (exists also, if detached)
 
 	cVideoStream *m_pPipStream = nullptr; ///< pointer to pip video stream (nullptr, if detached)
 	cReassemblyBufferVideo m_pipReassemblyBuffer; ///< pip pes reassembly buffer

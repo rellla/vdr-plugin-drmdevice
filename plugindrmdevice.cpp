@@ -27,6 +27,7 @@
 
 #include "logger.h"
 
+#include "ambient.h"
 #include "config.h"
 #include "device.h"
 #include "mediaplayer.h"
@@ -323,8 +324,14 @@ bool cPluginDrmDevice::SetupParse(const char *name, const char *value)
 bool cPluginDrmDevice::Service(const char *id, void *data)
 {
 	//LOGDEBUG("plugin: %s: id %s", __FUNCTION__, id);
-	(void)id;
-	(void)data;
+
+	// image of the displayed video for ambient lighting plugins (see ambientimage_service.h)
+	if (!strcmp(id, AMBIENTIMAGE_SERVICE)) {
+		cAmbientService *ambient = m_pDevice ? m_pDevice->Ambient() : nullptr;
+		if (!data)
+			return ambient != nullptr;
+		return ambient && ambient->GetImage(static_cast<AmbientImage_v1_0_t *>(data));
+	}
 
 	return false;
 }
