@@ -137,6 +137,7 @@ override CFLAGS	  += $(_CFLAGS) $(DEFINES) $(INCLUDES) \
 
 OBJS = $(PLUGINENTRY).o \
  	alsadevice.o \
+	ambient.o \
 	audio.o \
 	audioprocessor.o \
 	codec_audio.o \
