@@ -17,11 +17,15 @@
  * - linear: NV12, NV21, YUV420, YVU420, P010, NV15, (A|X)RGB8888, (A|X)BGR8888
  * - Broadcom SAND128 (Raspberry Pi HEVC decoder): NV12, P030
  *
+ * HDR frames (PQ, HLG) are tone mapped to SDR BT.709.
+ *
  * @copyright 2026 by Andreas Baierl. All Rights Reserved.
  *
  * @license{AGPL-3.0-or-later}
  */
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include <drm_fourcc.h>
@@ -190,7 +194,7 @@ public:
 	 * Read one pixel
 	 *
 	 * @param x, y      position in the frame
-	 * @param[out] c    Y, U, V (8 bit) or R, G, B for the rgb layouts
+	 * @param[out] c    Y, U, V (10 bit) or R, G, B (8 bit) for the rgb layouts
 	 * @return          true, if c is RGB already
 	 */
 	bool Read(int x, int y, int c[3]) const
@@ -203,43 +207,43 @@ public:
 			case LAYOUT_NV12:
 			case LAYOUT_NV21: {
 				const uint8_t *uv = p[1] + (size_t)cy * pitch[1] + 2 * cx;
-				c[0] = p[0][(size_t)y * pitch[0] + x];
-				c[1] = uv[m_layout == LAYOUT_NV21 ? 1 : 0];
-				c[2] = uv[m_layout == LAYOUT_NV21 ? 0 : 1];
+				c[0] = p[0][(size_t)y * pitch[0] + x] << 2;
+				c[1] = uv[m_layout == LAYOUT_NV21 ? 1 : 0] << 2;
+				c[2] = uv[m_layout == LAYOUT_NV21 ? 0 : 1] << 2;
 				return false;
 			}
 			case LAYOUT_YUV420:
 			case LAYOUT_YVU420: {
 				int u = m_layout == LAYOUT_YUV420 ? 1 : 2;
 				int v = m_layout == LAYOUT_YUV420 ? 2 : 1;
-				c[0] = p[0][(size_t)y * pitch[0] + x];
-				c[1] = p[u][(size_t)cy * pitch[u] + cx];
-				c[2] = p[v][(size_t)cy * pitch[v] + cx];
+				c[0] = p[0][(size_t)y * pitch[0] + x] << 2;
+				c[1] = p[u][(size_t)cy * pitch[u] + cx] << 2;
+				c[2] = p[v][(size_t)cy * pitch[v] + cx] << 2;
 				return false;
 			}
 			case LAYOUT_P010: {
 				const uint8_t *uv = p[1] + (size_t)cy * pitch[1] + 4 * cx;
-				c[0] = Load16(p[0] + (size_t)y * pitch[0] + 2 * x) >> 8;
-				c[1] = Load16(uv) >> 8;
-				c[2] = Load16(uv + 2) >> 8;
+				c[0] = Load16(p[0] + (size_t)y * pitch[0] + 2 * x) >> 6;
+				c[1] = Load16(uv) >> 6;
+				c[2] = Load16(uv + 2) >> 6;
 				return false;
 			}
 			case LAYOUT_NV15:
-				c[0] = Packed10(p[0] + (size_t)y * pitch[0], x) >> 2;
-				c[1] = Packed10(p[1] + (size_t)cy * pitch[1], 2 * cx) >> 2;
-				c[2] = Packed10(p[1] + (size_t)cy * pitch[1], 2 * cx + 1) >> 2;
+				c[0] = Packed10(p[0] + (size_t)y * pitch[0], x);
+				c[1] = Packed10(p[1] + (size_t)cy * pitch[1], 2 * cx);
+				c[2] = Packed10(p[1] + (size_t)cy * pitch[1], 2 * cx + 1);
 				return false;
 			case LAYOUT_NV12_SAND: {
 				const uint8_t *uv = p[1] + (size_t)(cx / 64) * m_colStride[1] + (size_t)cy * 128 + (2 * cx) % 128;
-				c[0] = p[0][(size_t)(x / 128) * m_colStride[0] + (size_t)y * 128 + x % 128];
-				c[1] = uv[0];
-				c[2] = uv[1];
+				c[0] = p[0][(size_t)(x / 128) * m_colStride[0] + (size_t)y * 128 + x % 128] << 2;
+				c[1] = uv[0] << 2;
+				c[2] = uv[1] << 2;
 				return false;
 			}
 			case LAYOUT_P030_SAND:
-				c[0] = Sand30(p[0], m_colStride[0], x, y) >> 2;
-				c[1] = Sand30(p[1], m_colStride[1], 2 * cx, cy) >> 2;
-				c[2] = Sand30(p[1], m_colStride[1], 2 * cx + 1, cy) >> 2;
+				c[0] = Sand30(p[0], m_colStride[0], x, y);
+				c[1] = Sand30(p[1], m_colStride[1], 2 * cx, cy);
+				c[2] = Sand30(p[1], m_colStride[1], 2 * cx + 1, cy);
 				return false;
 			case LAYOUT_BGRX: {
 				const uint8_t *px = p[0] + (size_t)y * pitch[0] + 4 * x;
@@ -282,7 +286,7 @@ private:
 	}
 };
 
-/** Fixed point (16 bit fraction) YCbCr to RGB coefficients */
+/** Fixed point (16 bit fraction) YCbCr to RGB coefficients (10 bit) */
 struct sYuvMatrix {
 	int y;      ///< luma factor
 	int rv;     ///< V to R
@@ -322,9 +326,10 @@ sYuvMatrix GetMatrix(AVColorSpace cs, AVColorRange range, uint32_t height)
 	}
 	double kg = 1.0 - kr - kb;
 
+	// 10 bit: limited range Y 64 - 940, C 64 - 960
 	bool full = range == AVCOL_RANGE_JPEG;
-	double ys = full ? 1.0 : 255.0 / 219.0;
-	double cs_ = full ? 1.0 : 255.0 / 224.0;
+	double ys = full ? 1.0 : 1023.0 / 876.0;
+	double cs_ = full ? 1.0 : 1023.0 / 896.0;
 
 	sYuvMatrix m;
 	m.y = FIX(ys);
@@ -332,13 +337,141 @@ sYuvMatrix GetMatrix(AVColorSpace cs, AVColorRange range, uint32_t height)
 	m.bu = FIX(2.0 * (1.0 - kb) * cs_);
 	m.gu = FIX(2.0 * (1.0 - kb) * kb / kg * cs_);
 	m.gv = FIX(2.0 * (1.0 - kr) * kr / kg * cs_);
-	m.yOffset = full ? 0 : 16;
+	m.yOffset = full ? 0 : 64;
 	return m;
 }
 
-inline int Clamp8(int v)
+inline int Clamp10(int v)
 {
-	return v < 0 ? 0 : (v > 255 ? 255 : v);
+	return v < 0 ? 0 : (v > 1023 ? 1023 : v);
+}
+
+/** 10 bit (0 - 1023) to 8 bit (0 - 255) */
+inline int To8(int v)
+{
+	return (v * 255 + 511) / 1023;
+}
+
+/*
+ * HDR
+ *
+ * The leds expect an SDR (BT.709) image. A HDR frame (PQ or HLG, BT.2020
+ * primaries) is converted to linear light, its colors are converted to BT.709,
+ * the highlights are compressed (tone mapping) and it is encoded with the
+ * sRGB curve again. A SDR frame with BT.2020 primaries only gets the color
+ * conversion. The conversion is done per sample, so it costs little: an
+ * image of 80x45 pixels has about 15000 samples.
+ */
+
+/** How a frame is converted to the BT.709 SDR image */
+enum eToneMap {
+	TONEMAP_NONE,           ///< SDR BT.709 (or unknown): R'G'B' is used as it is
+	TONEMAP_PQ,             ///< HDR10 (SMPTE ST 2084)
+	TONEMAP_HLG,            ///< HLG (ARIB STD-B67)
+	TONEMAP_SDR_BT2020,     ///< SDR with BT.2020 primaries (wide color gamut)
+};
+
+constexpr double HDR_REFERENCE_WHITE = 203.0;   ///< nits of the HDR reference white (BT.2408), shown as SDR white
+constexpr double HLG_PEAK = 1000.0;             ///< nits of the HLG reference display
+constexpr float TONEMAP_KNEE = 0.75f;           ///< below, the brightness is kept, above it is compressed towards SDR white
+
+eToneMap GetToneMap(AVColorTransferCharacteristic trc, AVColorPrimaries primaries)
+{
+	if (trc == AVCOL_TRC_SMPTE2084)
+		return TONEMAP_PQ;
+	if (trc == AVCOL_TRC_ARIB_STD_B67)
+		return TONEMAP_HLG;
+	if (primaries == AVCOL_PRI_BT2020)
+		return TONEMAP_SDR_BT2020;
+	return TONEMAP_NONE;
+}
+
+/** Lookup tables of the conversions (created once) */
+struct sHdrTables {
+	float pq[1024];         ///< PQ code value (10 bit) -> linear, 1.0 = reference white
+	float hlg[1024];        ///< HLG code value (10 bit) -> scene linear 0 - 1
+	float sdr[1024];        ///< SDR code value (10 bit) -> linear (BT.1886, gamma 2.4)
+	uint8_t encode[4096];   ///< linear 0 - 1 -> 8 bit sRGB
+
+	sHdrTables(void)
+	{
+		// SMPTE ST 2084
+		const double m1 = 2610.0 / 16384.0, m2 = 2523.0 / 4096.0 * 128.0;
+		const double c1 = 3424.0 / 4096.0, c2 = 2413.0 / 4096.0 * 32.0, c3 = 2392.0 / 4096.0 * 32.0;
+		// ARIB STD-B67
+		const double a = 0.17883277, b = 1.0 - 4.0 * 0.17883277, c = 0.5 - 0.17883277 * std::log(4.0 * 0.17883277);
+
+		for (int i = 0; i < 1024; i++) {
+			double e = i / 1023.0;
+			double p = std::pow(e, 1.0 / m2);
+			double nits = 10000.0 * std::pow(std::max(p - c1, 0.0) / (c2 - c3 * p), 1.0 / m1);
+			pq[i] = (float)(nits / HDR_REFERENCE_WHITE);
+			hlg[i] = (float)(e <= 0.5 ? e * e / 3.0 : (std::exp((e - c) / a) + b) / 12.0);
+			sdr[i] = (float)std::pow(e, 2.4);
+		}
+		for (int i = 0; i < 4096; i++) {
+			double l = i / 4095.0;
+			double v = l <= 0.0031308 ? 12.92 * l : 1.055 * std::pow(l, 1.0 / 2.4) - 0.055;
+			encode[i] = (uint8_t)std::lround(255.0 * v);
+		}
+	}
+};
+
+const sHdrTables &HdrTables(void)
+{
+	static const sHdrTables tables;     // thread safe initialization
+	return tables;
+}
+
+/**
+ * Convert a non-linear BT.2020 R'G'B' sample (10 bit) to 8 bit BT.709 RGB
+ */
+void ToneMap(eToneMap mode, const int rgb10[3], int out[3])
+{
+	const sHdrTables &t = HdrTables();
+	float r, g, b;
+
+	switch (mode) {
+		case TONEMAP_PQ:
+			r = t.pq[rgb10[0]];
+			g = t.pq[rgb10[1]];
+			b = t.pq[rgb10[2]];
+			break;
+		case TONEMAP_HLG: {
+			// scene light -> display light (OOTF, system gamma 1.2 at 1000 nits)
+			float rs = t.hlg[rgb10[0]], gs = t.hlg[rgb10[1]], bs = t.hlg[rgb10[2]];
+			float ys = 0.2627f * rs + 0.6780f * gs + 0.0593f * bs;
+			float gain = ys > 0.0f ? (float)(std::pow(ys, 0.2) * HLG_PEAK / HDR_REFERENCE_WHITE) : 0.0f;
+			r = rs * gain;
+			g = gs * gain;
+			b = bs * gain;
+			break;
+		}
+		default:
+			r = t.sdr[rgb10[0]];
+			g = t.sdr[rgb10[1]];
+			b = t.sdr[rgb10[2]];
+			break;
+	}
+
+	// BT.2020 -> BT.709 primaries (colors outside of BT.709 are clipped)
+	float r7 = std::max(0.0f,  1.6605f * r - 0.5876f * g - 0.0728f * b);
+	float g7 = std::max(0.0f, -0.1246f * r + 1.1329f * g - 0.0083f * b);
+	float b7 = std::max(0.0f, -0.0182f * r - 0.1006f * g + 1.1187f * b);
+
+	// compress the highlights, the ratio of the colors (hue) is kept
+	float m = std::max(r7, std::max(g7, b7));
+	if (m > TONEMAP_KNEE) {
+		float mapped = TONEMAP_KNEE + (1.0f - TONEMAP_KNEE) * (1.0f - std::exp(-(m - TONEMAP_KNEE) / (1.0f - TONEMAP_KNEE)));
+		float scale = mapped / m;
+		r7 *= scale;
+		g7 *= scale;
+		b7 *= scale;
+	}
+
+	out[0] = t.encode[std::min(4095, (int)(r7 * 4095.0f + 0.5f))];
+	out[1] = t.encode[std::min(4095, (int)(g7 * 4095.0f + 0.5f))];
+	out[2] = t.encode[std::min(4095, (int)(b7 * 4095.0f + 0.5f))];
 }
 
 } // namespace
@@ -368,6 +501,21 @@ const char *cFrameSampler::FormatName(uint32_t pixFmt, uint64_t modifier)
 		case LAYOUT_BGRX:      return "XRGB8888";
 		case LAYOUT_RGBX:      return "XBGR8888";
 		default:               return "unsupported";
+	}
+}
+
+/**
+ * Get a printable name of the conversion of a frame (for the statistics)
+ *
+ * @return  nullptr, if the frame is SDR BT.709
+ */
+const char *cFrameSampler::ToneMapName(AVColorTransferCharacteristic trc, AVColorPrimaries primaries)
+{
+	switch (GetToneMap(trc, primaries)) {
+		case TONEMAP_PQ:         return "HDR10 (PQ) tone mapped";
+		case TONEMAP_HLG:        return "HLG tone mapped";
+		case TONEMAP_SDR_BT2020: return "BT.2020 converted";
+		default:                 return nullptr;
 	}
 }
 
@@ -412,6 +560,7 @@ bool cFrameSampler::Sample(const sMappedFrame &frame,
 	}
 
 	const sYuvMatrix m = GetMatrix(frame.colorspace, frame.colorRange, frame.height);
+	const eToneMap toneMap = GetToneMap(frame.colorTrc, frame.colorPrimaries);
 	const int n = m_samplesPerPixel;
 	const int count = n * n;
 
@@ -437,11 +586,25 @@ bool cFrameSampler::Sample(const sMappedFrame &frame,
 					}
 
 					int yy = (c[0] - m.yOffset) * m.y;
-					int u = c[1] - 128;
-					int v = c[2] - 128;
-					sum[0] += Clamp8((yy + m.rv * v + 32768) >> 16);
-					sum[1] += Clamp8((yy - m.gu * u - m.gv * v + 32768) >> 16);
-					sum[2] += Clamp8((yy + m.bu * u + 32768) >> 16);
+					int u = c[1] - 512;
+					int v = c[2] - 512;
+					int rgb[3] = {
+						Clamp10((yy + m.rv * v + 32768) >> 16),
+						Clamp10((yy - m.gu * u - m.gv * v + 32768) >> 16),
+						Clamp10((yy + m.bu * u + 32768) >> 16),
+					};
+
+					if (toneMap != TONEMAP_NONE) {
+						int out[3];
+						ToneMap(toneMap, rgb, out);
+						sum[0] += out[0];
+						sum[1] += out[1];
+						sum[2] += out[2];
+					} else {
+						sum[0] += To8(rgb[0]);
+						sum[1] += To8(rgb[1]);
+						sum[2] += To8(rgb[2]);
+					}
 				}
 			}
 

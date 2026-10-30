@@ -123,10 +123,14 @@ bool cFrameSnapshot::Take(cDrmBuffer *buf, bool keepFrame)
 	m_pts = AV_NOPTS_VALUE;
 	m_colorspace = AVCOL_SPC_UNSPECIFIED;
 	m_colorRange = AVCOL_RANGE_UNSPECIFIED;
+	m_colorTrc = AVCOL_TRC_UNSPECIFIED;
+	m_colorPrimaries = AVCOL_PRI_UNSPECIFIED;
 	if (buf->frame) {
 		m_pts = buf->frame->pts;
 		m_colorspace = buf->frame->colorspace;
 		m_colorRange = buf->frame->color_range;
+		m_colorTrc = buf->frame->color_trc;
+		m_colorPrimaries = buf->frame->color_primaries;
 
 		// a new reference to the buffers of the frame (no copy), the decoder
 		// gets them back, when the last reference is released
@@ -186,6 +190,8 @@ void cFrameSnapshot::Swap(cFrameSnapshot &o)
 	std::swap(m_cropRect, o.m_cropRect);
 	std::swap(m_colorspace, o.m_colorspace);
 	std::swap(m_colorRange, o.m_colorRange);
+	std::swap(m_colorTrc, o.m_colorTrc);
+	std::swap(m_colorPrimaries, o.m_colorPrimaries);
 }
 
 /**
@@ -225,6 +231,8 @@ bool cFrameSnapshot::Map(sMappedFrame *frame)
 	frame->numPlanes = m_numPlanes;
 	frame->colorspace = m_colorspace;
 	frame->colorRange = m_colorRange;
+	frame->colorTrc = m_colorTrc;
+	frame->colorPrimaries = m_colorPrimaries;
 
 	for (int i = 0; i < 4; i++) {
 		frame->plane[i] = nullptr;

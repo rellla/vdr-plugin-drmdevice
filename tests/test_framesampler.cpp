@@ -8,8 +8,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include <drm_fourcc.h>
@@ -421,4 +423,211 @@ TEST_CASE("FrameSampler: rejected frames", "[framesampler]")
 		t.f.numPlanes = 2;
 		CHECK_FALSE(sampler.Sample(t.f, 0, 0, W, H, px, 3, 1, 1));
 	}
+}
+
+namespace {
+
+/** PQ encoding (SMPTE ST 2084) of a luminance in nits */
+double PqEncode(double nits)
+{
+	const double m1 = 2610.0 / 16384.0, m2 = 2523.0 / 4096.0 * 128.0;
+	const double c1 = 3424.0 / 4096.0, c2 = 2413.0 / 4096.0 * 32.0, c3 = 2392.0 / 4096.0 * 32.0;
+	double y = std::pow(nits / 10000.0, m1);
+	return std::pow((c1 + c2 * y) / (1.0 + c3 * y), m2);
+}
+
+/** HLG encoding (ARIB STD-B67) of scene light 0 - 1 */
+double HlgEncode(double e)
+{
+	const double a = 0.17883277, b = 1.0 - 4.0 * a, c = 0.5 - a * std::log(4.0 * a);
+	return e <= 1.0 / 12.0 ? std::sqrt(3.0 * e) : a * std::log(12.0 * e - b) + c;
+}
+
+/** linear 0 - 1 -> 8 bit sRGB */
+int SrgbEncode(double l)
+{
+	l = std::min(1.0, std::max(0.0, l));
+	return (int)std::lround(255.0 * (l <= 0.0031308 ? 12.92 * l : 1.055 * std::pow(l, 1.0 / 2.4) - 0.055));
+}
+
+/** linear BT.709 -> linear BT.2020 */
+void Bt709To2020(const double in[3], double out[3])
+{
+	out[0] = 0.6274 * in[0] + 0.3293 * in[1] + 0.0433 * in[2];
+	out[1] = 0.0691 * in[0] + 0.9195 * in[1] + 0.0114 * in[2];
+	out[2] = 0.0164 * in[0] + 0.0880 * in[1] + 0.8956 * in[2];
+}
+
+/** non-linear BT.2020 R'G'B' (0 - 1) -> 10 bit limited range YCbCr (BT.2020 matrix) */
+void ToYuv10(const double rgb[3], int *y, int *u, int *v)
+{
+	const double kr = 0.2627, kb = 0.0593, kg = 1.0 - kr - kb;
+	double yy = kr * rgb[0] + kg * rgb[1] + kb * rgb[2];
+	*y = (int)std::lround(64.0 + 876.0 * yy);
+	*u = (int)std::lround(512.0 + 896.0 * (rgb[2] - yy) / (2.0 * (1.0 - kb)));
+	*v = (int)std::lround(512.0 + 896.0 * (rgb[0] - yy) / (2.0 * (1.0 - kr)));
+}
+
+/** A single colored P010 frame */
+sTestFrame MakeP010Color(int y, int u, int v, AVColorTransferCharacteristic trc, AVColorPrimaries primaries)
+{
+	auto t = MakeP010();
+	uint32_t pitch = t.f.pitch[0];
+	for (int yy = 0; yy < H; yy++)
+		for (int x = 0; x < W; x++) {
+			Put16(&t.mem[yy * pitch + 2 * x], y << 6);
+			if (!(x & 1) && !(yy & 1)) {
+				Put16(&t.mem[pitch * H + (yy / 2) * pitch + 2 * x], u << 6);
+				Put16(&t.mem[pitch * H + (yy / 2) * pitch + 2 * x + 2], v << 6);
+			}
+		}
+	t.f.colorspace = AVCOL_SPC_BT2020_NCL;
+	t.f.colorTrc = trc;
+	t.f.colorPrimaries = primaries;
+	return t;
+}
+
+/** Expected 8 bit output of the tone mapping (independent of the implementation) */
+void ExpectToneMapped(const double linear709[3], int out[3])
+{
+	double m = std::max(linear709[0], std::max(linear709[1], linear709[2]));
+	double scale = 1.0;
+	if (m > 0.75)
+		scale = (0.75 + 0.25 * (1.0 - std::exp(-(m - 0.75) / 0.25))) / m;
+	for (int i = 0; i < 3; i++)
+		out[i] = SrgbEncode(linear709[i] * scale);
+}
+
+void CheckColor(sTestFrame &t, const int want[3], int tolerance)
+{
+	cFrameSampler sampler;
+	uint8_t px[3];
+	REQUIRE(sampler.Sample(t.f, 0, 0, W, H, px, 3, 1, 1));
+	INFO("got " << (int)px[0] << " " << (int)px[1] << " " << (int)px[2] << ", want " << want[0] << " " << want[1] << " " << want[2]);
+	CHECK(std::abs(px[0] - want[0]) <= tolerance);
+	CHECK(std::abs(px[1] - want[1]) <= tolerance);
+	CHECK(std::abs(px[2] - want[2]) <= tolerance);
+}
+
+/** encode a linear BT.709 color (1.0 = reference white of 203 nits) as PQ and check the result */
+void CheckPq(const double linear709[3], int tolerance = 3)
+{
+	double lin2020[3], enc[3];
+	Bt709To2020(linear709, lin2020);
+	for (int i = 0; i < 3; i++)
+		enc[i] = PqEncode(lin2020[i] * 203.0);
+	int y, u, v;
+	ToYuv10(enc, &y, &u, &v);
+	auto t = MakeP010Color(y, u, v, AVCOL_TRC_SMPTE2084, AVCOL_PRI_BT2020);
+	int want[3];
+	ExpectToneMapped(linear709, want);
+	CheckColor(t, want, tolerance);
+}
+
+} // namespace
+
+TEST_CASE("FrameSampler: HDR10 (PQ) tone mapping", "[framesampler]")
+{
+	SECTION("mid gray (18% of the reference white) keeps its brightness") {
+		const double c[3] = {0.18, 0.18, 0.18};
+		CheckPq(c);
+	}
+	SECTION("a saturated BT.709 red stays red") {
+		const double c[3] = {0.5, 0.0, 0.0};
+		CheckPq(c);
+	}
+	SECTION("a dark blue") {
+		const double c[3] = {0.02, 0.05, 0.3};
+		CheckPq(c);
+	}
+	SECTION("the reference white is compressed a bit") {
+		const double c[3] = {1.0, 1.0, 1.0};
+		CheckPq(c);
+	}
+	SECTION("a 1000 nits highlight is nearly white, not clipped earlier") {
+		const double c[3] = {1000.0 / 203.0, 1000.0 / 203.0, 1000.0 / 203.0};
+		CheckPq(c);
+	}
+	SECTION("the hue of a bright color is kept") {
+		const double c[3] = {3.0, 1.5, 0.3};
+		CheckPq(c);
+	}
+	SECTION("black") {
+		const double c[3] = {0.0, 0.0, 0.0};
+		CheckPq(c, 1);
+	}
+}
+
+TEST_CASE("FrameSampler: HLG tone mapping", "[framesampler]")
+{
+	// HLG 75% is the reference white (BT.2408)
+	SECTION("75% white") {
+		double enc[3] = {0.75, 0.75, 0.75};
+		int y, u, v;
+		ToYuv10(enc, &y, &u, &v);
+		auto t = MakeP010Color(y, u, v, AVCOL_TRC_ARIB_STD_B67, AVCOL_PRI_BT2020);
+		const double lin[3] = {1.0, 1.0, 1.0};
+		int want[3];
+		ExpectToneMapped(lin, want);
+		CheckColor(t, want, 4);
+	}
+	SECTION("a dark scene stays dark") {
+		double scene = 0.01;    // 1% scene light
+		double enc[3] = {HlgEncode(scene), HlgEncode(scene), HlgEncode(scene)};
+		int y, u, v;
+		ToYuv10(enc, &y, &u, &v);
+		auto t = MakeP010Color(y, u, v, AVCOL_TRC_ARIB_STD_B67, AVCOL_PRI_BT2020);
+		double display = std::pow(scene, 1.2) * 1000.0 / 203.0;
+		const double lin[3] = {display, display, display};
+		int want[3];
+		ExpectToneMapped(lin, want);
+		CheckColor(t, want, 3);
+	}
+}
+
+TEST_CASE("FrameSampler: SDR with BT.2020 primaries", "[framesampler]")
+{
+	// a BT.709 red, coded in BT.2020 with a gamma 2.4 transfer
+	const double lin709[3] = {0.6, 0.0, 0.0};
+	double lin2020[3], enc[3];
+	Bt709To2020(lin709, lin2020);
+	for (int i = 0; i < 3; i++)
+		enc[i] = std::pow(lin2020[i], 1.0 / 2.4);
+	int y, u, v;
+	ToYuv10(enc, &y, &u, &v);
+	auto t = MakeP010Color(y, u, v, AVCOL_TRC_BT2020_10, AVCOL_PRI_BT2020);
+	const int want[3] = {SrgbEncode(0.6), 0, 0};
+	CheckColor(t, want, 4);
+}
+
+TEST_CASE("FrameSampler: HDR on the Raspberry Pi (P030/SAND128)", "[framesampler]")
+{
+	const double lin709[3] = {0.4, 0.1, 0.02};
+	double lin2020[3], enc[3];
+	Bt709To2020(lin709, lin2020);
+	for (int i = 0; i < 3; i++)
+		enc[i] = PqEncode(lin2020[i] * 203.0);
+	int yy, u, v;
+	ToYuv10(enc, &yy, &u, &v);
+
+	auto t = MakeP030Sand();
+	const int colH = H * 3 / 2;
+	uint8_t *chroma = t.mem.data() + 128 * H;
+	for (int y = 0; y < H; y++)
+		for (int x = 0; x < W; x++) {
+			PutSand30(t.mem.data(), colH, x, y, yy);
+			if (!(x & 1) && !(y & 1)) {
+				PutSand30(chroma, colH, x, y / 2, u);
+				PutSand30(chroma, colH, x + 1, y / 2, v);
+			}
+		}
+	t.f.colorspace = AVCOL_SPC_BT2020_NCL;
+	t.f.colorTrc = AVCOL_TRC_SMPTE2084;
+	t.f.colorPrimaries = AVCOL_PRI_BT2020;
+
+	int want[3];
+	ExpectToneMapped(lin709, want);
+	CheckColor(t, want, 3);
+	CHECK(std::string(cFrameSampler::ToneMapName(t.f.colorTrc, t.f.colorPrimaries)) == "HDR10 (PQ) tone mapped");
+	CHECK(cFrameSampler::ToneMapName(AVCOL_TRC_BT709, AVCOL_PRI_BT709) == nullptr);
 }

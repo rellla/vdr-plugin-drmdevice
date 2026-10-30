@@ -39,6 +39,8 @@ struct sMappedFrame {
 	uint32_t pitch[4] = {};             ///< pitch of the plane (SAND: column height in lines)
 	AVColorSpace colorspace = AVCOL_SPC_UNSPECIFIED; ///< color matrix of the frame
 	AVColorRange colorRange = AVCOL_RANGE_UNSPECIFIED; ///< color range of the frame
+	AVColorTransferCharacteristic colorTrc = AVCOL_TRC_UNSPECIFIED; ///< transfer function of the frame (PQ, HLG: HDR)
+	AVColorPrimaries colorPrimaries = AVCOL_PRI_UNSPECIFIED; ///< color primaries of the frame
 };
 
 #endif

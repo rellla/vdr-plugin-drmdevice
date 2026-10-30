@@ -31,6 +31,7 @@ class cFrameSampler {
 public:
 	static bool IsSupported(uint32_t pixFmt, uint64_t modifier);
 	static const char *FormatName(uint32_t pixFmt, uint64_t modifier);
+	static const char *ToneMapName(AVColorTransferCharacteristic, AVColorPrimaries);
 
 	bool Sample(const sMappedFrame &frame,
 	            int srcX, int srcY, int srcW, int srcH,
