@@ -217,111 +217,11 @@ Setup: /etc/vdr/setup.conf
 		0 = fast channel switch is disabled
 		1 = enable fast channel switch: video is presented immediately as a still-picture
 		2 = enable fast channel switch: video is presented immediately as a still-picture and audio starts as soon as possible
-
-	drmdevice.ZapAhead = 0
-		0 = off
-		1 = tune the neighbour channels ahead (experimental)
-		After a channel switch, the next channel in the direction of the last switch
-		(channel up or down) is received on a free device with the lowest priority.
-		A switch to this channel doesn't have to tune and to wait for the tuner lock,
-		because VDR prefers a device, which is tuned to the transponder already.
-		After a switch to another channel and after VDR's start, the next higher
-		channel is received. The device of the last live channel is only taken
-		for it, if no other device is free, so a switch back doesn't have to tune.
-		The packets of the channel since its last I-frame are buffered, so the switch
-		starts with this I-frame instead of waiting for the next one. The picture is
-		up to one GOP later than without the buffer then.
-		It only works, if a free device can receive the channel (or the channel is
-		on the transponder of the current channel), and it is off while pip is
-		shown. An encrypted channel isn't buffered (the device of the next channel
-		has no CAM, see drmdevice.ZapAheadCam), only tuned. The device isn't free
-		for VDR's EPG scan meanwhile
-		(see drmdevice.ZapAheadRelease), but it is released for a recording or the
-		live view.
-
-	drmdevice.ZapAheadCam = 0
-		0 = an encrypted channel of drmdevice.ZapAhead is only tuned, not buffered
-		1 = an encrypted channel is received with a CAM (experimental): VDR selects
-		    the device and a CAM, which can decrypt the channel, like for a
-		    recording with the lowest priority (-98). A device, which is used by
-		    the live view or a recording, isn't taken, so their decryption isn't
-		    disturbed. A switch to the channel starts with its buffer and doesn't
-		    have to wait for the keys of the CAM.
-		    It only works, if a CAM is free for the channel: a CAM, which
-		    decrypts one channel only (most CI+ modules), is used by the live
-		    view, if the live channel is encrypted, too. A CAM with MTD
-		    (multi transponder decryption) or several CAMs can decrypt several
-		    channels. A recording or the live view takes the CAM back at any
-		    time. With three tuners the receiver of the live channel keeps its
-		    CAM after a switch, until another channel needs it.
-		    With several CAMs VDR detaches a receiver, whose channel isn't
-		    decrypted within 3s, and doesn't try this CAM for the channel for
-		    15s. Some CAMs don't like the frequent channel changes, so it is
-		    off by default.
-
-	drmdevice.ZapAheadRelease = 2
-		Release the devices of drmdevice.ZapAhead after a time without key press
-		(and without channel switch), so VDR's EPG scan can use them. The EPG
-		scan starts 60s after the last key press. The next key press tunes the
-		channels again, but not, while a menu is shown (only after it is closed).
-		0 = never
-		1 = after 20s
-		2 = after 50s
-		3 = after 5min
-		4 = after 30min
-
-	drmdevice.ZapAheadSyncAudio = 1
-		0 = a channel switch of drmdevice.ZapAhead starts with the newest buffered
-		    I-frame. Its audio is sent later by the broadcaster (the video is sent
-		    ahead of the audio, often about 1s), so the playback waits for it.
-		1 = the switch starts with the newest buffered I-frame, whose synchronous
-		    audio is buffered, too (up to the playback start threshold), so the
-		    audio doesn't have to be waited for. The buffer keeps the last
-		    I-frames within 150 frames for it. The picture is up to one GOP later
-		    than with 0 then. If no I-frame has enough audio yet (e.g. right after
-		    the channel was tuned), the switch starts with the newest one.
-		    The delay is limited by drmdevice.ZapAheadMaxDelay.
-		    In the fast channel switch mode with audio
-		    (drmdevice.VideoChannelSwitchMode = 2) the audio starts with the
-		    first picture. The video of a switch with the buffer starts with
-		    the heard audio then, the frames before are skipped (a switch
-		    without the buffer doesn't skip frames).
-
-	drmdevice.ZapAheadMaxDelay = 2
-		Max. delay of a channel switch of drmdevice.ZapAheadSyncAudio (the time
-		from the I-frame with synchronous audio to the newest buffered video
-		packet). If the I-frame is older, the switch starts with the newest
-		I-frame and waits for its audio.
-		0 = 1s
-		1 = 1.5s
-		2 = 2s
-		3 = 3s
-		4 = 5s
-
-	drmdevice.ZapAheadTuners = 2
-		Tuners for the live view and drmdevice.ZapAhead (only, if VDR has at least
-		three tuners, selectable in the setup menu, if ZapAhead is on)
-		2 = the next channel in zap direction is received
-		3 = the channel in the opposite direction (usually the last live channel) is
-		    received, too, preferably on the device, which is tuned to it already.
-		    So a switch back starts with its buffer, too. The live channel has a
-		    receiver on its device, too, so its buffer continues after a switch
-		    and a quick switch back starts with it at once.
-		The receivers of channels, which are neighbours after a channel switch, too,
-		are kept with their buffers.
-		While a channel number is entered with the number keys, the entered
-		channel is tuned ahead, too (on a free device or on a device of the
-		neighbour channels). So the switch may start with its buffer, when the
-		entry is done (by OK or by VDR's channel entry timeout). If the entry
-		takes less time than the tuner lock and the first I-frame, the switch
-		still doesn't have to tune.
-		The statistics of the setup menu show the received channels, how many
-		switches started with a buffer and the average switch times (until the
-		first picture and until the playback started) with and without a buffer,
-		the average delay of the switches with a buffer (see
-		drmdevice.ZapAheadMaxDelay) and the average frame corrections of the
-		A/V sync (dropped and repeated frames) within the first 250 frames after
-		a switch. The red key resets them.
+		The zapcache plugin (vdr-plugin-zapcache) tunes the neighbour channels
+		ahead and buffers them, a channel switch to them starts with the buffered
+		packets since an I-frame (drmdevice uses its service interface). In mode 2
+		the video of such a switch starts with the heard audio, the frames before
+		are skipped (a switch without the buffer doesn't skip frames).
 
 	drmdevice.AudioSoftvol = 0
 		0 = off, use hardware volume control

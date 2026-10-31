@@ -179,38 +179,11 @@ msgid "Audio device: %s"
 msgstr "Audiogerät: %s"
 
 #, c-format
-msgid "%d (device %d, %d frames)"
-msgstr "%d (Gerät %d, %d Frames)"
-
-#, c-format
-msgid "Zap cache: %s"
-msgstr "Zap-Cache: %s"
-
-#, c-format
-msgid "Zap cache: %d of %d switches buffered, %d with synchronous audio"
-msgstr "Zap-Cache: %d von %d Umschaltungen gepuffert, %d mit synchronem Ton"
-
-#, c-format
-msgid "Switch time buffered: picture %s, playback %s, delay %s"
-msgstr "Umschaltzeit gepuffert: Bild %s, Wiedergabe %s, Verzögerung %s"
-
-#, c-format
-msgid "Switch time without buffer: picture %s, playback %s"
-msgstr "Umschaltzeit ohne Puffer: Bild %s, Wiedergabe %s"
-
-#, c-format
-msgid "Frame corrections after a switch: buffered %s, without buffer %s"
-msgstr "Bildkorrekturen nach Umschaltung: gepuffert %s, ohne Puffer %s"
-
-#, c-format
 msgid "OSD: Using %s rendering"
 msgstr "OSD: Benutze %s rendering"
 
 msgid "OSD: Using software rendering"
 msgstr "OSD: Benutze software rendering"
-
-msgid "Button$Reset zap cache"
-msgstr "Zap-Cache zurücksetzen"
 
 msgid "Hide main menu entry"
 msgstr "Verstecke Hauptmenüeintrag"
@@ -223,24 +196,6 @@ msgstr "Anzeigemodus"
 
 msgid "Enable fast channel switch"
 msgstr "Aktiviere schnelles Umschalten"
-
-msgid "Tune channels ahead"
-msgstr "Kanäle vorab tunen"
-
-msgid " Tuners for live view and cache"
-msgstr " Tuner für Live-Bild und Cache"
-
-msgid " Release the tuners without key press"
-msgstr " Tuner ohne Tastendruck freigeben"
-
-msgid " Start with synchronous audio"
-msgstr " Mit synchronem Ton starten"
-
-msgid "  Max. delay"
-msgstr "  Max. Verzögerung"
-
-msgid " Buffer encrypted channels (CAM)"
-msgstr " Verschlüsselte Sender puffern (CAM)"
 
 #, c-format
 msgid "Zoom level %d (/1000)"
@@ -483,27 +438,6 @@ msgstr "manuell"
 
 msgid "automatic"
 msgstr "automatisch"
-
-msgid "2 (next channel)"
-msgstr "2 (nächster Kanal)"
-
-msgid "3 (next and previous channel)"
-msgstr "3 (nächster und vorheriger Kanal)"
-
-msgid "never"
-msgstr "nie"
-
-msgid "after 20s"
-msgstr "nach 20s"
-
-msgid "after 50s"
-msgstr "nach 50s"
-
-msgid "after 5min"
-msgstr "nach 5min"
-
-msgid "after 30min"
-msgstr "nach 30min"
 
 #, c-format
 msgid "default %dx%d@%.2f%s"

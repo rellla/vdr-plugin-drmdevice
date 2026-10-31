@@ -31,7 +31,7 @@ extern "C"
 #include "jittertracker.h"
 #include "pes.h"
 #include "statemachine.h"
-#include "zapcache.h"
+#include "zapcache_service.h"
 
 class cAudioDecoder;
 class cAudioStream;
@@ -91,10 +91,8 @@ public:
 	int Start(void);
 	void Stop(void);
 	void MainThreadHook(void);
-	cZapCache *ZapCache(void) { return &m_zapCache; }                          ///< get the zap cache (for the statistics)
-	/** report the time of a channel switch (see cZapCache::ReportSwitchTime()) */
-	void ReportChannelSwitchTime(bool start, int ms) { m_zapCache.ReportSwitchTime(start, ms); }
-	void ReportChannelSwitchCorrections(int corrections) { m_zapCache.ReportSwitchCorrections(corrections); }
+	void ReportChannelSwitchEvent(bool);
+	void ReportFrameCorrection(int, int);
 
 	//
 	// VDR cDevice interface
@@ -128,6 +126,7 @@ protected:
 	virtual int PlayAudio(const uchar *, int, uchar);
 public:
 	virtual int PlayTs(const uchar *, int, bool = false);
+	static int PlayBufferedTs(void *, const uchar *, int);
 	virtual int64_t GetSTC(void);
 	virtual cRect CanScaleVideo(const cRect &, int);
 	virtual void ScaleVideo(const cRect & = cRect::Null);
@@ -147,8 +146,6 @@ public:
 	//
 protected:
 	virtual void ChannelSwitch(const cDevice *, int, bool);
-	virtual void OsdChannel(const char *);
-	virtual void OsdClear(void);
 	virtual void Replaying(const cControl *, const char *, const char *, bool);
 
 	//
@@ -307,7 +304,8 @@ private:
 	cVideoStream *m_pPipStream = nullptr; ///< pointer to pip video stream (nullptr, if detached)
 	cReassemblyBufferVideo m_pipReassemblyBuffer; ///< pip pes reassembly buffer
 	cPipHandler *m_pPipHandler = nullptr; ///< pointer to pip handler (exists also in detached state)
-	cZapCache m_zapCache;                 ///< tunes the next channel in zap direction ahead
+	ZapCacheService_v1_0 m_zapCache = {}; ///< service interface of the zapcache plugin (empty without the plugin, set in Start())
+	std::atomic<bool> m_zapCacheSwitch = false; ///< the current channel switch started with the buffer of the zapcache plugin
 	std::mutex m_sizeMutex;          ///< mutex to lock screen size (which is accessed by different threads)
 	std::atomic<bool> m_receivedAudio = false; ///< flag if audio packets have been received
 	std::atomic<bool> m_receivedVideo = false; ///< flag if video packets have been received

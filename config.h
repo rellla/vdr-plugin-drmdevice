@@ -111,12 +111,6 @@ public:
 	int ConfigVideoChannelSwitchMode = CHANNEL_SWITCH_AVSYNC; ///< channel switch mode (enum ChannelSwitchMode)
 	/** zoom-in factor of the zoom levels in 1/10 % (0 = level disabled): +34.4% fills 2.39:1, +12.5% fills 2.00:1 on 16:9 */
 	int ConfigZoomLevel[ZOOM_LEVELS] = { 344, 125, 0, 0, 0 };
-	int ConfigZapAhead = 0;                     ///< tune the neighbour channels on free devices ahead
-	int ConfigZapAheadTuners = 2;               ///< tuners for the live view and the zap cache (2: next channel, 3: next and previous channel)
-	int ConfigZapAheadRelease = 2;              ///< release the devices without key press (see cZapCache::ReleaseSeconds())
-	int ConfigZapAheadSyncAudio = 1;            ///< start a channel switch of the zap cache with synchronous audio
-	int ConfigZapAheadMaxDelay = 2;             ///< max. delay of a start with synchronous audio (see cZapCache::MaxDelayMs())
-	int ConfigZapAheadCam = 0;                  ///< receive encrypted channels of the zap cache with a CAM
 
 	// Audio
 	bool ConfigAudioSoftvol = false;            ///< config use software volume

@@ -268,7 +268,7 @@ cOsdObject *cPluginDrmDevice::MainMenuAction(void)
 /**
  * Main thread hook
  *
- * Tunes the next channel ahead (see cZapCache).
+ * Lets the device use the zapcache plugin (see cOutputDevice::MainThreadHook()).
  *
  * Closes the menu after a detach or attach with SVDRP: the menu wasn't shown
  * while detached, so VDR would only close it with the next menu key instead
