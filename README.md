@@ -533,6 +533,24 @@ If your VDR has enough devices assigned, you can watch channels on different tra
 systems, pip should only show the channels like if you are doing a concurrent recording.
 
 
+Ambient image service
+---------------------
+drmdevice provides a small RGB image of the displayed video for ambient lighting plugins (e.g.
+vdr-plugin-hyperion) with the VDR service "AmbientImage-v1.0", see ambientimage_service.h.
+
+- The consumer calls the service in its own thread. The call waits for the next frame and reads
+  the image from it in the calling thread, the display thread only hands over a snapshot of the
+  displayed buffer (duplicated DMA-BUF descriptors).
+- While nobody calls the service, no snapshots are taken: it costs nothing, if it isn't used.
+- Only a few pixels per image pixel are read directly from the decoded frame in its native format.
+  Supported are NV12, NV21, YUV420, P010 and NV15 (linear) as well as NV12 and P030 in the
+  Broadcom SAND128 layout (Raspberry Pi HEVC decoder).
+- HDR frames (HDR10/PQ, HLG) are tone mapped to SDR BT.709, SDR frames with BT.2020 primaries get
+  the color conversion.
+- Only the video is read (no OSD). A scaled video or a video with a different aspect ratio is
+  placed into the image as it is shown on the screen, the rest is black.
+- The result has flags for a displayed video, a paused playback and a detached device.
+
 Fast channel switch modes
 -------------------------
 The plugin offers three different modes for handling the audio and video playback at a channel switch:

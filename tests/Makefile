@@ -20,9 +20,9 @@ CXX ?= g++
 CXXFLAGS ?= -g -O1
 
 override CXXFLAGS += -std=c++17 -W -Wall -Wextra -Werror=format -I.. -isystem $(VDRINCDIR) -D_GNU_SOURCE
-override CXXFLAGS += $(shell pkg-config --cflags libavcodec libavformat libavutil catch2-with-main)
+override CXXFLAGS += $(shell pkg-config --cflags libavcodec libavformat libavutil libdrm catch2-with-main)
 override CXXFLAGS += -DTEST_DATA_DIR='"$(CURDIR)/data"'
-LIBS = $(shell pkg-config --libs libavformat libavcodec libavutil catch2-with-main)
+LIBS = $(shell pkg-config --libs libavformat libavcodec libavutil libdrm catch2-with-main)
 
 ifeq ($(BUILD),sanitize)
 SANITIZE_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all
@@ -44,6 +44,7 @@ SOURCES_UNDER_TEST = \
 	audioprocessor.cpp \
 	config.cpp \
 	filllevel.cpp \
+	framesampler.cpp \
 	h264parser.cpp \
 	logger.cpp \
 	mediaresume.cpp \

@@ -137,6 +137,7 @@ override CFLAGS	  += $(_CFLAGS) $(DEFINES) $(INCLUDES) \
 
 OBJS = $(PLUGINENTRY).o \
  	alsadevice.o \
+	ambient.o \
 	audio.o \
 	audioprocessor.o \
 	codec_audio.o \
@@ -148,6 +149,7 @@ OBJS = $(PLUGINENTRY).o \
 	drmhdr.o \
 	drmplane.o \
 	filllevel.o \
+	framesampler.o \
 	framesnapshot.o \
 	grab.o \
 	h264parser.o \

@@ -35,6 +35,7 @@ extern "C" {
 #include "codec_audio.h"
 #include "config.h"
 #include "device.h"
+#include "ambient.h"
 #include "grab.h"
 #include "hardwaredevice.h"
 #include "jittertracker.h"
@@ -71,6 +72,7 @@ cOutputDevice::~cOutputDevice(void)
 
 	m_initialized = false; // not necessary, just for documentation
 
+	delete m_pAmbient;
 	delete m_pEventHandler;
 	delete m_pPipHandler;
 	delete m_pHardwareDevice;
@@ -93,6 +95,7 @@ bool cOutputDevice::Initialize(void)
 	m_pHardwareDevice = new cHardwareDevice();
 	m_pEventHandler = new cEventHandler(m_pStateMachine.get());
 	m_pPipHandler = new cPipHandler(this);
+	m_pAmbient = new cAmbientService();
 
 	auto channelSwitchStartTime = std::chrono::steady_clock::now();
 	LOGGER->SetChannelSwitchStartTime(channelSwitchStartTime);
@@ -372,6 +375,7 @@ bool cOutputDevice::CanReplay(void) const
 bool cOutputDevice::SetPlayMode(ePlayMode play_mode)
 {
 	LOGDEBUG("device: %s: %d", __FUNCTION__, play_mode);
+	m_pAmbient->SetPaused(false);
 
 	// A new play mode arrived, attach first if we did detach because of an external player
 	if (m_externalPlayerActive) {
@@ -703,6 +707,7 @@ void cOutputDevice::ScaleVideo(const cRect & rect)
 void cOutputDevice::TrickSpeed(int speed, bool forward)
 {
 	LOGDEBUG("device: %s: %d %s", __FUNCTION__, speed, forward ? "forward" : "backward");
+	m_pAmbient->SetPaused(false);
 
 	// This normalizes the VDR frame displaying count into a factor, representing how fast/slow the playback shall be.
 	// For example, a factor of 2.0 means twice as fast as normal, a factor of 0.5 means half as fast as normal (slow-mo).
@@ -817,6 +822,7 @@ void cOutputDevice::Play(void)
 {
 	LOGDEBUG("device: %s:", __FUNCTION__);
 	cDevice::Play();
+	m_pAmbient->SetPaused(false);
 
 	TriggerEvent(PlayEvent{});
 }
@@ -828,6 +834,7 @@ void cOutputDevice::Freeze(void)
 {
 	LOGDEBUG("device: %s:", __FUNCTION__);
 	cDevice::Freeze();
+	m_pAmbient->SetPaused(true);
 
 	TriggerEvent(PauseEvent{});
 }
@@ -2212,6 +2219,7 @@ void cOutputDevice::LeaveState(State state)
 			m_pPipStream = new cPipVideoStream(m_pRender, m_pHardwareDevice->GetQuirks(), m_pRender->GetPipOutputBuffer(), m_pConfig, std::bind(&cVideoRender::PushPipFrame, m_pRender, std::placeholders::_1));
 			m_pPipStream->StartDecoder(); // starts decoding thread
 			// Audio is init lazily (includes starting thread)
+			m_pAmbient->SetDetached(false);
 
 			break;
 	}
@@ -2312,6 +2320,7 @@ void cOutputDevice::EnterState(State state)
 			m_pAudio->Exit(); // audio must be stopped after renderer!
 
 			DeleteDecoderAndOutput();
+			m_pAmbient->SetDetached(true);
 
 			break;
 	}
