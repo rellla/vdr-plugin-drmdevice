@@ -17,7 +17,6 @@
 
 #include <chrono>
 #include <cinttypes>
-#include <cstdio>
 #include <mutex>
 #include <variant>
 #include <libintl.h>
@@ -27,6 +26,7 @@ extern "C" {
 }
 
 #include <vdr/dvbspu.h>
+#include <vdr/plugin.h>
 #include <vdr/skins.h>
 #include <vdr/status.h>
 #include <vdr/thread.h>
@@ -109,10 +109,17 @@ bool cOutputDevice::Initialize(void)
 
 /**
  * Called by VDR when the plugin is started.
+ *
+ * Gets the service interface of the zapcache plugin: VDR starts all plugins,
+ * before it switches to the first live channel, so PlayTs() doesn't read it yet.
  */
 int cOutputDevice::Start(void)
 {
 	LOGDEBUG("device: %s", __FUNCTION__);
+
+	if (cPluginManager::CallFirstService(ZAPCACHE_SERVICE_V1_0, &m_zapCache))
+		LOGINFO("device: %s: using the zapcache plugin", __FUNCTION__);
+
 	TriggerEvent(AttachEvent{});
 
 	return true;
@@ -124,23 +131,44 @@ int cOutputDevice::Start(void)
 void cOutputDevice::Stop(void)
 {
 	LOGDEBUG("device: %s", __FUNCTION__);
-	m_zapCache.Clear();
 	TriggerDetachEvent();
 }
 
 /**
  * Called by VDR's main thread in every loop (wrapped by cPluginDrmDevice)
  *
- * Tunes the next channel ahead, if this is enabled and the live view is in
- * transfer mode (pip uses the free devices, too).
+ * Reports to the zapcache plugin, if the zap cache can be used: not while
+ * detached or while pip is shown (pip uses the free devices, too).
  */
 void cOutputDevice::MainThreadHook(void)
 {
-	int mode = cZapCache::ZAP_AHEAD_OFF;
-	if (m_pConfig->ConfigZapAhead && Transferring() && !IsDetached() && !PipIsEnabled())
-		mode = m_pConfig->ConfigZapAheadTuners >= 3 && cZapCache::NumTuners() >= 3 ? cZapCache::ZAP_AHEAD_BOTH : cZapCache::ZAP_AHEAD_NEXT;
+	if (m_zapCache.SetOutputAvailable)
+		m_zapCache.SetOutputAvailable(!IsDetached() && !PipIsEnabled());
+}
 
-	m_zapCache.MainThreadHook(mode, cZapCache::ReleaseSeconds(m_pConfig->ConfigZapAheadRelease), m_pConfig->ConfigZapAheadCam);
+/**
+ * Report an event of a channel switch to the zapcache plugin (statistics)
+ *
+ * The plugin measures the time since the start of the channel switch itself.
+ *
+ * @param start         false: the first picture was shown, true: the playback started
+ */
+void cOutputDevice::ReportChannelSwitchEvent(bool start)
+{
+	if (m_zapCache.ReportSwitchEvent)
+		m_zapCache.ReportSwitchEvent(start ? ZAPCACHE_PLAYBACK_STARTED : ZAPCACHE_FIRST_PICTURE);
+}
+
+/**
+ * Report a frame correction of the A/V sync to the zapcache plugin (statistics)
+ *
+ * @param dropped       number of the dropped frames
+ * @param repeated      number of the repeated frames
+ */
+void cOutputDevice::ReportFrameCorrection(int dropped, int repeated)
+{
+	if (m_zapCache.ReportFrameCorrection)
+		m_zapCache.ReportFrameCorrection(dropped, repeated);
 }
 
 /*********************************************************************
@@ -522,8 +550,9 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 /**
  * Play TS packets
  *
- * A channel switch to the channel of the zap cache starts with its buffered
- * packets since an I-frame (see cZapCache::Splice()).
+ * A channel switch to a channel of the zapcache plugin starts with its buffered
+ * packets since an I-frame (see zapcache_service.h). They are played before the
+ * first packet of the new channel.
  *
  * @param data        TS packets
  * @param length      length of the data
@@ -533,14 +562,27 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
  */
 int cOutputDevice::PlayTs(const uchar *data, int length, bool videoOnly)
 {
-	if (m_zapCache.SpliceArmed() && data && length >= TS_SIZE) {
-		// the synchronous audio has to fill the buffer up to the playback start threshold
-		int64_t audioAhead = m_pConfig->ConfigZapAheadSyncAudio ? GetBufferFillLevelThresholdMs() * 90LL : cZapBuffer::NEWEST_I_FRAME;
-		int64_t maxDelay = cZapCache::MaxDelayMs(m_pConfig->ConfigZapAheadMaxDelay) * 90LL;
-		m_zapCache.Splice(data, audioAhead, maxDelay, [this](const uchar *packet, int size) { return cDevice::PlayTs(packet, size); });
+	// the synchronous audio has to fill the buffer up to the playback start threshold
+	if (m_zapCache.SpliceArmed && m_zapCache.SpliceArmed() && data && length >= TS_SIZE) {
+		if (m_zapCache.Splice(data, GetBufferFillLevelThresholdMs(), PlayBufferedTs, this) >= 0)
+			m_zapCacheSwitch = true;
 	}
 
 	return cDevice::PlayTs(data, length, videoOnly);
+}
+
+/**
+ * Play a buffered TS packet of the zapcache plugin
+ *
+ * @param context     the output device
+ * @param packet      TS packet
+ * @param size        size of the packet
+ *
+ * @return            number of the played bytes (see cDevice::PlayTs())
+ */
+int cOutputDevice::PlayBufferedTs(void *context, const uchar *packet, int size)
+{
+	return static_cast<cOutputDevice *>(context)->cDevice::PlayTs(packet, size);
 }
 
 /**
@@ -926,25 +968,18 @@ bool cOutputDevice::DrainDevice(void)
  *
  * Save the timestamp when a channel switch is initiated (channelNum == 0)
  * for later time measurement, and try a failed audio passthrough again.
- * After the switch (channelNum != 0), the next channel is tuned ahead.
  */
 void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool liveView)
 {
-	if (device != cDevice::PrimaryDevice() || !liveView)
+	if (device != cDevice::PrimaryDevice() || !liveView || channelNum != 0)
 		return;
-
-	// the switch is done, tune the next channel ahead
-	if (channelNum) {
-		m_zapCache.ChannelSwitched(channelNum);
-		return;
-	}
-
-	// the new channel may start with the packets of the zap cache
-	m_zapCache.ChannelSwitchStarted();
 
 	auto now = std::chrono::steady_clock::now();
 	LOGGER->SetChannelSwitchStartTime(now);
 	LOGDEBUG2(L_AV_SYNC, "TRACE: channel switch");
+
+	// the new channel may start with the buffer of the zapcache plugin
+	m_zapCacheSwitch = false;
 
 	// the zoom is chosen for the content
 	m_zoomLevel = 0;
@@ -952,39 +987,6 @@ void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool li
 	// the receiver may have been switched on meanwhile
 	if (!IsDetached())
 		m_pAudioDecoder->RetryPassthrough();
-}
-
-/**
- * Monitor the channel display (cStatus::OsdChannel())
- *
- * While a channel number is entered, VDR's channel display shows the number
- * followed by a "-" (see VDR's ChannelString()), e.g. "27-  Das Erste HD".
- * The channel with this number is tuned ahead by the zap cache.
- *
- * @param text      text of the channel display
- */
-void cOutputDevice::OsdChannel(const char *text)
-{
-	int number = 0;
-	char dash = 0;
-
-	if (!text || sscanf(text, "%d%c", &number, &dash) != 2 || dash != '-' || number <= 0)
-		number = 0;
-
-	m_zapCache.ChannelEntered(number);
-}
-
-/**
- * Monitor the closing of the OSD (cStatus::OsdClear())
- *
- * The channel display may be closed, while a channel number is entered (e.g.
- * by another key or after the channel info time), so the entry ends.
- *
- * @note This is the cStatus interface, see OsdClose() for closing the OSD.
- */
-void cOutputDevice::OsdClear(void)
-{
-	m_zapCache.ChannelEntered(0);
 }
 
 /**
@@ -1705,7 +1707,6 @@ void cOutputDevice::Detach(void)
 		MakePrimaryDevice(false);
 	}
 
-	m_zapCache.Clear();
 	TriggerDetachEvent();
 }
 
@@ -2450,7 +2451,7 @@ bool cOutputDevice::SchedulePlaybackStart(void)
 		// heard audio, if the audio plays already (fast audio channel switch mode): the frames
 		// before are skipped instead of being dropped by the A/V sync afterwards. Without the
 		// buffer, no frame is skipped.
-		bool startWithAudio = FastChannelSwitchAudioInTransferMode() && !m_pAudio->IsPaused() && m_zapCache.SwitchCached();
+		bool startWithAudio = FastChannelSwitchAudioInTransferMode() && !m_pAudio->IsPaused() && m_zapCacheSwitch;
 		m_pRender->SchedulePlaybackStartAtPtsMs(firstVideoPtsMs, startWithAudio);
 	} else if (receivedAudio) {
 		LOGDEBUG("device: audio only detected");

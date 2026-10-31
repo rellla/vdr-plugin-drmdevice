@@ -149,33 +149,6 @@ static std::string PassthroughCodecs(int mask)
 }
 
 /**
- * Format an average channel switch time for the statistics
- *
- * @param ms        time in ms (0: unknown)
- * @return          e.g. "420ms" or "-"
- *
- * @ingroup menu
- */
-static cString SwitchTime(int ms)
-{
-	return ms ? cString::sprintf("%dms", ms) : cString("-");
-}
-
-/**
- * Format the average frame corrections after a channel switch for the statistics
- *
- * @param corrections   average number of the dropped and repeated frames (-1: unknown)
- *
- * @return              e.g. "0.4" or "-"
- *
- * @ingroup menu
- */
-static cString Corrections(double corrections)
-{
-	return corrections >= 0 ? cString::sprintf("%.1f", corrections) : cString("-");
-}
-
-/**
  * Add a statistics item, whose text is updated, while the menu is shown
  *
  * @param text      creates the current text of the item
@@ -274,41 +247,6 @@ void cDeviceSetupMenu::AddStatistics(void)
 		return cString::sprintf(" %s", *m_pDevice->PassthroughString());
 	});
 
-	// zap cache
-	if (m_pConfig->ConfigZapAhead) {
-		AddLiveItem([this]() {
-			cZapCache::sStats stats;
-			m_pDevice->ZapCache()->GetStats(&stats);
-			std::string channels;
-			for (const auto &r : stats.receivers) {
-				if (!channels.empty())
-					channels += ", ";
-				channels += *cString::sprintf(tr("%d (device %d, %d frames)"), r.channel, r.device, r.ready ? r.frames : 0);
-			}
-			return cString::sprintf(tr("Zap cache: %s"), channels.empty() ? "-" : channels.c_str());
-		});
-		AddLiveItem([this]() {
-			cZapCache::sStats stats;
-			m_pDevice->ZapCache()->GetStats(&stats);
-			return cString::sprintf(tr("Zap cache: %d of %d switches buffered, %d with synchronous audio"), stats.cached, stats.switches, stats.synced);
-		});
-		AddLiveItem([this]() {
-			cZapCache::sStats stats;
-			m_pDevice->ZapCache()->GetStats(&stats);
-			return cString::sprintf(tr("Switch time buffered: picture %s, playback %s, delay %s"), *SwitchTime(stats.pictureMs[1]), *SwitchTime(stats.startMs[1]), *SwitchTime(stats.delayMs));
-		});
-		AddLiveItem([this]() {
-			cZapCache::sStats stats;
-			m_pDevice->ZapCache()->GetStats(&stats);
-			return cString::sprintf(tr("Switch time without buffer: picture %s, playback %s"), *SwitchTime(stats.pictureMs[0]), *SwitchTime(stats.startMs[0]));
-		});
-		AddLiveItem([this]() {
-			cZapCache::sStats stats;
-			m_pDevice->ZapCache()->GetStats(&stats);
-			return cString::sprintf(tr("Frame corrections after a switch: buffered %s, without buffer %s"), *Corrections(stats.corrections[1]), *Corrections(stats.corrections[0]));
-		});
-	}
-
 	// osd
 #ifdef USE_GLES
 	Add(new cOsdItem(cString::sprintf(tr("OSD: Using %s rendering"), m_pConfig->ConfigDisableOglOsd ? "software" : "hardware"), osUnknown, false));
@@ -331,8 +269,6 @@ void cDeviceSetupMenu::Create(int current)
 	// Overview: OK opens the section under the cursor
 	//
 	SetHasHotkeys(m_section == SECTION_OVERVIEW);
-	// the statistics of the zap cache can be reset
-	SetHelp(m_section == SECTION_STATISTICS && m_pConfig->ConfigZapAhead ? tr("Button$Reset zap cache") : NULL);
 	if (m_section == SECTION_OVERVIEW) {
 		m_overviewSections.clear();
 		for (int section = 0; section < SECTION_COUNT; section++) {
@@ -357,17 +293,6 @@ void cDeviceSetupMenu::Create(int current)
 		Add(new cMenuEditBoolItem(tr("Enable HDR"), &m_cVideoEnableHDR, trVDR("no"), trVDR("yes")));
 		Add(new cMenuEditStraItem(tr("Display mode"), &m_cVideoDisplayMode, m_displayModePtrs.size(), m_displayModePtrs.data()));
 		Add(new cMenuEditStraItem(tr("Enable fast channel switch"), &m_cVideoChannelSwitchMode, m_channelSwitchModePtrs.size(), m_channelSwitchModePtrs.data()));
-		Add(new cMenuEditBoolItem(tr("Tune channels ahead"), &m_cZapAhead, trVDR("no"), trVDR("yes")));
-		if (m_cZapAhead && cZapCache::NumTuners() >= 3)
-			Add(new cMenuEditStraItem(tr(" Tuners for live view and cache"), &m_cZapAheadTuners, 2, m_zapAheadTuners));
-		if (m_cZapAhead)
-			Add(new cMenuEditStraItem(tr(" Release the tuners without key press"), &m_cZapAheadRelease, 5, m_zapAheadReleases));
-		if (m_cZapAhead)
-			Add(new cMenuEditBoolItem(tr(" Start with synchronous audio"), &m_cZapAheadSyncAudio, trVDR("no"), trVDR("yes")));
-		if (m_cZapAhead && m_cZapAheadSyncAudio)
-			Add(new cMenuEditStraItem(tr("  Max. delay"), &m_cZapAheadMaxDelay, 5, m_zapAheadMaxDelays));
-		if (m_cZapAhead)
-			Add(new cMenuEditBoolItem(tr(" Buffer encrypted channels (CAM)"), &m_cZapAheadCam, trVDR("no"), trVDR("yes")));
 		for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 			Add(new cMenuEditIntItem(cString::sprintf(tr("Zoom level %d (/1000)"), i + 1), &m_cZoomLevel[i], 0, cDeviceConfig::ZOOM_MAX, trVDR("off")));
 	}
@@ -533,8 +458,6 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 	int old_cLogDefault = m_cLogDefault;
 	int old_cLogFFmpeg = m_cLogFFmpeg;
 	int old_cDecoderFallbackToSw = m_cDecoderFallbackToSw;
-	int old_cZapAhead = m_cZapAhead;
-	int old_cZapAheadSyncAudio = m_cZapAheadSyncAudio;
 
 	if (m_section == SECTION_OVERVIEW) {
 		// cMenuSetupPage would store the settings and close the menu with OK
@@ -561,12 +484,6 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 	// OK of an edited item (e.g. the end of a string input)
 	if (state == osContinue && key == kOk)
 		state = OK_HANDLED;
-	// reset the statistics of the zap cache
-	if (state == osUnknown && key == kRed && m_section == SECTION_STATISTICS && m_pConfig->ConfigZapAhead) {
-		m_pDevice->ZapCache()->ResetStats();
-		UpdateLiveItems();
-		return osContinue;
-	}
 	if (state == osBack) {
 		// discard the changes of the section
 		LoadValues();
@@ -589,9 +506,7 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 		    old_cAudioEq                 != m_cAudioEq ||
 		    old_cLogDefault              != m_cLogDefault ||
 		    old_cLogFFmpeg               != m_cLogFFmpeg ||
-		    old_cDecoderFallbackToSw     != m_cDecoderFallbackToSw ||
-		    old_cZapAhead                != m_cZapAhead ||
-		    old_cZapAheadSyncAudio       != m_cZapAheadSyncAudio) {
+		    old_cDecoderFallbackToSw     != m_cDecoderFallbackToSw) {
 
 			Create();	// update menu
 		}
@@ -613,18 +528,6 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_passthroughModes[PASSTHROUGH_OFF] = trVDR("off");
 	m_passthroughModes[PASSTHROUGH_MANUAL] = tr("manual");
 	m_passthroughModes[PASSTHROUGH_AUTO] = tr("automatic");
-	m_zapAheadTuners[0] = tr("2 (next channel)");
-	m_zapAheadTuners[1] = tr("3 (next and previous channel)");
-	m_zapAheadReleases[0] = tr("never");
-	m_zapAheadReleases[1] = tr("after 20s");
-	m_zapAheadReleases[2] = tr("after 50s");
-	m_zapAheadReleases[3] = tr("after 5min");
-	m_zapAheadReleases[4] = tr("after 30min");
-	m_zapAheadMaxDelays[0] = "1s";
-	m_zapAheadMaxDelays[1] = "1.5s";
-	m_zapAheadMaxDelays[2] = "2s";
-	m_zapAheadMaxDelays[3] = "3s";
-	m_zapAheadMaxDelays[4] = "5s";
 
 	LoadValues();
 	Create();
@@ -648,12 +551,6 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cVideoEnableHDR          = m_pConfig->ConfigVideoEnableHDR;
 	m_cVideoDisplayMode        = m_pConfig->ConfigVideoDisplayMode;
 	m_cVideoChannelSwitchMode  = m_pConfig->ConfigVideoChannelSwitchMode;
-	m_cZapAhead                = m_pConfig->ConfigZapAhead;
-	m_cZapAheadTuners          = m_pConfig->ConfigZapAheadTuners - 2;
-	m_cZapAheadRelease         = m_pConfig->ConfigZapAheadRelease;
-	m_cZapAheadSyncAudio       = m_pConfig->ConfigZapAheadSyncAudio;
-	m_cZapAheadMaxDelay        = m_pConfig->ConfigZapAheadMaxDelay;
-	m_cZapAheadCam             = m_pConfig->ConfigZapAheadCam;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		m_cZoomLevel[i] = m_pConfig->ConfigZoomLevel[i];
 
@@ -851,12 +748,6 @@ void cDeviceSetupMenu::Store(void)
 	}
 	if (StoreChanged("VideoChannelSwitchMode", m_pConfig->ConfigVideoChannelSwitchMode, m_cVideoChannelSwitchMode))
 		m_pDevice->SetChannelSwitchMode(static_cast<ChannelSwitchMode>(m_pConfig->ConfigVideoChannelSwitchMode));
-	StoreChanged("ZapAhead", m_pConfig->ConfigZapAhead, m_cZapAhead);
-	StoreChanged("ZapAheadTuners", m_pConfig->ConfigZapAheadTuners, m_cZapAheadTuners + 2);
-	StoreChanged("ZapAheadRelease", m_pConfig->ConfigZapAheadRelease, m_cZapAheadRelease);
-	StoreChanged("ZapAheadSyncAudio", m_pConfig->ConfigZapAheadSyncAudio, m_cZapAheadSyncAudio);
-	StoreChanged("ZapAheadMaxDelay", m_pConfig->ConfigZapAheadMaxDelay, m_cZapAheadMaxDelay);
-	StoreChanged("ZapAheadCam", m_pConfig->ConfigZapAheadCam, m_cZapAheadCam);
 	bool zoomChanged = false;
 	for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
 		zoomChanged |= StoreChanged(cString::sprintf("ZoomLevel%d", i + 1), m_pConfig->ConfigZoomLevel[i], m_cZoomLevel[i]);

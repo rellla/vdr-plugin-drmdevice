@@ -169,9 +169,7 @@ OBJS = $(PLUGINENTRY).o \
 	subtitletext.o \
 	videofilter.o \
 	videorender.o \
-	videostream.o \
-	zapbuffer.o \
-	zapcache.o
+	videostream.o
 
 ifeq ($(GLES),1)
 OBJS += openglosd.o

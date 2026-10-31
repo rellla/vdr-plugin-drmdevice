@@ -522,11 +522,13 @@ void cVideoRender::LogDroppedDuped(int64_t audioPtsMs, int64_t videoPtsMs, int a
 {
 	bool logDropDup = true;
 
-	if (audioBehindVideoByMs > AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_MS)
+	if (audioBehindVideoByMs > AV_SYNC_THRESHOLD_AUDIO_BEHIND_VIDEO_MS) {
 		m_framesDuped++;
-	else if (audioBehindVideoByMs < -AV_SYNC_THRESHOLD_AUDIO_AHEAD_VIDEO_MS)
+		m_pDevice->ReportFrameCorrection(0, 1);
+	} else if (audioBehindVideoByMs < -AV_SYNC_THRESHOLD_AUDIO_AHEAD_VIDEO_MS) {
 		m_framesDropped++;
-	else
+		m_pDevice->ReportFrameCorrection(1, 0);
+	} else
 		logDropDup = false;
 
 	LOGDEBUG2(L_AV_SYNC, "%s (%d|%d|%d) Pkts %zu Frames %zu Rb %d bytes (%dms) PTS: in %s a %s v %s user delay %dms hw delay %" PRId64 "ms diff %dms",
@@ -831,9 +833,7 @@ bool cVideoRender::DisplayFrame(void)
 			auto durationSinceFirstPacketMs = std::chrono::duration_cast<std::chrono::milliseconds>
 				(now - LOGGER->GetChannelSwitchDataReceivedTime()).count();
 
-			m_pDevice->ReportChannelSwitchTime(m_startCounter != 0, channelSwitchDurationMs);
-			if (m_startCounter != 0)
-				m_switchCorrectionsBase = m_framesDropped + m_framesDuped;
+			m_pDevice->ReportChannelSwitchEvent(m_startCounter != 0);
 
 			if (m_startCounter == 0) {
 				LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms first frame displayed (+%5dms after first data was received)", (int)channelSwitchDurationMs, (int)durationSinceFirstPacketMs);
@@ -843,10 +843,6 @@ bool cVideoRender::DisplayFrame(void)
 				LOGDEBUG2(L_AV_SYNC, "TRACE: +%5dms playback start fired (+%5dms after first data was received)", (int)channelSwitchDurationMs, (int)durationSinceFirstPacketMs);
 			}
 		}
-
-		// the frame corrections of the A/V sync after a channel switch (statistics)
-		if (m_pDevice->Transferring() && m_startCounter == SWITCH_CORRECTION_FRAMES)
-			m_pDevice->ReportChannelSwitchCorrections(m_framesDropped + m_framesDuped - m_switchCorrectionsBase);
 
 		if (m_displayOneFrameThenPause) {
 			m_videoPlaybackPaused = true;

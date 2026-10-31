@@ -326,8 +326,6 @@ private:
 	int m_framesDuped = 0;              ///< number of frames duplicated
 	int m_framesDropped = 0;            ///< number of frames dropped
 	bool m_lastFrameWasDropped = false; ///< true, if the last frame was dropped
-	static constexpr int SWITCH_CORRECTION_FRAMES = 250; ///< frames after a channel switch, whose corrections are counted for the statistics
-	int m_switchCorrectionsBase = 0;    ///< dropped and duplicated frames at the playback start of a channel switch
 	AVRational m_timebase{1, PTSTICKS}; ///< timebase used for pts, set by first RenderFrame()
 	std::mutex m_timebaseMutex;         ///< mutex used around m_timebase
 	std::atomic<int64_t> m_pts = AV_NOPTS_VALUE; ///< current video PTS
