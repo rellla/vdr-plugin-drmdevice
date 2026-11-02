@@ -464,6 +464,13 @@ void cGrabBuffer::Set(cDrmBuffer *src)
 				continue;
 			}
 
+			// neither mapped nor shareable
+			if (!src->Plane(plane)) {
+				LOGERROR("%s: %s: plane %d of the buffer isn't mapped", m_identifier, __FUNCTION__, plane);
+				FreeInput();
+				return;
+			}
+
 			uint8_t *dst = (uint8_t *)malloc(src->Size(plane));
 			if (!dst) {
 				LOGERROR("%s: %s: cannot allocate destination buffer (%d): %m", m_identifier, __FUNCTION__, errno);
