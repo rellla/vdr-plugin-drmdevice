@@ -39,10 +39,14 @@ extern "C" {
  *
  * The buffer needs DMA-BUF descriptors. Buffers, which are only mapped
  * (e.g. the software osd), can't be shared.
+ *
+ * IsDirty() isn't checked: the OpenGL osd buffer is marked clean, when it was
+ * shown, but it is still valid (and it isn't mapped). A destroyed buffer has
+ * no DMA-BUF descriptor anymore.
  */
 bool cFrameSnapshot::CanTake(cDrmBuffer *buf)
 {
-	return buf && buf->IsDirty() && buf->DmaBufHandle(0) > 0 && buf->NumPlanes() > 0;
+	return buf && buf->DmaBufHandle(0) > 0 && buf->NumPlanes() > 0;
 }
 
 /**
