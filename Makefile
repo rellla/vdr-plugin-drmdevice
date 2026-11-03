@@ -167,6 +167,7 @@ OBJS = $(PLUGINENTRY).o \
 	statemachine.o \
 	subtitle.o \
 	subtitletext.o \
+	testpicture.o \
 	videofilter.o \
 	videorender.o \
 	videostream.o

@@ -185,6 +185,9 @@ msgstr "OSD: Benutze %s rendering"
 msgid "OSD: Using software rendering"
 msgstr "OSD: Benutze software rendering"
 
+msgid "Show test picture"
+msgstr "Testbild anzeigen"
+
 msgid "Hide main menu entry"
 msgstr "Verstecke Hauptmenüeintrag"
 

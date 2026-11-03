@@ -24,6 +24,7 @@
 #include "device.h"
 #include "logger.h"
 #include "setupmenu.h"
+#include "testpicture.h"
 
 /**
  * Passthrough modes of the setup menu
@@ -276,6 +277,8 @@ void cDeviceSetupMenu::Create(int current)
 			Add(new cOsdItem(hk(SectionName(section))));
 			m_overviewSections.push_back(section);
 		}
+		// not a section: OK shows the test picture
+		Add(new cOsdItem(hk(tr("Show test picture"))));
 	}
 
 	//
@@ -437,7 +440,8 @@ void cDeviceSetupMenu::Create(int current)
 /**
  * Process key for setup menu.
  *
- * The overview lists the sections, OK opens the section under the cursor.
+ * The overview lists the sections, OK opens the section under the cursor. OK
+ * on the last item closes the menu and shows the test picture.
  * In a section, OK stores the settings and Back discards the changes, both
  * return to the overview. Back in the overview closes the setup menu.
  *
@@ -459,6 +463,8 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 			int current = Current();
 			if (current >= 0 && current < (int)m_overviewSections.size())
 				ShowSection(m_overviewSections[current]);
+			else if (current == (int)m_overviewSections.size())
+				return ShowTestPicture();
 			return osContinue;
 		}
 		return cMenuSetupPage::ProcessKey(key);
@@ -502,6 +508,18 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 	}
 
 	return state;
+}
+
+/**
+ * Close the setup menu and show the test picture
+ *
+ * The test picture is shown by a player (like a replay), VDR switches to the
+ * live view again, when it is closed (Back, OK or Stop).
+ */
+eOSState cDeviceSetupMenu::ShowTestPicture(void)
+{
+	cControl::Launch(new cTestPictureControl());
+	return osEnd;
 }
 
 /**
