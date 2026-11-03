@@ -161,6 +161,7 @@ private:
 
 	static const char *SectionName(int);
 	void ShowSection(int);
+	eOSState ShowTestPicture(void);
 	void LoadValues(void);
 	void AddLiveItem(std::function<cString(void)>);
 	void UpdateLiveItems(void);

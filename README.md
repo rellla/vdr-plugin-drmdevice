@@ -26,6 +26,7 @@ Features
 - Grabbing support - video, osd and pip - mpeg2, h264, hevc (8/10bit)
 - Detach/Attach support (release display, audio and GPU resources, but keep VDR running)
 - Output for the dvd plugin (incl. LPCM audio)
+- Test picture (geometry, colours, levels and resolution of the display)
 - Many adjustable (expert) settings via setup menu
 
 
@@ -620,6 +621,27 @@ The DVD audio (AC-3, DTS, LPCM and MPEG audio) is played like the audio of a rec
 AC-3 and DTS can be passed through. The sub stream header of the DVD audio is removed, the
 LPCM audio is decoded by FFmpeg's pcm_dvd decoder. The subpictures (subtitles and menu
 buttons) are drawn by VDR's SPU decoder on the OSD, the menus are shown as still pictures.
+
+
+Test picture
+------------
+"Show test picture" (the last item of the plugin's setup menu) shows a test picture in
+1920x1080 as a still picture, Back, OK or Stop return to the live view. It is shown by the
+decoder like the still picture of a recording, so the whole path to the display is tested.
+
+From the outside to the centre it contains:
+- a white grid of 16 x 9 squares and a white border (overscan, scaling and geometry)
+- four circles in the corners and a large circle in the centre (aspect ratio)
+- 75% colour bars (EBU) and a grey scale of 10 steps
+- PLUGE on black (-2%, 0%, +2%, +4%) and a peak white patch (black and white level): with a
+  correct black level, the -2% and 0% patches look the same and the +2% patch is just visible
+- frequency gratings with a period of 16, 8, 6, 4, 3 and 2 pixels (sharpness and scaling)
+- 100% colour bars (red, green, blue, cyan, magenta, yellow) and a centre cross
+
+The picture is drawn from scratch by [DEVELOPER/testpicture.py](DEVELOPER/testpicture.py) in
+Y'CbCr (BT.709, limited range) and encoded as a single H.264 I-frame
+(DEVELOPER/testpicture_data.h). The picture and the script are dedicated to the public domain
+([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)), they may be used freely.
 
 
 Hints for Raspberry Pi 4/5
