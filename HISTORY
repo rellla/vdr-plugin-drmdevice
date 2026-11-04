@@ -209,3 +209,31 @@ https://github.com/rellla/vdr-plugin-softhddevice-drm-gles
 - In the fast audio channel switch mode the audio of the first picture isn't
   dropped anymore (the audio was ahead and the video dropped frames).
 - The log shows the heard audio pts at the start of the playback.
+
+2026-10-31: Version 2.2.1
+
+- The zap cache is a plugin of its own now (vdr-plugin-zapcache), so other
+  output plugins can use it. drmdevice uses it through its service interface
+  (zapcache_service.h), if the plugin is loaded. The setup values
+  drmdevice.ZapAhead* have to be removed from setup.conf (they are zapcache.*
+  now).
+- Grabbing doesn't copy the video, pip and OpenGL OSD buffers in the display
+  thread anymore: only their DMA-BUF descriptors are duplicated there, the
+  copy is made by the thread, which requested the grab.
+
+2026-11-04: Version 2.3.0
+
+- Test picture: "Show test picture" in the setup menu shows a test picture
+  (grid, circles, colour bars, grey scale, PLUGE and frequency gratings) as a
+  still picture, until Back, OK or Stop is pressed. It is drawn from scratch
+  by DEVELOPER/testpicture.py and is dedicated to the public domain (CC0 1.0).
+- Ambient image service (AmbientImage-v1.0, ambientimage_service.h): ambient
+  lighting plugins (e.g. vdr-plugin-hyperion) get a small RGB image of the
+  displayed video. Only a few pixels are read from the decoded frame in its
+  native format, HDR frames are tone mapped to SDR. No snapshots are taken,
+  while nobody uses the service.
+- Fixed a crash, when the OpenGL OSD was grabbed after it was shown.
+- Reverted the workaround for the OSD redraw with OK in the setup menu, VDR
+  doesn't redraw the OSD anymore.
+- The video filter threads have names, which fit into the 15 characters of a
+  thread name.
