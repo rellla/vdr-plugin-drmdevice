@@ -1065,11 +1065,13 @@ static void ReleaseFrame( __attribute__ ((unused)) void *opaque, uint8_t *data)
 /**
  * Check, if the main render output buffer is full.
  *
+ * It is full, if the next chunk of frames doesn't fit (e.g. both fields of a hardware deinterlacer).
+ *
  * @retval true     render output buffer is full
  */
 bool cVideoRender::IsOutputBufferFull(void)
 {
-	return m_drmBufferQueue.IsFull();
+	return m_drmBufferQueue.IsChunkFull();
 }
 
 /**

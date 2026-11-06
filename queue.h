@@ -10,6 +10,7 @@
 #ifndef __DRMDEVICE_QUEUE_H
 #define __DRMDEVICE_QUEUE_H
 
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <mutex>
@@ -115,6 +116,28 @@ public:
 	}
 
 	/**
+	 * Set the number of elements, which are pushed at once
+	 *
+	 * @param            Number of elements pushed at once (at least 1)
+	 */
+	void SetChunkSize(size_t size) {
+		std::lock_guard<std::mutex> lock(m_mutex);
+
+		m_chunkSize = std::max<size_t>(size, 1);
+	}
+
+	/**
+	 * Check if the queue has no room for the next chunk
+	 *
+	 * @return true if less than the chunk size elements can be pushed, false otherwise
+	 */
+	bool IsChunkFull(void) {
+		std::lock_guard<std::mutex> lock(m_mutex);
+
+		return m_deque.size() + m_chunkSize > m_maxSize;
+	}
+
+	/**
 	 * Get the current size of the queue
 	 *
 	 * @return Number of elements currently in the queue
@@ -129,6 +152,7 @@ private:
 	std::deque<T*> m_deque;    ///< Underlying deque container
 	std::mutex m_mutex;        ///< Mutex for thread-safe access
 	size_t m_maxSize;          ///< Maximum queue capacity
+	size_t m_chunkSize = 1;    ///< Number of elements pushed at once
 };
 
 #endif
