@@ -98,8 +98,7 @@ void cVideoFilter::InitAndStart(const AVCodecContext *videoCtx, AVFrame *frame, 
 	if (enableDeinterlacer) {
 		if (frame->format == AV_PIX_FMT_DRM_PRIME) {
 			filterDescr = "deinterlace_v4l2m2m";
-			// reserve space for both fields in the render queue
-			m_pDrmBufferQueue->SetChunkSize(2);
+			m_pDrmBufferQueue->SetChunkSize(2); // reserve space for both fields in the render queue
 		} else if (frame->format == AV_PIX_FMT_YUV420P) {
 			filterDescr = "bwdif=1:-1:0";
 		}

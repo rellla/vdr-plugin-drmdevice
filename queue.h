@@ -118,7 +118,7 @@ public:
 	/**
 	 * Set the number of elements, which are pushed at once
 	 *
-	 * @param            Number of elements pushed at once (at least 1)
+	 * @param size         Number of elements pushed at once (at least 1)
 	 */
 	void SetChunkSize(size_t size) {
 		std::lock_guard<std::mutex> lock(m_mutex);
