@@ -1497,7 +1497,8 @@ int cVideoRender::Init(void)
 			0, 0, m_pBufOsd->Width(), m_pBufOsd->Height());
 
 		osdPlane->SetPlane(modeReq);
-	}
+	} else
+		osdPlane->ClearPlane(modeReq);
 #endif
 	if (m_pDrmDevice->UseZpos()) {
 		videoPlane->SetZpos(m_pDrmDevice->ZposOverlay());
