@@ -98,6 +98,8 @@ void cVideoFilter::InitAndStart(const AVCodecContext *videoCtx, AVFrame *frame, 
 	if (enableDeinterlacer) {
 		if (frame->format == AV_PIX_FMT_DRM_PRIME) {
 			filterDescr = "deinterlace_v4l2m2m";
+			// reserve space for both fields in the render queue
+			m_pDrmBufferQueue->SetChunkSize(2);
 		} else if (frame->format == AV_PIX_FMT_YUV420P) {
 			filterDescr = "bwdif=1:-1:0";
 		}
@@ -210,7 +212,10 @@ void cVideoFilter::Action(void)
 	LOGDEBUG("video filter: thread started");
 
 	while (Running()) {
-		if (m_frames.IsEmpty()) {
+		// The hardware deinterlacer needs two free buffers to output both fields of a frame.
+		// They may be held by the render queue and the displayed frame. Wait here, until
+		// both frames will fit in the render queue. Otherwise the deinterlacer may stall.
+		if (m_frames.IsEmpty() || m_pDrmBufferQueue->IsChunkFull()) {
 			usleep(1000);
 			continue;
 		}
@@ -283,6 +288,8 @@ void cVideoFilter::PushFrame(AVFrame *frame)
  */
 void cVideoFilter::Stop(void)
 {
+	m_pDrmBufferQueue->SetChunkSize(1);
+
 	if (!Active())
 		return;
 
