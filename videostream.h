@@ -63,6 +63,7 @@ public:
 	void ClearVdrCoreToDecoderQueue(void);
 	void FlushDecoder(void);
 	void CloseDecoder(void);
+	void RestartDecoder(void);
 	bool PushAvPacket(AVPacket *avpkt);
 	bool Drain(void);
 
@@ -153,7 +154,7 @@ private:
 	bool m_isResend = false;                        ///< track, if we already tried to send the AVPacket to the decoder
 	                                                ///< if so, skip the parsing
 
-	void SendPacket(AVPacket *);
+	int SendPacket(AVPacket *);
 	int ReceiveFrame(AVFrame **);
 	void RenderFrame(AVFrame *);
 	void UpdateStreamInfo(const AVFrame *);
