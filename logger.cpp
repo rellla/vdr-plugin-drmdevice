@@ -191,6 +191,9 @@ void cLogger::LogDebug2(const int cat, const char *format, ...)
 	case L_GRAB:
 		strcpy(prefix, "[Grab]");
 		break;
+	case L_TS:
+		strcpy(prefix, "[TS]");
+		break;
 	case L_DEBUG:
 	default:
 		return;

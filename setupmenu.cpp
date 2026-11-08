@@ -380,6 +380,7 @@ void cDeviceSetupMenu::Create(int current)
 			if (m_cLogFFmpeg)
 				Add(new cMenuEditStraItem(tr("  FFmpeg log level"), &m_cLogFFmpegLevel, FFMPEG_LOG_LEVELS, m_ffmpegLogLevels));
 			Add(new cMenuEditBoolItem(tr(" Packet tracking logs"), &m_cLogPacket, trVDR("no"), trVDR("yes")));
+			Add(new cMenuEditBoolItem(tr(" TS error logs"), &m_cLogTs, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr(" OSD debug logs"), &m_cLogOSD, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr(" Grabbing debug logs"), &m_cLogGrab, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr(" Stillpicture debug logs"), &m_cLogStill, trVDR("no"), trVDR("yes")));
@@ -612,6 +613,7 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cLogFFmpeg    = m_pConfig->ConfigLogLevels & L_FFMPEG;
 	m_cLogFFmpegLevel = m_pConfig->ConfigLogFFmpegLevel;
 	m_cLogPacket    = m_pConfig->ConfigLogLevels & L_PACKET;
+	m_cLogTs        = m_pConfig->ConfigLogLevels & L_TS;
 	m_cLogOSD       = m_pConfig->ConfigLogLevels & L_OSD;
 	m_cLogGrab      = m_pConfig->ConfigLogLevels & L_GRAB;
 	m_cLogStill     = m_pConfig->ConfigLogLevels & L_STILL;
@@ -829,6 +831,7 @@ void cDeviceSetupMenu::Store(void)
 		(m_cLogSound     ? L_SOUND : 0) |
 		(m_cLogFFmpeg    ? L_FFMPEG : 0) |
 		(m_cLogPacket    ? L_PACKET : 0) |
+		(m_cLogTs        ? L_TS : 0) |
 		(m_cLogOSD       ? L_OSD : 0) |
 		(m_cLogGrab      ? L_GRAB : 0) |
 		(m_cLogStill     ? L_STILL : 0) |

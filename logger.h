@@ -73,6 +73,7 @@ enum LogFlags {
 	L_PACKET          = (1 << 12), ///< decoder packet/frame tracking logs
 	L_GRAB            = (1 << 13), ///< grabbing logs
 	L_FFMPEG          = (1 << 14), ///< ffmpeg logs
+	L_TS              = (1 << 15), ///< ts error logs (lost and damaged video packets)
 };
 
 /** @} */

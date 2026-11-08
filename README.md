@@ -334,6 +334,7 @@ Setup: /etc/vdr/setup.conf
 			4096  Packet tracking logs (decoder + display)
 			8192  Grabbing debug logs
 			16384 FFmpeg debug logs
+			32768 TS error logs (lost and damaged video packets)
 
 	drmdevice.LogFFmpegLevel = 0
 		max. level of the FFmpeg logs (only used with the FFmpeg debug logs)

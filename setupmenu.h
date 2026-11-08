@@ -97,6 +97,7 @@ protected:
 	int m_cLogFFmpeg;
 	int m_cLogFFmpegLevel;
 	int m_cLogPacket;
+	int m_cLogTs;
 	int m_cLogOSD;
 	int m_cLogGrab;
 	int m_cLogStill;

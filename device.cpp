@@ -552,6 +552,16 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 }
 
 /**
+ * Check, if the main video stream has started
+ *
+ * @return true, if the first decodable video packet was received (the decoder is open)
+ */
+bool cOutputDevice::VideoStreamStarted(void)
+{
+	return m_pVideoStream && m_pVideoStream->GetCodecId() != AV_CODEC_ID_NONE;
+}
+
+/**
  * Play TS packets
  *
  * A channel switch to a channel of the zapcache plugin starts with its buffered
@@ -566,13 +576,25 @@ int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
  */
 int cOutputDevice::PlayTs(const uchar *data, int length, bool videoOnly)
 {
+	if (!data)
+		m_tsVideoCheck.Reset();
+
 	// the synchronous audio has to fill the buffer up to the playback start threshold
 	if (m_zapCache.SpliceArmed && m_zapCache.SpliceArmed() && data && length >= TS_SIZE) {
-		if (m_zapCache.Splice(data, GetBufferFillLevelThresholdMs(), PlayBufferedTs, this) >= 0)
+		if (m_zapCache.Splice(data, GetBufferFillLevelThresholdMs(), PlayBufferedTs, this) >= 0) {
 			m_zapCacheSwitch = true;
+			// the buffered packets aren't checked, the counters continue with the live packets
+			m_tsVideoCheck.Reset();
+		}
 	}
 
-	return cDevice::PlayTs(data, length, videoOnly);
+	int played = cDevice::PlayTs(data, length, videoOnly);
+
+	// check only the played packets, the others are passed again
+	if (data && played > 0)
+		m_tsVideoCheck.Check(data, played, VideoStreamStarted());
+
+	return played;
 }
 
 /**

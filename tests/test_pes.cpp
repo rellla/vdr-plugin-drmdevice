@@ -1880,3 +1880,110 @@ TEST_CASE("DVD audio sub streams", "[pes]") {
 	REQUIRE_FALSE(IsDvdAudioSubStream(0x00));
 	REQUIRE_FALSE(IsDvdLpcmSubStream(0xBD));
 }
+
+// Helper function to create a TS packet with a payload
+static std::vector<uint8_t> createTsPacket(int pid, int cc, bool payloadStart, uint8_t streamId = 0xE0,
+                                           bool error = false, bool discontinuity = false)
+{
+    std::vector<uint8_t> ts(188, 0xFF);
+    ts[0] = 0x47;
+    ts[1] = (error ? 0x80 : 0x00) | (payloadStart ? 0x40 : 0x00) | ((pid >> 8) & 0x1F);
+    ts[2] = pid & 0xFF;
+    int offset = 4;
+    if (discontinuity) {
+        ts[3] = 0x30 | (cc & 0x0F);
+        ts[4] = 1;
+        ts[5] = 0x80;
+        offset = 6;
+    } else {
+        ts[3] = 0x10 | (cc & 0x0F);
+    }
+    if (payloadStart) {
+        ts[offset] = 0x00;
+        ts[offset + 1] = 0x00;
+        ts[offset + 2] = 0x01;
+        ts[offset + 3] = streamId;
+    }
+    return ts;
+}
+
+TEST_CASE("cTsVideoCheck - continuity", "[pes][ts]") {
+    cTsVideoCheck check;
+
+    SECTION("continuous packets and the wrap of the counter") {
+        check.Check(createTsPacket(100, 14, true).data(), 188, true);
+        check.Check(createTsPacket(100, 15, false).data(), 188, true);
+        check.Check(createTsPacket(100, 0, false).data(), 188, true);
+        REQUIRE(check.GetLostPackets() == 0);
+    }
+
+    SECTION("lost packets") {
+        check.Check(createTsPacket(100, 3, true).data(), 188, true);
+        check.Check(createTsPacket(100, 6, false).data(), 188, true);
+        REQUIRE(check.GetLostPackets() == 2);
+    }
+
+    SECTION("a duplicate packet") {
+        check.Check(createTsPacket(100, 3, true).data(), 188, true);
+        check.Check(createTsPacket(100, 3, false).data(), 188, true);
+        REQUIRE(check.GetLostPackets() == 0);
+    }
+
+    SECTION("the discontinuity indicator") {
+        check.Check(createTsPacket(100, 3, true).data(), 188, true);
+        check.Check(createTsPacket(100, 9, false, 0xE0, false, true).data(), 188, true);
+        REQUIRE(check.GetLostPackets() == 0);
+    }
+
+    SECTION("the transport error indicator") {
+        check.Check(createTsPacket(100, 3, true).data(), 188, true);
+        check.Check(createTsPacket(100, 4, false, 0xE0, true).data(), 188, true);
+        check.Check(createTsPacket(100, 9, false).data(), 188, true);
+        REQUIRE(check.GetErrorPackets() == 1);
+        REQUIRE(check.GetLostPackets() == 0);
+    }
+
+    SECTION("lost and damaged packets before the stream start") {
+        check.Check(createTsPacket(100, 3, true).data(), 188, false);
+        check.Check(createTsPacket(100, 6, false).data(), 188, false);
+        check.Check(createTsPacket(100, 7, false, 0xE0, true).data(), 188, false);
+        REQUIRE(check.GetLostPacketsBeforeStart() == 2);
+        REQUIRE(check.GetErrorPacketsBeforeStart() == 1);
+        REQUIRE(check.GetLostPackets() == 0);
+        REQUIRE(check.GetErrorPackets() == 0);
+
+        check.Check(createTsPacket(100, 8, true).data(), 188, true);
+        check.Check(createTsPacket(100, 10, false).data(), 188, true);
+        REQUIRE(check.GetLostPackets() == 1);
+        REQUIRE(check.GetLostPacketsBeforeStart() == 2);
+    }
+
+    SECTION("an audio PID isn't checked") {
+        check.Check(createTsPacket(200, 3, true, 0xC0).data(), 188, true);
+        check.Check(createTsPacket(200, 8, false).data(), 188, true);
+        REQUIRE(check.GetLostPackets() == 0);
+    }
+
+    SECTION("several packets at once and a reset") {
+        std::vector<uint8_t> data = createTsPacket(100, 1, true);
+        std::vector<uint8_t> next = createTsPacket(100, 3, false);
+        data.insert(data.end(), next.begin(), next.end());
+        check.Check(data.data(), data.size(), true);
+        REQUIRE(check.GetLostPackets() == 1);
+
+        check.Reset();
+        check.Check(createTsPacket(100, 7, false).data(), 188, true);
+        REQUIRE(check.GetLostPackets() == 1);
+    }
+}
+
+TEST_CASE("cPesVideo - start of a video PES packet", "[pes]") {
+    const uint8_t video[] = { 0x00, 0x00, 0x01, 0xE0, 0x00, 0x00 };
+    const uint8_t audio[] = { 0x00, 0x00, 0x01, 0xC0, 0x00, 0x00 };
+    const uint8_t noStart[] = { 0x00, 0x00, 0x02, 0xE0, 0x00, 0x00 };
+
+    REQUIRE(cPesVideo::IsStart(video, sizeof(video)));
+    REQUIRE_FALSE(cPesVideo::IsStart(audio, sizeof(audio)));
+    REQUIRE_FALSE(cPesVideo::IsStart(noStart, sizeof(noStart)));
+    REQUIRE_FALSE(cPesVideo::IsStart(video, 3));
+}
