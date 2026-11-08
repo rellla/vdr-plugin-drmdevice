@@ -10,6 +10,9 @@
 #ifndef __DRMDEVICE_PES_H
 #define __DRMDEVICE_PES_H
 
+#include <array>
+#include <atomic>
+#include <bitset>
 #include <cstdint>
 #include <map>
 #include <vector>
@@ -108,8 +111,10 @@ class cPesVideo : public cPes {
 public:
 	/** Parse a video PES packet of the given size */
 	cPesVideo(const uint8_t *data, int size) : cPes(data, size, false) { cPes::Init(); }
+	static bool IsVideoStreamId(uint8_t id) { return (id & 0xF0) == 0xE0; } ///< video stream IDs are in the range 0xE0-0xEF
+	static bool IsStart(const uint8_t *, int);
 private:
-	bool IsStreamIdValid(void) override { return (GetStreamId() & 0xF0) == 0xE0; } ///< video stream IDs are in the range 0xE0-0xEF
+	bool IsStreamIdValid(void) override { return IsVideoStreamId(GetStreamId()); } ///< true, if it is a video stream ID
 };
 
 /**
@@ -239,6 +244,39 @@ private:
 	SyncWordInfo FindTwoConsecutiveFramesWithSameSyncWord();
 	static constexpr int MAX_HEADER_SIZE = 8; ///< max. bytes needed to detect a sync word and the frame size (DTS)
 	bool m_ptsInvalid = false;                ///< flag indicating if PTS is invalid for current buffer, because it was truncated
+};
+
+/**
+ * Check the TS packets of the video for lost and damaged packets (diagnosis)
+ *
+ * VDR drops the PES of a packet with the transport error indicator set, but it passes a PES
+ * with lost packets (a gap of the continuity counter) on. Such an incomplete access unit may
+ * hang a hardware decoder. The video PIDs are detected by the stream id of their PES.
+ * The lost and damaged packets before the stream start are counted separately: the PES
+ * packets, which are passed on before the first decodable frame, are dropped anyway.
+ *
+ * @ingroup misc
+ */
+class cTsVideoCheck {
+public:
+	void Reset(void);
+	void Check(const uint8_t *, int, bool);
+	int GetLostPackets(void) const { return m_lostPackets; }                         ///< number of lost packets after the stream start
+	int GetErrorPackets(void) const { return m_errorPackets; }                       ///< number of packets with an error after the stream start
+	int GetScrambledPackets(void) const { return m_scrambledPackets; }               ///< number of scrambled packets
+	int GetLostPacketsBeforeStart(void) const { return m_lostPacketsBeforeStart; }   ///< number of lost packets before the stream start
+	int GetErrorPacketsBeforeStart(void) const { return m_errorPacketsBeforeStart; } ///< number of packets with an error before the stream start
+private:
+	static constexpr int NUM_PIDS = 0x2000;         ///< number of PIDs
+
+	std::bitset<NUM_PIDS> m_videoPid;               ///< PIDs of a video stream
+	std::array<int8_t, NUM_PIDS> m_cc{};            ///< last continuity counter of a PID (-1 = unknown)
+	bool m_initialized = false;                     ///< m_cc is initialized
+	std::atomic<int> m_lostPackets = 0;             ///< number of lost packets after the stream start
+	std::atomic<int> m_errorPackets = 0;            ///< number of packets with an error after the stream start
+	std::atomic<int> m_scrambledPackets = 0;        ///< number of scrambled packets
+	std::atomic<int> m_lostPacketsBeforeStart = 0;  ///< number of lost packets before the stream start
+	std::atomic<int> m_errorPacketsBeforeStart = 0; ///< number of packets with an error before the stream start
 };
 
 #endif

@@ -309,6 +309,9 @@ private:
 	cPipHandler *m_pPipHandler = nullptr; ///< pointer to pip handler (exists also in detached state)
 	ZapCacheService_v1_0 m_zapCache = {}; ///< service interface of the zapcache plugin (empty without the plugin, set in Start())
 	std::atomic<bool> m_zapCacheSwitch = false; ///< the current channel switch started with the buffer of the zapcache plugin
+
+	cTsVideoCheck m_tsVideoCheck;    ///< checks the video TS packets for lost and damaged packets
+
 	std::mutex m_sizeMutex;          ///< mutex to lock screen size (which is accessed by different threads)
 	std::atomic<bool> m_receivedAudio = false; ///< flag if audio packets have been received
 	std::atomic<bool> m_receivedVideo = false; ///< flag if video packets have been received
@@ -329,6 +332,7 @@ private:
 
 	int PlayVideoInternal(cVideoStream *, cReassemblyBufferVideo *, const uchar *, int, bool, bool);
 	void FlushAudio(void);
+	bool VideoStreamStarted(void);
 	void DeleteDecoderAndOutput(void);
 	void ResetPipStreamLocked(void);
 	int64_t GetFirstAudioPtsMsToPlay();

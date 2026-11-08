@@ -174,6 +174,8 @@ void cDeviceConfig::PrintLogLevel(int loglevel)
 		strcat(prefix, " OpenGL OSD,");
 	if (loglevel & L_PACKET)
 		strcat(prefix, " packet tracking,");
+	if (loglevel & L_TS)
+		strcat(prefix, " ts errors,");
 	if (loglevel & L_GRAB)
 		strcat(prefix, " grabbing");
 

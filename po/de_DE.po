@@ -360,6 +360,9 @@ msgstr "  FFmpeg Loglevel"
 msgid " Packet tracking logs"
 msgstr " Paketverfolgung"
 
+msgid " TS error logs"
+msgstr " TS-Fehler"
+
 msgid " OSD debug logs"
 msgstr " OSD debug Logs"
 

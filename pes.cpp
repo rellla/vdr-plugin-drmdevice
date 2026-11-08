@@ -333,6 +333,24 @@ bool cPes::IsValid(void)
 }
 
 /**
+ * Check, if data starts a video PES packet
+ *
+ * Only the start code prefix and the stream ID are checked, nothing is logged
+ * (e.g. to detect the video PID from the TS packets).
+ *
+ * @param data      data to check
+ * @param size      size of the data
+ *
+ * @return true, if a video PES packet starts
+ */
+bool cPesVideo::IsStart(const uint8_t *data, int size)
+{
+	return size > (int)PES_PACKET_START_CODE_PREFIX_LEN &&
+	       ReadBytes(data, PES_PACKET_START_CODE_PREFIX_LEN) == PES_PACKET_START_CODE_PREFIX &&
+	       IsVideoStreamId(data[PES_PACKET_START_CODE_PREFIX_LEN]);
+}
+
+/**
  * Check if the PES header is valid
  *
  * Validates that the PES packet has a valid header by checking:
@@ -842,4 +860,80 @@ int64_t cPtsTrackingBuffer::GetPts(void)
 		return AV_NOPTS_VALUE;
 
 	return m_pts.begin()->second;
+}
+
+/*****************************************************************************
+ * TS video check
+ ****************************************************************************/
+
+/**
+ * Reset the check (e.g. at a channel switch)
+ */
+void cTsVideoCheck::Reset(void)
+{
+	m_videoPid.reset();
+	m_cc.fill(-1);
+	m_initialized = true;
+}
+
+/**
+ * Check TS packets for lost, damaged and scrambled packets of the video and log them
+ *
+ * @param data      TS packets
+ * @param length    length of the data
+ * @param started   true, if the video stream has started (the decoder is open)
+ */
+void cTsVideoCheck::Check(const uint8_t *data, int length, bool started)
+{
+	const char *when = started ? "" : " before the stream start";
+
+	if (!m_initialized)
+		Reset();
+
+	for (; length >= TS_SIZE; data += TS_SIZE, length -= TS_SIZE) {
+		if (data[0] != TS_SYNC_BYTE)
+			break;
+
+		int pid = TsPid(data);
+
+		// a video PID starts a PES with a video stream id
+		if (TsPayloadStart(data) && !TsError(data) && !TsIsScrambled(data)) {
+			int offset = TsPayloadOffset(data);
+			if (offset < TS_SIZE && cPesVideo::IsStart(data + offset, TS_SIZE - offset))
+				m_videoPid.set(pid);
+		}
+
+		if (!m_videoPid.test(pid))
+			continue;
+
+		if (TsError(data)) {
+			(started ? m_errorPackets : m_errorPacketsBeforeStart)++;
+			m_cc[pid] = -1;
+			LOGDEBUG2(L_TS, "ts check: video PID %d: transport error indicator set%s, VDR drops the PES", pid, when);
+			continue;
+		}
+
+		if (TsIsScrambled(data)) {
+			m_scrambledPackets++;
+			LOGDEBUG2(L_TS, "ts check: video PID %d: scrambled packet", pid);
+		}
+
+		// the counter is only incremented with a payload
+		if (!TsHasPayload(data))
+			continue;
+
+		int cc = TsContinuityCounter(data);
+		int last = m_cc[pid];
+		bool discontinuity = TsHasAdaptationField(data) && data[4] > 0 && (data[5] & TS_ADAPT_DISCONT);
+
+		// a duplicate packet has the same counter
+		if (last >= 0 && !discontinuity && cc != last && cc != ((last + 1) & TS_CONT_CNT_MASK)) {
+			int lost = (cc - last - 1) & TS_CONT_CNT_MASK;
+			(started ? m_lostPackets : m_lostPacketsBeforeStart) += lost;
+			LOGDEBUG2(L_TS, "ts check: video PID %d: continuity error%s, expected %d got %d, %d packet(s) lost",
+				  pid, when, (last + 1) & TS_CONT_CNT_MASK, cc, lost);
+		}
+
+		m_cc[pid] = cc;
+	}
 }
