@@ -493,10 +493,15 @@ int cAlsaDevice::Setup(int channels, int sample_rate, bool passthrough, int down
 	m_useMmap = false;
 
 	// The IEC958 channel status is set, when the device is opened, so reopen it,
-	// if the passthrough state or the sample rate changed
+	// if the passthrough state or the sample rate changed.
+	// Some HDMI outputs (e.g. Amlogic) are configured only, when the stream starts after the
+	// device was opened. New hw params with another number of channels keep the old HDMI
+	// configuration (e.g. the receiver shows 2.0 instead of 5.1), so reopen it then, too.
 	std::string deviceString = BuildDeviceString(m_deviceName.c_str(), passthrough, sample_rate, channels);
-	if (!m_deviceName.empty() && deviceString != m_openedDevice && !ReopenDevice(deviceString))
+	bool channelsChanged = m_setupChannels && channels != m_setupChannels;
+	if (!m_deviceName.empty() && (deviceString != m_openedDevice || channelsChanged) && !ReopenDevice(deviceString))
 		return -1;
+	m_setupChannels = channels;
 
 	// the hw params can only be changed in the OPEN, SETUP and PREPARED state
 	snd_pcm_state_t pcmState = snd_pcm_state(m_pPCMHandle);

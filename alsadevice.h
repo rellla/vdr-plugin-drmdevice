@@ -106,6 +106,7 @@ private:
 	std::atomic<bool> m_passthroughActive = false; ///< set, if passthrough is active
 	unsigned int m_hwSampleRate = 0;          ///< hardware sample rate in Hz
 	unsigned int m_hwNumChannels = 0;         ///< number of hardware channels
+	int m_setupChannels = 0;                  ///< number of channels of the last setup (0: none)
 	int m_downmix;                            ///< set stereo downmix
 	bool m_useMmap = false;                   ///< use mmap
 	std::string m_deviceName;                 ///< name of the used device (without the AES parameters)
