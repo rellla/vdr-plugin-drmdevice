@@ -216,6 +216,16 @@ void cDeviceSetupMenu::AddStatistics(void)
 		m_pDevice->GetStats(&duped, &dropped, &counter);
 		return cString::sprintf(tr("Frames duped(%d) dropped(%d) total(%d)"), duped, dropped, counter);
 	});
+	AddLiveItem([this]() {
+		const cTsVideoCheck &check = m_pDevice->GetTsVideoCheck();
+		return cString::sprintf(tr("Video TS packets lost(%d) damaged(%d) scrambled(%d)"), check.GetLostPackets(),
+			check.GetErrorPackets(), check.GetScrambledPackets());
+	});
+	AddLiveItem([this]() {
+		const cTsVideoCheck &check = m_pDevice->GetTsVideoCheck();
+		return cString::sprintf(tr("Video TS packets before start lost(%d) damaged(%d)"), check.GetLostPacketsBeforeStart(),
+			check.GetErrorPacketsBeforeStart());
+	});
 
 	// audio
 	AddLiveItem([this]() {
