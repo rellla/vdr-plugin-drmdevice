@@ -184,6 +184,23 @@ void cVideoStream::CloseDecoder(void)
 }
 
 /**
+ * Restart the decoder
+ *
+ * Close the decoder and open it again with the next packet like a new stream, decoding
+ * continues with the next I-Frame.
+ */
+void cVideoStream::RestartDecoder(void)
+{
+	m_pDecoder->Close();
+	m_newStream = true;
+	m_numIFrames = 0;
+	m_maxFrameNum = 1;
+	m_naluTypesAtStart.clear();
+	m_dpbFrames.clear();
+	m_lastDecodedPts = AV_NOPTS_VALUE;
+}
+
+/**
  * Flush the decoder
  *
  * Some hardware (RPI) needs a reopen workaround (close/open) here, because
@@ -360,9 +377,11 @@ bool cVideoStream::PacketDropNeeded(AVPacket *avpkt)
  *
  * @param avpkt         AVPacket to be decoded (can be a nullptr from cVideoStream::Flush())
  *
+ * @return              the return value of the decoder, 0 if the packet wasn't sent
+ *
  * @note                We may not dereference avpkt without nullptr-check!
  */
-void cVideoStream::SendPacket(AVPacket *avpkt)
+int cVideoStream::SendPacket(AVPacket *avpkt)
 {
 	int ret = 0;
 
@@ -409,6 +428,8 @@ void cVideoStream::SendPacket(AVPacket *avpkt)
 		av_packet_free(&avpkt);
 		m_isResend = false;
 	}
+
+	return ret;
 }
 
 /**
@@ -445,16 +466,29 @@ void cVideoStream::DecodeInput(void)
 	if (m_newStream)
 		OpenDecoder();
 
+	// A hardware decoder may fail for good (e.g. it aborts the session on a damaged stream),
+	// then it rejects every packet with EIO and has to be restarted.
+
 	// send packet to decoder
 	if (!m_packets.IsEmpty()) {
 		AVPacket *avpkt = m_packets.Peek();
-		SendPacket(avpkt);
+		if (SendPacket(avpkt) == AVERROR(EIO) && m_pDecoder->IsHardwareDecoder()) {
+			LOGWARNING("videostream %s: %s: the decoder failed, restart it", m_identifier, __FUNCTION__);
+			RestartDecoder();
+			return;
+		}
 	}
 
 	// receive frame from decoder and send it to the render queue
 	AVFrame *frame = nullptr;
-	if (!ReceiveFrame(&frame))
+	int ret = ReceiveFrame(&frame);
+	if (!ret) {
 		RenderFrame(frame);
+	} else if (ret == AVERROR(EIO) && m_pDecoder->IsHardwareDecoder()) {
+		LOGWARNING("videostream %s: %s: the decoder failed, restart it", m_identifier, __FUNCTION__);
+		RestartDecoder();
+		return;
+	}
 
 	// software decoder fallback check
 	if (m_pDecoder->IsHardwareDecoder() && !m_pDecoder->GetFramesReceived()) {
