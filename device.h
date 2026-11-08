@@ -204,6 +204,7 @@ public:
 
 	// Logging, statistics
 	void GetStats(int *, int *, int *);
+	const cTsVideoCheck &GetTsVideoCheck(void) const { return m_tsVideoCheck; } ///< checks the video TS packets
 
 	// Mediaplayer
 	bool SetAudioCodec(enum AVCodecID, AVCodecParameters *, AVRational);

@@ -152,6 +152,14 @@ msgstr "Anzeige: %dx%d@%.2f%s, %s"
 msgid "Frames duped(%d) dropped(%d) total(%d)"
 msgstr "Frames verdoppelt(%d) verworfen (%d) gesamt (%d)"
 
+#, c-format
+msgid "Video TS packets lost(%d) damaged(%d) scrambled(%d)"
+msgstr "Video-TS-Pakete verloren (%d) fehlerhaft (%d) verschlüsselt (%d)"
+
+#, c-format
+msgid "Video TS packets before start lost(%d) damaged(%d)"
+msgstr "Video-TS-Pakete vor Start verloren (%d) fehlerhaft (%d)"
+
 msgid "Audio: none"
 msgstr "Audio: keins"
 

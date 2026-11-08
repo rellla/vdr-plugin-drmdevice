@@ -253,6 +253,7 @@ private:
  * VDR drops the PES of a packet with the transport error indicator set, but it passes a PES
  * with lost packets (a gap of the continuity counter) on. Such an incomplete access unit may
  * hang a hardware decoder. The video PIDs are detected by the stream id of their PES.
+ * The numbers of the packets are counted since the plugin start (statistics of the setup menu).
  * The lost and damaged packets before the stream start are counted separately: the PES
  * packets, which are passed on before the first decodable frame, are dropped anyway.
  *
