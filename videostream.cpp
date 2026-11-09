@@ -38,6 +38,9 @@ extern "C" {
 #include "videostream.h"
 #include "videorender.h"
 
+/** marker of a packet (AVPacket::opaque), the decoder is restarted before it */
+static char s_restartDecoder;
+
 /*****************************************************************************
  * cVideoStream class
  ****************************************************************************/
@@ -90,13 +93,17 @@ bool cVideoStream::Drain(void)
  * when packets are received from sources that don't require fragmentation handling.
  * The stream takes the ownership of the packet, a packet which can't be queued is freed.
  *
- * @param avpkt    The AVPacket to push to the queue
- * @return         true if the packet was successfully pushed, false otherwise
+ * @param avpkt            The AVPacket to push to the queue
+ * @param restartDecoder   restart the decoder before this packet is decoded (a key frame after damaged video)
+ * @return                 true if the packet was successfully pushed, false otherwise
  */
-bool cVideoStream::PushAvPacket(AVPacket *avpkt)
+bool cVideoStream::PushAvPacket(AVPacket *avpkt, bool restartDecoder)
 {
 	if (!avpkt)          // e.g. an empty reassembly buffer
 		return false;
+
+	if (restartDecoder)
+		avpkt->opaque = &s_restartDecoder;
 
 	if (avpkt->pts != AV_NOPTS_VALUE)
 		m_inputPts = avpkt->pts;
@@ -181,6 +188,16 @@ void cVideoStream::CloseDecoder(void)
 	m_minFramerateDelta = 0;
 	m_lastDecodedPts = AV_NOPTS_VALUE;
 	m_framerate = 0.0;
+}
+
+/**
+ * Check, if a hardware decoder is used
+ *
+ * @return true, if a hardware decoder is used
+ */
+bool cVideoStream::IsHardwareDecoder(void)
+{
+	return m_pDecoder->IsHardwareDecoder();
 }
 
 /**
@@ -461,6 +478,13 @@ void cVideoStream::DecodeInput(void)
 {
 	if (m_codecId == AV_CODEC_ID_NONE || m_pDrmBufferQueue->IsFull() || m_videoFilter.IsInputBufferFull())
 		return;
+
+	// a key frame after damaged video starts the decoder like a new stream
+	if (!m_packets.IsEmpty() && m_packets.Peek() && m_packets.Peek()->opaque == &s_restartDecoder) {
+		m_packets.Peek()->opaque = nullptr;
+		if (!m_newStream)
+			RestartDecoder();
+	}
 
 	// open decoder on new stream
 	if (m_newStream)

@@ -89,6 +89,17 @@ enum ChannelSwitchMode {
 };
 
 /**
+ * Modes to drop damaged video
+ *
+ * @ingroup device
+ */
+enum DropDamagedVideoMode {
+	DROP_DAMAGED_VIDEO_OFF,
+	DROP_DAMAGED_VIDEO_ON,
+	DROP_DAMAGED_VIDEO_AUTO,  ///< depends on the hardware (QUIRK_DROP_DAMAGED_VIDEO)
+};
+
+/**
  * Plugin Configuration
  *
  * @ingroup config
@@ -151,6 +162,7 @@ public:
 	// Expert Settings
 	int ConfigAdditionalBufferLengthMs = 0;     ///< config size ms of a/v buffer
 	bool ConfigDisableDeint = false;            ///< disable deinterlacer
+	int ConfigDropDamagedVideo = DROP_DAMAGED_VIDEO_AUTO; ///< drop damaged video (lost TS packets) up to the next key frame (enum DropDamagedVideoMode)
 	bool ConfigDecoderFallbackToSw = false;     ///< fallback to software decoder if the hardware decoder fails
 	int ConfigDecoderFallbackToSwNumPkts = 22;  ///< maximum number of packets sent before fallback to sw decoder
 	int ConfigParseH264StreamStart = 0;         ///< log frames at stream start up to the given number of I-Frames

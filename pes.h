@@ -203,6 +203,7 @@ public:
 	AVPacket *PopAvPacket(void) override { return cReassemblyBuffer::PopAvPacket(m_buffer.GetSize()); }
 	bool ParseCodecHeader(const uint8_t *, int);
 	bool HasLeadingZero(const uint8_t *, int);
+	bool IsKeyFrame(const uint8_t *, int) const;
 private:
 	static constexpr uint32_t VIDEO_FRAME_START_CODE = 0x00'0001;  ///< start code of a video frame
 	static constexpr int VIDEO_FRAME_START_CODE_LEN = 3;           ///< length of the start code in bytes
@@ -261,6 +262,7 @@ class cTsVideoCheck {
 public:
 	void Reset(void);
 	void Check(const uint8_t *, int, bool);
+	bool IsDamaged(const uint8_t *) const;
 	int GetLostPackets(void) const { return m_lostPackets; }                         ///< number of lost packets after the stream start
 	int GetErrorPackets(void) const { return m_errorPackets; }                       ///< number of packets with an error after the stream start
 	int GetScrambledPackets(void) const { return m_scrambledPackets; }               ///< number of scrambled packets
@@ -277,6 +279,8 @@ private:
 	std::atomic<int> m_scrambledPackets = 0;        ///< number of scrambled packets
 	std::atomic<int> m_lostPacketsBeforeStart = 0;  ///< number of lost packets before the stream start
 	std::atomic<int> m_errorPacketsBeforeStart = 0; ///< number of packets with an error before the stream start
+
+	static bool HasGap(const uint8_t *, int);
 };
 
 #endif

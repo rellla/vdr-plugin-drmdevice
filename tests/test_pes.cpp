@@ -1987,3 +1987,71 @@ TEST_CASE("cPesVideo - start of a video PES packet", "[pes]") {
     REQUIRE_FALSE(cPesVideo::IsStart(noStart, sizeof(noStart)));
     REQUIRE_FALSE(cPesVideo::IsStart(video, 3));
 }
+
+TEST_CASE("cTsVideoCheck - damaged packets", "[pes][ts]") {
+    cTsVideoCheck check;
+
+    check.Check(createTsPacket(100, 3, true).data(), 188, true);
+
+    SECTION("the next packet is fine") {
+        REQUIRE_FALSE(check.IsDamaged(createTsPacket(100, 4, false).data()));
+    }
+
+    SECTION("lost packets") {
+        REQUIRE(check.IsDamaged(createTsPacket(100, 6, false).data()));
+        REQUIRE(check.IsDamaged(createTsPacket(100, 6, true).data()));
+    }
+
+    SECTION("the transport error indicator") {
+        REQUIRE(check.IsDamaged(createTsPacket(100, 4, false, 0xE0, true).data()));
+    }
+
+    SECTION("an unknown PID") {
+        REQUIRE_FALSE(check.IsDamaged(createTsPacket(200, 9, false).data()));
+    }
+
+    SECTION("the state isn't changed") {
+        REQUIRE(check.IsDamaged(createTsPacket(100, 6, false).data()));
+        REQUIRE(check.GetLostPackets() == 0);
+        REQUIRE_FALSE(check.IsDamaged(createTsPacket(100, 4, false).data()));
+    }
+}
+
+TEST_CASE("cReassemblyBufferVideo - key frame", "[pes]") {
+    cReassemblyBufferVideo buffer;
+
+    SECTION("H.264") {
+        // AUD, SPS
+        const uint8_t aud[] = { 0x00, 0x00, 0x00, 0x01, 0x09, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+        REQUIRE(buffer.ParseCodecHeader(aud, sizeof(aud)));
+
+        const uint8_t sps[] = { 0x00, 0x00, 0x00, 0x01, 0x09, 0x10, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00 };
+        const uint8_t idr[] = { 0x00, 0x00, 0x01, 0x09, 0x10, 0x00, 0x00, 0x01, 0x06, 0x00, 0x00, 0x01, 0x65, 0x88 };
+        const uint8_t p[] = { 0x00, 0x00, 0x01, 0x09, 0x30, 0x00, 0x00, 0x01, 0x41, 0x9A, 0x00, 0x00, 0x01, 0x67 };
+        REQUIRE(buffer.IsKeyFrame(sps, sizeof(sps)));
+        REQUIRE(buffer.IsKeyFrame(idr, sizeof(idr)));
+        REQUIRE_FALSE(buffer.IsKeyFrame(p, sizeof(p)));
+    }
+
+    SECTION("HEVC") {
+        const uint8_t aud[] = { 0x00, 0x00, 0x01, 0x46, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00 };
+        REQUIRE(buffer.ParseCodecHeader(aud, sizeof(aud)));
+
+        const uint8_t vps[] = { 0x00, 0x00, 0x01, 0x46, 0x01, 0x10, 0x00, 0x00, 0x01, 0x40, 0x01 };
+        const uint8_t trail[] = { 0x00, 0x00, 0x01, 0x46, 0x01, 0x30, 0x00, 0x00, 0x01, 0x02, 0x01 };
+        REQUIRE(buffer.IsKeyFrame(vps, sizeof(vps)));
+        REQUIRE_FALSE(buffer.IsKeyFrame(trail, sizeof(trail)));
+    }
+
+    SECTION("MPEG-2") {
+        const uint8_t seq[] = { 0x00, 0x00, 0x01, 0xB3, 0x2D, 0x02, 0x40, 0x33, 0x00, 0x00 };
+        REQUIRE(buffer.ParseCodecHeader(seq, sizeof(seq)));
+        REQUIRE(buffer.IsKeyFrame(seq, sizeof(seq)));
+
+        // picture headers: I (type 1) and P (type 2)
+        const uint8_t i[] = { 0x00, 0x00, 0x01, 0x00, 0x00, 0x0F, 0xFF, 0xF8 };
+        const uint8_t pic[] = { 0x00, 0x00, 0x01, 0x00, 0x00, 0x17, 0xFF, 0xF8 };
+        REQUIRE(buffer.IsKeyFrame(i, sizeof(i)));
+        REQUIRE_FALSE(buffer.IsKeyFrame(pic, sizeof(pic)));
+    }
+}

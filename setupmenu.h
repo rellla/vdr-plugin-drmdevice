@@ -110,6 +110,7 @@ protected:
 	// Expert settings
 	int m_cAdditionalBufferLengthMs;
 	int m_cDisableDeint;
+	int m_cDropDamagedVideo;
 	int m_cDecoderFallbackToSw;
 	int m_cDecoderFallbackToSwNumPkts;
 	int m_cParseH264StreamStart;
@@ -142,6 +143,7 @@ private:
 	std::vector<std::string> m_displayMode;            ///< texts of the display mode selection
 	std::vector<const char *> m_displayModePtrs;       ///< pointers to m_displayMode for cMenuEditStraItem
 	const char *m_passthroughModes[3];                 ///< texts of the passthrough mode selection
+	const char *m_dropDamagedVideoModes[3];            ///< texts of the drop damaged video selection
 	std::vector<std::string> m_channelSwitchMode;      ///< texts of the channel switch mode selection
 	std::vector<const char *> m_channelSwitchModePtrs; ///< pointers to m_channelSwitchMode for cMenuEditStraItem
 	static constexpr int FFMPEG_LOG_LEVELS = 4;        ///< number of the FFmpeg log levels

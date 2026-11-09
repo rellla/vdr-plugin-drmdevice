@@ -310,7 +310,10 @@ private:
 	ZapCacheService_v1_0 m_zapCache = {}; ///< service interface of the zapcache plugin (empty without the plugin, set in Start())
 	std::atomic<bool> m_zapCacheSwitch = false; ///< the current channel switch started with the buffer of the zapcache plugin
 
-	cTsVideoCheck m_tsVideoCheck;    ///< checks the video TS packets for lost and damaged packets
+	cTsVideoCheck m_tsVideoCheck;                    ///< checks the video TS packets for lost and damaged packets
+	std::atomic<bool> m_videoDamagePending = false;  ///< a video TS packet was lost or damaged, the next video PES is damaged
+	std::atomic<bool> m_dropVideo = false;           ///< drop the video up to the next key frame
+	std::atomic<bool> m_restartVideoDecoder = false; ///< restart the decoder with the next video frame (the key frame)
 
 	std::mutex m_sizeMutex;          ///< mutex to lock screen size (which is accessed by different threads)
 	std::atomic<bool> m_receivedAudio = false; ///< flag if audio packets have been received
@@ -331,6 +334,8 @@ private:
 	bool m_externalPlayerActive = false; ///< true, if we detached for an external player
 
 	int PlayVideoInternal(cVideoStream *, cReassemblyBufferVideo *, const uchar *, int, bool, bool);
+	void ResetVideoDamage(void);
+	bool DropDamagedVideo(void);
 	void FlushAudio(void);
 	bool VideoStreamStarted(void);
 	void DeleteDecoderAndOutput(void);

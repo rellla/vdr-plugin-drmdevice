@@ -417,6 +417,7 @@ void cDeviceSetupMenu::Create(int current)
 
 		Add(SeparatorName(tr("Video settings")));
 		Add(new cMenuEditBoolItem(tr("Disable deinterlacer"), &m_cDisableDeint, trVDR("no"), trVDR("yes")));
+		Add(new cMenuEditStraItem(tr("Drop damaged video until key frame"), &m_cDropDamagedVideo, 3, m_dropDamagedVideoModes));
 		Add(new cMenuEditBoolItem(tr("Enable SW decoder fallback"), &m_cDecoderFallbackToSw, trVDR("no"), trVDR("yes")));
 		if (m_cDecoderFallbackToSw) {
 			Add(new cOsdItem(cString::sprintf(tr(" (minimum: %d)"), m_pConfig->GetDecoderNeedsMaxPackets() + 1), osUnknown, false));
@@ -537,6 +538,10 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_passthroughModes[PASSTHROUGH_MANUAL] = tr("manual");
 	m_passthroughModes[PASSTHROUGH_AUTO] = tr("automatic");
 
+	m_dropDamagedVideoModes[DROP_DAMAGED_VIDEO_OFF] = trVDR("no");
+	m_dropDamagedVideoModes[DROP_DAMAGED_VIDEO_ON] = trVDR("yes");
+	m_dropDamagedVideoModes[DROP_DAMAGED_VIDEO_AUTO] = tr("automatic");
+
 	LoadValues();
 	Create();
 }
@@ -628,6 +633,7 @@ void cDeviceSetupMenu::LoadValues(void)
 	//
 	m_cAdditionalBufferLengthMs= m_pConfig->ConfigAdditionalBufferLengthMs;
 	m_cDisableDeint = m_pConfig->ConfigDisableDeint;
+	m_cDropDamagedVideo = m_pConfig->ConfigDropDamagedVideo;
 	m_cDecoderFallbackToSw = m_pConfig->ConfigDecoderFallbackToSw;
 	m_cDecoderFallbackToSwNumPkts = m_pConfig->ConfigDecoderFallbackToSwNumPkts;
 	m_cParseH264StreamStart = m_pConfig->ConfigParseH264StreamStart;
@@ -867,6 +873,7 @@ void cDeviceSetupMenu::Store(void)
 			LOGDEBUG("Disable deinterlacer!");
 		m_pDevice->SetDisableDeint();
 	}
+	StoreChanged("DropDamagedVideo", m_pConfig->ConfigDropDamagedVideo, m_cDropDamagedVideo);
 	bool fallbackChanged = StoreChanged("DecoderFallbackToSw", m_pConfig->ConfigDecoderFallbackToSw, m_cDecoderFallbackToSw);
 	fallbackChanged |= StoreChanged("DecoderFallbackToSwNumPkts", m_pConfig->ConfigDecoderFallbackToSwNumPkts, m_cDecoderFallbackToSwNumPkts);
 	if (fallbackChanged)

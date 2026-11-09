@@ -13,6 +13,7 @@
 #ifndef __DRMDEVICE_CODEC_VIDEO_H
 #define __DRMDEVICE_CODEC_VIDEO_H
 
+#include <atomic>
 #include <mutex>
 
 extern "C" {
@@ -57,7 +58,7 @@ private:
 	std::mutex m_mutex;                     ///< mutex to lock codec context
 	int m_cntPacketsSent = 0;               ///< number of packets sent to decoder
 	int m_cntFramesReceived = 0;            ///< number of decoded frames received from decoder
-	bool m_isHardwareDecoder = false;       ///< true, if this is a hardware decoder
+	std::atomic<bool> m_isHardwareDecoder = false; ///< true, if this is a hardware decoder
 
 	int GetExtraData(const AVPacket *);
 	void ResetPacketCounter(void) { m_cntPacketsSent = m_cntFramesReceived = 0; }  ///< reset the packet and frame counters
