@@ -43,6 +43,15 @@ TEST_CASE("cHardwareDevice - detection from the device tree", "[hardwaredevice]"
 		REQUIRE(device.GetQuirks() & QUIRK_CODEC_FLUSH_WORKAROUND);
 	}
 
+	SECTION("Odroid N2, Amlogic G12B") {
+		cCompatibleFile file(std::string("hardkernel,odroid-n2\0amlogic,s922x\0amlogic,g12b\0", 48));
+		cHardwareDevice device(file.Path());
+
+		REQUIRE(device.GetName() != nullptr);
+		REQUIRE(std::string(device.GetName()).find("Amlogic G12B") == 0);
+		REQUIRE(device.GetQuirks() == QUIRK_DROP_DAMAGED_VIDEO);
+	}
+
 	SECTION("Long property (larger than the old fixed read buffer)") {
 		std::string content;
 		for (int i = 0; i < 20; i++)

@@ -588,13 +588,65 @@ int cOutputDevice::PlayTs(const uchar *data, int length, bool videoOnly)
 		}
 	}
 
-	int played = cDevice::PlayTs(data, length, videoOnly);
+	if (!data || !DropDamagedVideo()) {
+		int played = cDevice::PlayTs(data, length, videoOnly);
 
-	// check only the played packets, the others are passed again
-	if (data && played > 0)
-		m_tsVideoCheck.Check(data, played, VideoStreamStarted());
+		// check only the played packets, the others are passed again
+		if (data && played > 0)
+			m_tsVideoCheck.Check(data, played, VideoStreamStarted());
+
+		return played;
+	}
+
+	// Play packet by packet, so a lost or damaged video packet is assigned to its PES (VDR
+	// passes the previous PES on with the next payload start). Only the played packets are
+	// checked, the others are passed again.
+	int played = 0;
+	while (played < length) {
+		const uchar *packet = data + played;
+		int size = length - played;
+		bool synced = size >= TS_SIZE && packet[0] == TS_SYNC_BYTE;
+
+		if (synced) {
+			size = TS_SIZE;
+			if (m_tsVideoCheck.IsDamaged(packet))
+				m_videoDamagePending = true;
+		}
+
+		int ret = cDevice::PlayTs(packet, size, videoOnly);
+		if (ret <= 0)
+			return played ? played : ret;
+
+		if (synced && ret == TS_SIZE)
+			m_tsVideoCheck.Check(packet, TS_SIZE, VideoStreamStarted());
+
+		played += ret;
+	}
 
 	return played;
+}
+
+/**
+ * Check, if damaged video is dropped up to the next key frame
+ *
+ * @return true, if damaged video is dropped (setup or hardware quirk)
+ */
+bool cOutputDevice::DropDamagedVideo(void)
+{
+	if (m_pConfig->ConfigDropDamagedVideo == DROP_DAMAGED_VIDEO_AUTO)
+		return m_pHardwareDevice && (m_pHardwareDevice->GetQuirks() & QUIRK_DROP_DAMAGED_VIDEO);
+
+	return m_pConfig->ConfigDropDamagedVideo == DROP_DAMAGED_VIDEO_ON;
+}
+
+/**
+ * Forget lost video data (e.g. at a clear or a channel switch)
+ */
+void cOutputDevice::ResetVideoDamage(void)
+{
+	m_videoDamagePending = false;
+	m_dropVideo = false;
+	m_restartVideoDecoder = false;
 }
 
 /**
@@ -817,6 +869,7 @@ void cOutputDevice::Clear(void)
 	m_pVideoStream->CancelFilterThread();
 
 	m_videoReassemblyBuffer.Reset();
+	ResetVideoDamage();
 	m_pVideoStream->ClearVdrCoreToDecoderQueue();
 	m_pRender->ClearDecoderToDisplayQueue();
 
@@ -1969,6 +2022,9 @@ int cOutputDevice::PlayVideoInternal(cVideoStream *stream, cReassemblyBufferVide
 
 	cPesVideo pesPacket((const uint8_t*)data, size);
 
+	// the PES lost TS packets (see PlayTs())
+	bool damaged = mainStream && m_videoDamagePending.exchange(false);
+
 	if (!pesPacket.IsValid()) {
 		buffer->Reset();
 
@@ -1996,7 +2052,7 @@ int cOutputDevice::PlayVideoInternal(cVideoStream *stream, cReassemblyBufferVide
 
 	if (stream->GetCodecId() == AV_CODEC_ID_NONE) {
 		// The playback has just started
-		if (!pesPacket.HasPts() || !buffer->ParseCodecHeader(pesPacket.GetPayload(), pesPacket.GetPayloadSize())) {
+		if (damaged || !pesPacket.HasPts() || !buffer->ParseCodecHeader(pesPacket.GetPayload(), pesPacket.GetPayloadSize())) {
 			// received the middle of fragmented data, wait for the next PES packets with the start of a new frame
 			return size;
 		}
@@ -2010,10 +2066,34 @@ int cOutputDevice::PlayVideoInternal(cVideoStream *stream, cReassemblyBufferVide
 
 		stream->Open(buffer->GetCodec());
 	} else {
+		// A hardware decoder may hang or fail on an incomplete frame (e.g. Amlogic), so drop a
+		// damaged frame and the following frames, which may refer to it, up to the next key frame.
+		if (damaged && DropDamagedVideo() && stream->IsHardwareDecoder()) {
+			// the PES starts a new frame, the previous one is complete
+			if (pesPacket.HasPts() && !buffer->IsEmpty() && !m_dropVideo)
+				stream->PushAvPacket(buffer->PopAvPacket(), m_restartVideoDecoder.exchange(false));
+
+			if (!m_dropVideo)
+				LOGDEBUG2(L_TS, "device: %s: lost video data, drop the video up to the next key frame", __FUNCTION__);
+
+			buffer->Reset();
+			m_dropVideo = true;
+
+			return size;
+		}
+
+		if (m_dropVideo) {
+			if (!pesPacket.HasPts() || !buffer->IsKeyFrame(pesPacket.GetPayload(), pesPacket.GetPayloadSize()))
+				return size;
+
+			m_dropVideo = false;
+			m_restartVideoDecoder = true;
+		}
+
 		int payloadOffset = 0;
 		if (pesPacket.HasPts() && !buffer->IsEmpty()) {
 			// received the first fragment of a new frame, finish the current reassembly buffer into an AVPacket
-			stream->PushAvPacket(buffer->PopAvPacket());
+			stream->PushAvPacket(buffer->PopAvPacket(), m_restartVideoDecoder.exchange(false));
 
 			// populate the cleared buffer with the next frame
 			if (buffer->HasLeadingZero(pesPacket.GetPayload(), pesPacket.GetPayloadSize()))
@@ -2305,6 +2385,7 @@ void cOutputDevice::EnterState(State state)
 			m_playbackMode = NONE;
 
 			m_videoReassemblyBuffer.Reset();
+			ResetVideoDamage();
 			m_pVideoStream->ClearVdrCoreToDecoderQueue();
 			m_pRender->ClearDecoderToDisplayQueue();
 			m_pRender->ResetDecodingStrategy();

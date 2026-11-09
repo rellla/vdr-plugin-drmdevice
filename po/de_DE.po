@@ -411,6 +411,9 @@ msgstr "Video Einstellungen"
 msgid "Disable deinterlacer"
 msgstr "Deaktiviere Deinterlacer"
 
+msgid "Drop damaged video until key frame"
+msgstr "Beschädigtes Video bis Keyframe verwerfen"
+
 msgid "Enable SW decoder fallback"
 msgstr "Aktiviere SW Dekoder Fallback"
 

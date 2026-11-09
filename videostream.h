@@ -64,7 +64,7 @@ public:
 	void FlushDecoder(void);
 	void CloseDecoder(void);
 	void RestartDecoder(void);
-	bool PushAvPacket(AVPacket *avpkt);
+	bool PushAvPacket(AVPacket *avpkt, bool restartDecoder = false);
 	bool Drain(void);
 
 	// decoding thread
@@ -77,6 +77,7 @@ public:
 	void StartDecoder();
 	size_t GetAvPacketsFilled(void) { return m_packets.Size(); }                  ///< get the number of queued packets
 	bool IsInputBufferFull(void) { return m_packets.Size() >= VIDEO_PACKET_MAX; } ///< true, if the packet queue is full
+	bool IsHardwareDecoder(void);
 	bool BuffersEmpty(void);
 	enum AVCodecID GetCodecId(void) { return m_codecId; }                          ///< get the current codec id
 	void ResetTrickSpeedFramesSentCounter(void) { m_sentTrickPkts = 0; }           ///< reset the counter of packets sent in trick speed

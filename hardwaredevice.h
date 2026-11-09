@@ -27,6 +27,7 @@
  */
 enum HardwareQuirks {
 	QUIRK_CODEC_FLUSH_WORKAROUND       = 1 << 0,     ///< set, if we have to close and reopen the codec instead of avcodec_flush_buffers (rpi)
+	QUIRK_DROP_DAMAGED_VIDEO           = 1 << 1,     ///< set, if the hardware decoder may hang on an incomplete frame, drop damaged video (amlogic)
 };
 
 /**
@@ -81,6 +82,13 @@ public:
 			{ "bcm2837", "bcm2837 (Raspberry Pi 2 Model B v1.2/ 3 Model B, Raspberry Pi 3 Compute Module 3)", QUIRK_CODEC_FLUSH_WORKAROUND },
 			{ "bcm2711", "bcm2711 (Raspberry Pi 4 Model B, Compute Module 4, Pi 400)", QUIRK_CODEC_FLUSH_WORKAROUND },
 			{ "bcm2712", "bcm2712 (Raspberry Pi 5, Compute Module 5, Pi 500)", QUIRK_CODEC_FLUSH_WORKAROUND },
+			{ "amlogic,gxbb", "Amlogic GXBB (S905)", QUIRK_DROP_DAMAGED_VIDEO },
+			{ "amlogic,gxl", "Amlogic GXL (S905X/D/W)", QUIRK_DROP_DAMAGED_VIDEO },
+			{ "amlogic,gxm", "Amlogic GXM (S912)", QUIRK_DROP_DAMAGED_VIDEO },
+			{ "amlogic,g12a", "Amlogic G12A (S905X2/D2/Y2)", QUIRK_DROP_DAMAGED_VIDEO },
+			{ "amlogic,g12b", "Amlogic G12B (S922X/A311D, e.g. Odroid N2)", QUIRK_DROP_DAMAGED_VIDEO },
+			{ "amlogic,sm1", "Amlogic SM1 (S905X3/D3)", QUIRK_DROP_DAMAGED_VIDEO },
+			{ "amlogic,s4", "Amlogic S4 (S905Y4/W2)", QUIRK_DROP_DAMAGED_VIDEO },
 		};
 
 		size_t pos = 0;
@@ -102,8 +110,9 @@ public:
 		}
 
 		if (m_deviceName)
-			LOGDEBUG("%s found%s", m_deviceName,
-			    m_quirks & QUIRK_CODEC_FLUSH_WORKAROUND ? ", flush workaround" : "");
+			LOGDEBUG("%s found%s%s", m_deviceName,
+			    m_quirks & QUIRK_CODEC_FLUSH_WORKAROUND ? ", flush workaround" : "",
+			    m_quirks & QUIRK_DROP_DAMAGED_VIDEO ? ", drop damaged video" : "");
 		else
 			LOGDEBUG("%s found, no quirks set", compatible.c_str());
 	}

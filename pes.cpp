@@ -877,6 +877,47 @@ void cTsVideoCheck::Reset(void)
 }
 
 /**
+ * Check, if the continuity counter of a TS packet with payload shows lost packets
+ *
+ * @param data      TS packet
+ * @param last      last continuity counter of the PID (-1 = unknown)
+ *
+ * @return true, if packets were lost (a duplicate packet has the same counter)
+ */
+bool cTsVideoCheck::HasGap(const uint8_t *data, int last)
+{
+	int cc = TsContinuityCounter(data);
+	bool discontinuity = TsHasAdaptationField(data) && data[4] > 0 && (data[5] & TS_ADAPT_DISCONT);
+
+	return last >= 0 && !discontinuity && cc != last && cc != ((last + 1) & TS_CONT_CNT_MASK);
+}
+
+/**
+ * Check, if a TS packet of the video follows lost packets or has an error
+ *
+ * The state isn't changed, call Check() after the packet was played.
+ *
+ * @param data      TS packet
+ *
+ * @return true, if the PES of this packet (or the previous one at a payload start) is damaged
+ */
+bool cTsVideoCheck::IsDamaged(const uint8_t *data) const
+{
+	if (!m_initialized || data[0] != TS_SYNC_BYTE)
+		return false;
+
+	int pid = TsPid(data);
+
+	if (!m_videoPid.test(pid))
+		return false;
+
+	if (TsError(data))
+		return true;
+
+	return TsHasPayload(data) && HasGap(data, m_cc[pid]);
+}
+
+/**
  * Check TS packets for lost, damaged and scrambled packets of the video and log them
  *
  * @param data      TS packets
@@ -924,10 +965,8 @@ void cTsVideoCheck::Check(const uint8_t *data, int length, bool started)
 
 		int cc = TsContinuityCounter(data);
 		int last = m_cc[pid];
-		bool discontinuity = TsHasAdaptationField(data) && data[4] > 0 && (data[5] & TS_ADAPT_DISCONT);
 
-		// a duplicate packet has the same counter
-		if (last >= 0 && !discontinuity && cc != last && cc != ((last + 1) & TS_CONT_CNT_MASK)) {
+		if (HasGap(data, last)) {
 			int lost = (cc - last - 1) & TS_CONT_CNT_MASK;
 			(started ? m_lostPackets : m_lostPacketsBeforeStart) += lost;
 			LOGDEBUG2(L_TS, "ts check: video PID %d: continuity error%s, expected %d got %d, %d packet(s) lost",
@@ -936,4 +975,57 @@ void cTsVideoCheck::Check(const uint8_t *data, int length, bool started)
 
 		m_cc[pid] = cc;
 	}
+}
+
+/**
+ * Check, if a PES payload starts a key frame
+ *
+ * A decoder can start with a key frame: a sequence header (MPEG-2), a SPS or an IDR picture
+ * (H.264) or a VPS, SPS or IRAP picture (HEVC) before the first slice.
+ *
+ * @param data      PES payload
+ * @param size      size of the payload
+ *
+ * @return true, if a key frame starts
+ */
+bool cReassemblyBufferVideo::IsKeyFrame(const uint8_t *data, int size) const
+{
+	for (int i = 0; i + VIDEO_FRAME_START_CODE_LEN < size; i++) {
+		if (ReadBytes(&data[i], VIDEO_FRAME_START_CODE_LEN) != VIDEO_FRAME_START_CODE)
+			continue;
+
+		const uint8_t *nal = &data[i + VIDEO_FRAME_START_CODE_LEN];
+		int left = size - i - VIDEO_FRAME_START_CODE_LEN;
+
+		switch (m_codec) {
+		case AV_CODEC_ID_MPEG2VIDEO:
+			if (nal[0] == MPEG2_STREAM_TYPE)
+				return true;
+			if (nal[0] == 0x00) // picture header: I picture?
+				return left > 2 && ((nal[2] >> 3) & 0x07) == 1;
+			break;
+		case AV_CODEC_ID_H264: {
+			int type = nal[0] & 0x1F;
+			if (type == 5 || type == 7) // IDR, SPS
+				return true;
+			if (type >= 1 && type <= 4) // first slice
+				return false;
+			break;
+		}
+		case AV_CODEC_ID_HEVC: {
+			int type = (nal[0] >> 1) & 0x3F;
+			if ((type >= 16 && type <= 23) || type == 32 || type == 33) // IRAP, VPS, SPS
+				return true;
+			if (type <= 9) // first slice
+				return false;
+			break;
+		}
+		default:
+			return false;
+		}
+
+		i += VIDEO_FRAME_START_CODE_LEN - 1;
+	}
+
+	return false;
 }

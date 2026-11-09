@@ -352,6 +352,13 @@ Setup: /etc/vdr/setup.conf
 		0 = deinterlacer active if available
 		1 = deinterlacer is disabled
 
+	drmdevice.DropDamagedVideo = 2
+		drop damaged video (lost TS packets) up to the next key frame,
+		if a hardware decoder is used (some hang on incomplete frames)
+		0 = off
+		1 = on
+		2 = automatic (on with Amlogic)
+
 	drmdevice.DecoderFallbackToSw = 0
 		0 = always use hardware decoder if available
 		1 = fallback to software decoder if hardware decoder
