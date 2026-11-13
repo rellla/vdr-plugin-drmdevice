@@ -33,7 +33,7 @@ Features
 Supported Hardware
 ------------------
 In general, any device that provides a DRM/KMS output and is supported by FFmpeg should work.
-This is true for most of the devices, that are supported by LibreELEC. 
+This is true for most of the devices, that are supported by LibreELEC.
 
 Current development happens on a **Raspberry PI 4** and a **Radxa Rock 4B Plus (RK3399)**.
 
@@ -65,7 +65,7 @@ As a principle, this output device version is only dealing with mainline version
 which means you can (and have to) use mainline (or to be mainlined) kernel, FFmpeg and mesa version.
 This code does not work with vendor provided software or even closed source binaries.
 
-www.LibreELEC.tv is good source to look for what is possible with mainlined media related software.
+www.LibreELEC.tv is a good source to look for what is possible with mainlined media related software.
 In the LibreELEC project you can find at least patches for all the software, even if some piece of code
 isn't able to be mainlined or simply not already there. Because LibreELEC is a distribution to run
 kodi on, you'll find everything you need.
@@ -84,7 +84,7 @@ and/or deinterlacer which is supported by FFmpeg, the video is hardware decoded
 For software deinterlacing FFmpeg's bwdif (Bob Weaver Deinterlacing Filter) is
 used. This is the highest quality software deinterlacer available in FFmpeg.
 The OSD is either composed with OpenGL/ES or with CPU (see below).
-Both, video and OSD are rendered directly on seperate drm planes with kms.
+Both, video and OSD are rendered directly on separate drm planes with kms.
 When the video is hardware decoded, we don't need much CPU, because everything is done
 with a zero-copy approach. That's the same for OpenGL/ES OSD.
 Audio output is handled by Alsa.
@@ -107,7 +107,7 @@ Requirements
 
 - No running X!
 
-- VDR (version >=2.6.6)
+- VDR (version >= 2.4)
 
 	Video Disk Recorder - turns a pc into a powerful set top box
 	for DVB (http://www.tvdr.de/).
@@ -164,7 +164,7 @@ All command line arguments are optional. The plugin tries to set suitable defaul
 	-g arg     osd (rendering) resolution (e.g. 1920x1080)
 	-D         start plugin in detached state
 	-w workaround:
-	        disable-ogl-osd (to disable HW accelerated OSD)
+	        disable-ogl-osd (to disable HW accelerated OSD, ignored without OpenGL/ES support)
 	        disable-pip     (to force disabling the pip feature)
 
 
@@ -173,7 +173,8 @@ Setup: Environment Variables
 Environment values have a higher priority than command line arguments.
 
 	ALSA_DEVICE=default
-		alsa PCM device name
+		alsa PCM device name (without it and without -a, the plugin
+		searches for a device, the hdmi: devices first)
 	ALSA_MIXER=default
 		alsa control device name
 	ALSA_MIXER_CHANNEL=PCM
@@ -186,7 +187,7 @@ Setup: /etc/vdr/setup.conf
 	drmdevice.HideMainMenuEntry = 0
 		0 = show drmdevice main menu entry, 1 = hide entry
 
-	drmdevice.VideoEnableHdr = 0
+	drmdevice.VideoEnableHDR = 0
 		0 = disable HDR, 1 = enable HDR
 
 	drmdevice.VideoDisplayMode = 0
@@ -194,10 +195,15 @@ Setup: /etc/vdr/setup.conf
 		1  = display mode follows video resolution (width, height, refresh rate)
 		     If the output device offers a display mode, that *exactly* matches the video mode
 		     in terms of width - height - refresh rate, choose that one.
-		     For example, a stream in 1920x1080@50 will choose 1920x1080@25 (interlaced modes halve the refresh rate in the description)
+		     An interlaced stream is deinterlaced, e.g. a 1920x1080i stream with 25 frames
+		     per second chooses 1920x1080@50.
 		     Caveat: A 576i video stream will always be mapped to default mode.
 		2  = display mode follows video resolution respecting interlaced modes (width, height, refresh rate, interlaced flag)
-		     Same as above, but now the display also chooses an interlaced mode for interlaced input (except for 576i) if available
+		     Same as above, but now the display also chooses an interlaced mode for interlaced input (except for 576i) if available,
+		     e.g. a 1920x1080i stream with 25 frames per second chooses 1920x1080i@25
+		     (interlaced modes halve the refresh rate in the description).
+		The setup menu also offers the modes of the display for a manual selection,
+		which isn't stored.
 
 	drmdevice.ZoomLevel1 = 344
 	drmdevice.ZoomLevel2 = 125
@@ -230,7 +236,8 @@ Setup: /etc/vdr/setup.conf
 
 	drmdevice.AudioDownmix = 0
 		0 = none, 1 = downmix
-		Use FFmpeg downmix of AC-3/EAC-3 audio to stereo.
+		Use FFmpeg downmix of multichannel audio to stereo (decoded audio, not
+		passthrough).
 
 	drmdevice.AudioPassthrough = 0
 		0 = none, 4 = AC-3, 8 = EAC-3, 16 = DTS, 32 = TrueHD, 64 = DTS-HD,
@@ -265,23 +272,23 @@ Setup: /etc/vdr/setup.conf
 		(replaces AudioAutoAES, which was disabled by default)
 
 	drmdevice.AudioDelay = 0
-		+n or -n ms
-		delay audio or delay video
+		-1000 - 1000 ms
+		+n delays the audio, -n delays the video
 
 	drmdevice.AudioNormalize = 0
 		0 = off, 1 = enable audio normalize
 
 	drmdevice.AudioMaxNormalize = 0
-		maximal volume factor/1000 of the normalize filter
+		0 - 10000 = maximal volume factor/1000 of the normalize filter
 
 	drmdevice.AudioCompression = 0
 		0 = off, 1 = enable audio compression
 
 	drmdevice.AudioMaxCompression = 0
-		maximal volume factor/1000 of the compression filter
+		0 - 10000 = maximal volume factor/1000 of the compression filter
 
 	drmdevice.AudioStereoDescent = 0
-		reduce volume level (/1000) for stereo sources
+		0 - 1000 = reduce volume level (/1000) for stereo sources
 
 	drmdevice.AudioEq = 0
 		0 = Equalizer disabled
@@ -303,7 +310,7 @@ Setup: /etc/vdr/setup.conf
 
 	drmdevice.PipUseAlt = 0
 		0 = use standard (Pip*) position
-		0 = use alternative (PipAlt*) position
+		1 = use alternative (PipAlt*) position
 
 	drmdevice.PipAltScalePercent = 25
 		10 - 100 = scale factor for alternative pip (%)
@@ -319,6 +326,7 @@ Setup: /etc/vdr/setup.conf
 	drmdevice.LogLevel = 0
 		0 = default (no debug logs)
 		value is the sum of the following levels
+		negating the value disables the debug logs but remembers the levels
 			1     Standard debug logs
 			2     AV-Sync debug logs
 			4     Sound/Audio debug logs
@@ -345,7 +353,7 @@ Setup: /etc/vdr/setup.conf
 
 	drmdevice.AdditionalBufferLengthMs = 0
 		0 = default (min 450ms fixed)
-		-300 - 1000 = length of additional buffering duration in ms
+		-350 - 1000 = length of additional buffering duration in ms
 		              (negative values reduce the buffer)
 
 	drmdevice.DisableDeint = 0
@@ -365,17 +373,19 @@ Setup: /etc/vdr/setup.conf
 		    fails after num packets (see below)
 
 	drmdevice.DecoderFallbackToSwNumPkts = 22
-		maximum number of packets sent to the hardware decoder
+		maximum number of packets (at least 22) sent to the hardware decoder
 		until the software fallback jumps in
 
 	drmdevice.ParseH264StreamStart = 0
 		0 = disable parsing, 1-20 = parse H.264 stream up to the given number of I-Frames
 
 	drmdevice.DropInvalidH264PFrames = 0
-		1 = drop H.264 P-Frames with an invalid backwards reference
+		0 = off, 1-20 = drop H.264 P-Frames with an invalid backwards reference
+		up to the given number of I-Frames
 
 	drmdevice.MaxSizeGPUImageCache = 128
-		how many GPU memory should be used for image caching
+		0 - 1024 = upper limit of the GPU memory in MB for cached OSD images
+		(the memory is only used, when images are cached)
 
 	drmdevice.ShowChannelSwitchDurationMessage = 0
 		1 = the skin shows an info message of the channel switch duration
@@ -422,9 +432,11 @@ SVDRP Commands
 	PIPS         Switch main stream to pip stream and close the pip window.
 
 	PIPP         Swap pip position between normal and alternative.
+
 	PASS [on | off | toggle]
 		Switch the audio passthrough on or off (not stored).
 		Without an argument the passthrough state is returned.
+
 	ZOOM [next | 0-5]
 		Select the next zoom level (next) or the given zoom level (0 = off).
 		Without an argument the active zoom level is returned.
@@ -479,7 +491,7 @@ FFmpeg
 ------
 The plugin should work with any recent upstream FFmpeg version but may lack
 hardware decoder acceleration. If you want to drive the plugin with a hardware
-acclerated decoder, you may need to build FFmpeg on your own.
+accelerated decoder, you may need to build FFmpeg on your own.
 
 LibreELEC is a good source to find out the current status of what is already upstreamed and supported.
 Have a look at https://github.com/LibreELEC/LibreELEC.tv/tree/master/packages/multimedia/ffmpeg
@@ -502,7 +514,7 @@ The following instructions may help you to setup FFmpeg (may be outdated):
 
 - Rockchip, Allwinner, Amlogic:
 	- use mainline FFmpeg with version mentioned in [LibreELEC package file](https://github.com/LibreELEC/LibreELEC.tv/blob/master/packages/multimedia/ffmpeg/package.mk)
-	- patch the mainline version with the [patchsets](https://github.com/LibreELEC/LibreELEC.tv/tree/master/packages/multimedia/ffmpeg/patches) which where mentioned for your platform in the package.mk
+	- patch the mainline version with the [patchsets](https://github.com/LibreELEC/LibreELEC.tv/tree/master/packages/multimedia/ffmpeg/patches) which are mentioned for your platform in the package.mk
 	- build FFmpeg as usual with the "configure - make - make install" logic
 	- building with the following configure options should enable hardware acceleration:
 
@@ -511,17 +523,17 @@ The following instructions may help you to setup FFmpeg (may be outdated):
 
 Display Resolution
 ------------------
-Setting the display resolution is possible with the -d switch (see below).
+Setting the display resolution is possible with the -d switch (see above).
 If no specific resolution is stated, the plugin searches for resolutions
-with a refresh rate of 50Hz. If one is found, the highest possbile is used.
+with a refresh rate of 50Hz. If one is found, the highest possible is used.
 If no resolution at 50Hz is found, the plugin searches for resolutions at
-60Hz and uses the highest possbile. If neither 50Hz or 60Hz can be found,
-the plugin uses the highest possbile resolution with a refresh rate which is
+60Hz and uses the highest possible. If neither 50Hz or 60Hz can be found,
+the plugin uses the highest possible resolution with a refresh rate which is
 first discovered.
 
 When the plugin is unable to detect any resolution (e.g. if there is no TV/Monitor
-attached, the plugin will not start. You can workaorund this by submitting
-a fixed EDID to your config (see Documentation, way differs from architecture)
+attached), the plugin will not start. You can work around this by providing
+a fixed EDID (see the documentation of your platform, the way differs between architectures).
 
 When using the -d switch, make sure you use the syntax of "widthXheight@refreshrate",
 so for example: "-d 3840x2160@50" for 4K at 50Hz.
@@ -529,10 +541,10 @@ so for example: "-d 3840x2160@50" for 4K at 50Hz.
 
 Picture-in-Picture (PiP)
 ------------------------
-The plugins supports the picture-in-picture feature. This allows you to move your current
+The plugin supports the picture-in-picture feature. This allows you to move your current
 stream into a small overlay window and continue watching TV as usual. You can change channels
 on the main and in the pip window. It's also possible to swap both windows. Audio is only
-available in the main stream. The pip window is always opened with the current channel and does
+available in the main stream. The pip window is opened with the current channel (or the channel given to SVDRP PION) and does
 not remember the last pip channel.
 You can define your individual pip window size and position and an alternative window. It's possible
 to swap between the two positions.
