@@ -256,6 +256,95 @@ flowchart TD
     class PushFrame buffer
 ```
 
+## Audio Data Flow Call Graph
+
+The audio is received and decoded in the VDR thread.
+The audio thread writes the samples (or the bitstream for passthrough) from a ringbuffer to ALSA.
+
+```mermaid
+graph TD
+    %% VDR Thread
+    VDR[VDR Core] --> |PES Packet|PlayAudio["cOutputDevice::PlayAudio"]
+    PlayAudio --> |PES Payload|Reassembly["cReassemblyBufferAudio<br/>sync word search"]
+    Reassembly --> |AVPacket|Decode["cAudioDecoder::Decode"]
+    Decode --> PassCheck{Passthrough<br/>of the codec?}
+    PassCheck --> |yes|Passthrough["cAudioDecoder::Passthrough<br/>cSpdifMuxer: IEC 61937 bursts"]
+    PassCheck --> |no|DecodePCM["cAudioDecoder::DecodePCM<br/>FFmpeg audio decoder"]
+    Passthrough --> |passthrough not possible|DecodePCM
+    DecodePCM --> |AVFrame|Filter["cAudioStream::Filter<br/>channelmap, superequalizer,<br/>aformat (downmix, resampling to S16)"]
+    Filter --> |AVFrame|EnqueueFrame["cAudioStream::EnqueueFrame<br/>compressor, normalizer"]
+    EnqueueFrame --> Enqueue["cAudioStream::Enqueue<br/>clock drift: insert/drop one sample"]
+    Passthrough --> |spdif burst|EnqueueSpdif["cAudioStream::EnqueueSpdif"]
+    EnqueueSpdif --> Enqueue
+    Enqueue --> Ringbuffer["cAudioStream::m_pRingbuffer<br/>~4s 8ch 48kHz"]
+
+    %% Audio Thread
+    Ringbuffer --> AudioThread["cAudioStream::Action"]
+    AudioThread --> CyclicCall["cAudioStream::CyclicCall"]
+    CyclicCall --> |audio|SendAudio["cAudioStream::SendAudio<br/>software volume"]
+    CyclicCall --> |passthrough: paused<br/>or bitstream gap|SendPause["cAudioStream::SendPause<br/>pause bursts"]
+    SendAudio --> Alsa["cAlsaDevice::Write"]
+    SendPause --> Alsa
+    Alsa --> Hardware["Audio Hardware"]
+
+    %% Styling
+    classDef vdrThread fill:#90caf9,stroke:#1976d2,stroke-width:2px,color:#000000
+    classDef audioThread fill:#81c784,stroke:#388e3c,stroke-width:2px,color:#000000
+    classDef hardware fill:#e57373,stroke:#d32f2f,stroke-width:3px,color:#000000
+    classDef buffer fill:#fff59d,stroke:#fbc02d,stroke-width:2px,color:#000000
+
+    class VDR,PlayAudio,Reassembly,Decode,PassCheck,Passthrough,DecodePCM,Filter,EnqueueFrame,Enqueue,EnqueueSpdif vdrThread
+    class AudioThread,CyclicCall,SendAudio,SendPause,Alsa audioThread
+    class Hardware hardware
+    class Ringbuffer buffer
+```
+
+- 🔵 VDR thread
+- 🟢 Audio thread
+- 🔴 Hardware
+- 🟡 Buffer
+
+### Decoding and Passthrough
+
+`cAudioDecoder::Decode()` passes the packet through, if the codec is enabled for passthrough (AC-3, E-AC-3, DTS, DTS-HD, TrueHD).
+Otherwise, the packet is decoded to PCM.
+The decoder is opened with the first packet and opened again, if the codec changes (e.g. AC-3 to E-AC-3 within the same PES stream id).
+
+If the audio device can't be set up for the passthrough format (e.g. the needed sample rate isn't offered), the stream is decoded until the next codec change.
+DTS-HD falls back to the passthrough of the DTS core first.
+
+The audio device is set up again, when the format changes (`cAudioDecoder::CheckUpdateFormat()`): passthrough on/off, sample rate or number of channels.
+For PCM, the filter graph converts the frames to the format of the device: the channels are mapped (`channelmap`), the equalizer is applied (`superequalizer`) and `aformat` converts to interleaved signed 16 bit samples with the sample rate and channel layout of the device (downmix to stereo, if configured or if the device has fewer channels).
+
+### Ringbuffer and Audio Thread
+
+The ringbuffer holds the samples (or spdif bursts) together with the PTS of the last enqueued data (`m_inputPts`).
+The audio thread runs `CyclicCall()` every 1-10ms and writes as much data to ALSA as fits into the hardware buffer.
+
+The PTS values of the audio are derived from the input PTS:
+
+- `GetInputPtsMs()`: PTS at the end of the ringbuffer
+- `GetOutputPtsMs()`: PTS of the next sample, which is written to ALSA (input PTS minus the ringbuffer fill level)
+- `GetHardwareOutputPtsMs()`: PTS of the sample, which is heard right now (output PTS minus the ALSA delay)
+
+The A/V sync uses the hardware output PTS (see "Audio PTS calculation").
+
+A PTS jump of more than 5s (`AV_SYNC_BORDER_MS`) in the audio input schedules a resync of audio and video (`ScheduleResyncAtPtsMsEvent`).
+
+### Passthrough: Pause Bursts
+
+An AV receiver loses the lock to a bitstream, if the bitstream stops, and needs some time to lock again.
+Therefore, the audio thread never stops sending in passthrough mode:
+
+- While the audio is paused (e.g. while buffering), IEC 61937 pause bursts are sent (`SendPause()`).
+- If the ringbuffer runs empty during playback, the gap is bridged with pause bursts (`BridgeBitstreamGap()`) and the device buffers again.
+- A muted bitstream is replaced by pause bursts, because zeros would let the receiver lose the sync.
+
+The pause bursts already queued in the hardware buffer would falsify the audio PTS.
+When the playback starts (leaving BUFFERING or resuming from pause), their delay is stored as baseline (`SetHwDelayBaseline()`) and subtracted in `GetHardwareOutputPtsMs()`.
+
+The clock drift compensation (see "Broadcaster/Playback Device Clock Drift & Recovery") is disabled in passthrough mode, because the bitstream can't be resampled.
+
 ## VDR State Management
 
 When managing the VDR states (play/pause/trick speed/...), the following paradigms are followed:
