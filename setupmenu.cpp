@@ -60,7 +60,6 @@ const char *cDeviceSetupMenu::SectionName(int section)
 	case SECTION_GENERAL:    return tr("General");
 	case SECTION_VIDEO:      return tr("Video");
 	case SECTION_AUDIO:      return tr("Audio");
-	case SECTION_AUDIO_EQ:   return tr("Audio equalizer");
 	case SECTION_PIP:        return tr("Picture-in-picture");
 	case SECTION_LOGGING:    return tr("Logging");
 	case SECTION_STATISTICS: return tr("Statistics");
@@ -333,12 +332,6 @@ void cDeviceSetupMenu::Create(int current)
 		if (m_cAudioCompression)
 			Add(new cMenuEditIntItem(tr(" Max compression factor (/1000)"), &m_cAudioMaxCompression, 0, 10000));
 		Add(new cMenuEditIntItem(tr("Reduce stereo volume (/1000)"), &m_cAudioStereoDescent, 0, 1000));
-	}
-
-	//
-	// Audio filter
-	//
-	if (m_section == SECTION_AUDIO_EQ) {
 		Add(new cMenuEditBoolItem(tr("Enable audio equalizer"), &m_cAudioEq, trVDR("no"), trVDR("yes")));
 		if (m_cAudioEq) {
 			Add(new cMenuEditIntItem(tr(" 60 Hz band gain"),   &m_cAudioEqBand[0], -15, 1));

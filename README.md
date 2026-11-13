@@ -314,8 +314,6 @@ The values are grouped like the sections of the setup menu.
 	drmdevice.AudioStereoDescent = 0
 		0 - 1000 = reduce volume level (/1000) for stereo sources
 
-### Audio equalizer
-
 	drmdevice.AudioEq = 0
 		0 = Equalizer disabled
 		1 = Equalizer enabled

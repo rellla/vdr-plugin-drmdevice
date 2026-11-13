@@ -128,7 +128,6 @@ private:
 		SECTION_GENERAL,                           ///< general settings
 		SECTION_VIDEO,                             ///< video settings
 		SECTION_AUDIO,                             ///< audio settings
-		SECTION_AUDIO_EQ,                          ///< audio equalizer
 		SECTION_PIP,                               ///< picture-in-picture (only, if pip can be used)
 		SECTION_LOGGING,                           ///< logging
 		SECTION_STATISTICS,                        ///< statistics (nothing to store)
