@@ -672,6 +672,62 @@ If the first audio packet arrives after the first decoded video frame, the initi
 Side note: For additional responsiveness/optimization, the first video packets (until the first sync word was received), were tried to put through the decoder (opened with the correct codec ID), but the decoder responded with invalid data.
 Only tried with H.264.
 
+## A/V Sync During Playback
+
+After the playback start, the display thread keeps the video in sync with the audio.
+The audio is the master clock: it is never stretched or skipped for the A/V sync, only the video frames are repeated or dropped.
+
+The display thread runs `cVideoRender::DisplayFrame()` in a loop (every 1ms, or after 100µs after a page flip or a dropped frame).
+A new frame is taken from the render queue only, if the current frame was displayed long enough (`m_framePresentationCounter`) and, in an interlaced display mode, only with every second call (`m_framesPerFlipCycle`).
+
+For each new frame, `FrameDropNecessary()` compares the video PTS with the PTS of the audio, which is heard right now:
+
+```text
+audioBehindVideoByMs = videoPts - audioHardwareOutputPts - AudioDelay
+```
+
+```mermaid
+flowchart TD
+    Start["new frame from the render queue"] --> Resync{"scheduled resync PTS<br/>reached?"}
+    Resync --> |yes|ResyncEvent["ResyncEvent -> BUFFERING"]
+    Resync --> |no|Behind{"audioBehindVideoByMs<br/>> 20ms?"}
+    Behind --> |yes|Dup["display the frame<br/>one period longer"]
+    Behind --> |no|Ahead{"audioBehindVideoByMs<br/>< -20ms and the last<br/>frame wasn't dropped?"}
+    Ahead --> |yes|Drop["drop the frame"]
+    Ahead --> |no|Show["display the frame"]
+
+    classDef action fill:#81c784,stroke:#388e3c,stroke-width:2px,color:#000000
+    classDef correction fill:#ffb74d,stroke:#f57c00,stroke-width:2px,color:#000000
+    classDef resync fill:#e57373,stroke:#d32f2f,stroke-width:2px,color:#000000
+
+    class Show action
+    class Dup,Drop correction
+    class ResyncEvent resync
+```
+
+- A frame is dropped at most every second frame, otherwise the render queue would be drained at once.
+- No frame is repeated or dropped, while the audio is paused or a resync is scheduled.
+- The repeated and dropped frames are counted in the setup menu statistics ("Frames duped/dropped").
+
+The clock drift between the broadcaster and the playback device is compensated in the audio (see below), so the video corrections are rare in a stable live stream.
+
+### Resync
+
+A jump of the PTS values (e.g. a new recording in the stream or a broken stream) can't be corrected by repeating or dropping single frames.
+
+- **Audio:** If the input PTS jumps more than 5s (`AV_SYNC_BORDER_MS`), `cAudioStream::Enqueue()` schedules a resync at the new PTS (`ScheduleResyncAtPtsMsEvent`).
+  When the video reaches this PTS, `FrameDropNecessary()` fires a `ResyncEvent` and the state machine buffers again (PLAY -> BUFFERING).
+  A scheduled PTS, which is more than 5s away from the video PTS, is ignored (false positive).
+- **Video:** If the PTS of a packet jumps more than 5s, `cVideoStream::SendPacket()` drains the decoder, so the frames before the jump are output first.
+
+### Buffer Underrun
+
+- **Video:** If the packet queue, the filter and the render queue are empty during playback, the display thread fires `BufferUnderrunEvent{VIDEO}`.
+  This is skipped in trick speed, during a still picture, for video only playback and while the device is drained.
+- **Audio:** If ALSA reports an underrun (`EPIPE`), the audio thread fires `BufferUnderrunEvent{AUDIO}` (not while the audio is paused or the device is drained).
+
+Both lead to PLAY -> BUFFERING: the playback starts again in sync, when the buffers reached the threshold.
+
 ## Broadcaster/Playback Device Clock Drift & Recovery
 
 This plugin implements an active clock recovery mechanism to solve synchronization issues inherent in live streaming environments (e.g., DVB-S).
