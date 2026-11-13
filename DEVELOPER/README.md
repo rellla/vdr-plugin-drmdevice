@@ -728,6 +728,59 @@ A jump of the PTS values (e.g. a new recording in the stream or a broken stream)
 
 Both lead to PLAY -> BUFFERING: the playback starts again in sync, when the buffers reached the threshold.
 
+## Trick Speed and Still Picture
+
+### Trick Speed
+
+VDR mutes the audio before it changes to trick speed (see "Playmode Graph").
+In fast forward/backward and slow backward, VDR sends only the I-frames, in slow forward it sends all frames.
+VDR's speed value is a frame displaying count, which depends on the codec and the direction.
+`cOutputDevice::TrickSpeed()` normalizes it to a factor (2.0 means twice as fast as normal, 0.5 half as fast):
+
+| VDR speed | fast forward/backward | slow forward | slow backward |
+|-----------|-----------------------|--------------|---------------|
+| slowest   | 5                     | 1/6          | 1/3           |
+| medium    | 10                    | 1/4          | 1/2           |
+| fastest   | 15                    | 1/2          | 1             |
+
+The display thread shows each frame for a number of display refreshes, which depends on the PTS distance to the previous frame (the I-frame distance), the refresh rate and the factor (`cVideoRender::GetFramePresentationCount()`):
+
+```text
+presentationCount = round(interFrameGap / refreshPeriod / factor), at least 1
+```
+
+Changes when entering TRICK_SPEED:
+
+- The deinterlacer is deactivated, the filter thread only converts software decoded frames to NV12 (see "Frame Routing").
+- Every DRM buffer is used only once and destroyed after its presentation (`cBufferStrategyUseOnce`).
+- No A/V sync, no buffering threshold and no `BufferUnderrunEvent{VIDEO}`: the frames are shown as fast as demanded.
+  A `TrickSpeedEvent` in BUFFERING changes to TRICK_SPEED immediately.
+- The audio, which is older than the displayed frame, is dropped by the display thread.
+
+In backward trick speed, the decoder would hold back the I-frames (it waits for the following frames to reorder them).
+Therefore, the decoder is drained after each packet (`cVideoStream::CheckForcingFrameDecode()`), with interlaced H.264 after two packets.
+After the drain, the decoder is flushed (or reopened with `QUIRK_CODEC_FLUSH_WORKAROUND`).
+
+### Audio Only Trick Speed
+
+There is no video, which advances the STC (`GetSTC()`) for VDR's progress display.
+So the audio PTS is advanced instead:
+
+- Fast forward/backward and slow backward: `PlayAudio()` doesn't decode the packets.
+  It sets the STC to the PTS of each packet and sleeps for the PTS distance to the previous packet divided by the factor (`cAudioStream::AdvanceTrickSpeedPts()`).
+- Slow forward: the audio thread drops 20ms of audio and sleeps for 20ms divided by the factor in each cycle.
+
+### Still Picture
+
+VDR calls `StillPicture()` with the data of one frame (e.g. when a mark is moved in the editing mode).
+`cOutputDevice::HandleStillPicture()`:
+
+- deactivates the deinterlacer (it would need the following frames),
+- reassembles the PES packets and pushes the frame to the decoder,
+- drains the decoder (`cVideoStream::Drain()`), so it outputs the frame at once,
+- resets the input PTS of the video, so the still picture doesn't count as received video for the buffering,
+- sets the renderer into still picture mode: no A/V sync and no `BufferUnderrunEvent{VIDEO}`.
+
 ## Broadcaster/Playback Device Clock Drift & Recovery
 
 This plugin implements an active clock recovery mechanism to solve synchronization issues inherent in live streaming environments (e.g., DVB-S).
