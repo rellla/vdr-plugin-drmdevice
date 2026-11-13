@@ -25,6 +25,8 @@ Features
 - Integrated media player with audio track selection and text subtitles
 - Grabbing support - video, osd and pip - mpeg2, h264, hevc (8/10bit)
 - Detach/Attach support (release display, audio and GPU resources, but keep VDR running)
+- Support for the zapcache plugin (channel switch with the buffered packets of pre-tuned channels)
+- Ambient image service for the ambient lighting of vdr-plugin-hyperion
 - Output for the dvd plugin (incl. LPCM audio)
 - Test picture (geometry, colours, levels and resolution of the display)
 - Many adjustable (expert) settings via setup menu
@@ -105,8 +107,6 @@ Known Bugs/ TODO
 Requirements
 ------------
 
-- No running X!
-
 - VDR (version >= 2.4)
 
 	Video Disk Recorder - turns a pc into a powerful set top box
@@ -124,7 +124,7 @@ Requirements
 	Have a look at https://github.com/LibreELEC/LibreELEC.tv/tree/master/packages/linux
 	and choose the linux source and patches which matches your platform.
 	Some of the needed patches have not yet been upstreamed, so you probably need to build the kernel on your own.
-	LibreELEC supports Rockchip, Allwinner, Raspberry PI and (kind of) Amlogic.
+	LibreELEC supports Rockchip, Allwinner, Raspberry PI and Amlogic.
 	Have a look at https://github.com/LibreELEC/LibreELEC.tv/tree/master/projects to find platform
 	specific patches.
 
@@ -144,11 +144,28 @@ Requirements
 
 Installation
 ------------
+The plugin is built like any other VDR plugin, either in the PLUGINS/src directory of the
+VDR source tree or against an installed VDR (found with pkg-config, or set VDRDIR to the
+directory of the VDR source with its vdr.pc):
 
 	git clone https://github.com/rellla/vdr-plugin-drmdevice.git
 	cd vdr-plugin-drmdevice
 	make
 	make install
+
+The build needs the development files of alsa, libavcodec, libavfilter, libavformat,
+libavutil, libswscale and libdrm (found with pkg-config). The OpenGL/ES OSD additionally
+needs gles2, egl, gbm, freetype2 and glm. It is built automatically, if gles2, egl and gbm
+are found, "GLES=0 make" builds without it (see OpenGL/ES).
+
+Further make targets:
+
+	make test      build and run the unit tests (needs Catch2 v3)
+	make srcdoc    create the source documentation with doxygen (in srcdoc/)
+
+Start VDR with the plugin, e.g. with the display resolution as argument (see Commandline Arguments):
+
+	vdr -P"drmdevice -d 1920x1080@50"
 
 
 Commandline Arguments
@@ -453,7 +470,13 @@ Reply codes:
 Keymacros
 ---------
 
-See keymacros.conf how to setup the macros.
+The functions are called with key macros in VDR's keymacros.conf: "@drmdevice" opens the
+plugin, followed by a color key and a number key. E.g. to put the pip and the detach/attach
+on the User keys:
+
+	User1   @drmdevice Blue 1
+	User2   @drmdevice Red 1
+	User3   @drmdevice Red 2
 
 
 Currently supported:  
@@ -497,14 +520,14 @@ LibreELEC is a good source to find out the current status of what is already ups
 Have a look at https://github.com/LibreELEC/LibreELEC.tv/tree/master/packages/multimedia/ffmpeg
 and choose the FFmpeg source and patches which match your platform.
 Most of them have not yet been upstreamed, so you probably need to build FFmpeg on your own.
-LibreELEC supports Rockchip, Allwinner, Raspberry PI and (kind of) Amlogic.
+LibreELEC supports Rockchip, Allwinner, Raspberry PI and Amlogic.
 Have a look at https://github.com/LibreELEC/LibreELEC.tv/tree/master/projects to find platform
 specific patches.
 
 The following instructions may help you to setup FFmpeg (may be outdated):
 
 - Raspberry Pi
-	- [rpi-ffmpeg](https://github.com/jc-kynesim/rpi-ffmpeg) is the very recent version for RPI4/RPI5 and Amlogic (For Raspberry Pi LibreELEC normally patches the upstream FFmpeg version to get the version from jc-kynesim)
+	- [rpi-ffmpeg](https://github.com/jc-kynesim/rpi-ffmpeg) is the very recent version for RPI4/RPI5 (For Raspberry Pi LibreELEC normally patches the upstream FFmpeg version to get the version from jc-kynesim)
 	- check out a recent branch (note: the master branch is not the one you want to have)
 	- most likely this branch has everything you need and you don't need any further patches (in doubt, check [how it is handled in LibreELEC](https://github.com/LibreELEC/LibreELEC.tv/tree/master/packages/multimedia/ffmpeg))
 	- build FFmpeg as usual with the "configure - make - make install" logic
@@ -554,10 +577,34 @@ If your VDR has enough devices assigned, you can watch channels on different tra
 systems, pip should only show the channels like if you are doing a concurrent recording.
 
 
+Detach/Attach
+-------------
+The display (DRM master), the audio device and the GPU can only be used by one program at a
+time. While VDR runs with drmdevice, the plugin holds them, so another program, which needs
+them (e.g. Kodi), doesn't start. The other way round, if another program holds them,
+drmdevice can't open them: VDR runs, but without video and audio (the plugin stays detached).
+
+Detaching releases the display, the audio device and the GPU, VDR keeps running (timers,
+recordings and SVDRP continue). A replay is stopped. Attaching opens them again and the live
+view starts again. So switch between VDR and Kodi like this:
+
+	svdrpsend PLUG drmdevice DETA
+	(start Kodi and quit it again)
+	svdrpsend PLUG drmdevice ATTA
+
+- SVDRP: DETA, ATTA and STAT (see SVDRP Commands)
+- key macros: "@drmdevice Red 1" (detach) and "@drmdevice Red 2" (attach)
+- "Detach device" in the plugin menu
+- the command line argument -D starts the plugin detached (e.g. if Kodi runs at the start of VDR)
+
+Players of other plugins, which use the external play mode of VDR (e.g. vdr-plugin-mpv),
+detach and attach the plugin automatically.
+
+
 Ambient image service
 ---------------------
-drmdevice provides a small RGB image of the displayed video for ambient lighting plugins (e.g.
-vdr-plugin-hyperion) with the VDR service "AmbientImage-v1.0", see ambientimage_service.h.
+drmdevice provides a small RGB image of the displayed video for the ambient lighting of
+vdr-plugin-hyperion with the VDR service "AmbientImage-v1.0", see ambientimage_service.h.
 ambientimage_service.h is under the MIT license, so other output plugins can provide the same
 service.
 
@@ -706,6 +753,19 @@ you might need to add the vdr user to the audio and render groups:
 
 	usermod -a -G audio vdr
 	usermod -a -G render vdr
+
+
+Troubleshooting
+---------------
+The setup menu of the plugin helps with problems:
+
+- "Statistics" shows the current state: the video and audio stream, the video decoder
+  (hardware or software), the deinterlacer, the display mode, the audio output and the
+  repeated and dropped frames.
+- "Expert settings" contains settings, which may help with problems of the decoder or the
+  buffering.
+- "Logging" enables the debug logs (see drmdevice.LogLevel), which show further details in
+  the syslog.
 
 
 Copyright
