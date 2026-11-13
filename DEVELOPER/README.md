@@ -256,6 +256,51 @@ flowchart TD
     class PushFrame buffer
 ```
 
+## Video Decoder
+
+### Decoder Selection
+
+The decoder is opened with the first decodable packet of a stream (`cVideoStream::OpenDecoder()`).
+`cVideoDecoder::Open()` searches the FFmpeg decoders for the codec:
+
+```mermaid
+flowchart TD
+    Start["cVideoDecoder::Open()"] --> HW{"FFmpeg decoder for the codec<br/>with a DRM_PRIME hw config?"}
+    HW --> |yes|OpenHW["open the hardware decoder<br/>(1 thread)"]
+    HW --> |no|OpenSW["open the software decoder<br/>(4 threads)"]
+    OpenHW --> |failed|OpenSW
+    OpenHW --> |ok|Done["decoding"]
+    OpenSW --> Done
+```
+
+A hardware decoder outputs DRM_PRIME frames, a software decoder YUV420P frames (see "Frame Routing").
+The decoder name and type are shown in the setup menu statistics.
+
+### Error Handling
+
+| Situation | Handling |
+|-----------|----------|
+| The decoder doesn't accept the packet (`EAGAIN`) | The packet stays in the queue and is sent again. |
+| The decoder was drained (`EOF`) | The decoder is flushed. With `QUIRK_CODEC_FLUSH_WORKAROUND`, it is closed and opened again instead. |
+| The hardware decoder fails (`EIO` on send or receive) | The decoder is restarted (`cVideoStream::RestartDecoder()`): it is closed and opened again with the next packet like a new stream. |
+| The hardware decoder doesn't output a frame after `DecoderFallbackToSwNumPkts` packets | If `DecoderFallbackToSw` is set, the software decoder is used. |
+| The PTS jumps more than 5s | The decoder is drained, so the frames before the jump are output first. |
+| H.264 stream start with P-frames referencing missing frames | If `DropInvalidH264PFrames` is set, these P-frames are dropped up to the configured number of I-frames. |
+| The decoder marks a frame as corrupt | The frame is displayed, a warning is logged. |
+
+The setup menu shows the minimum for `DecoderFallbackToSwNumPkts` next to it: the maximum number of packets, which the hardware decoder needed for its first frame, plus one.
+
+### Hardware Quirks
+
+Some hardware needs special handling.
+`cHardwareDevice` detects the hardware from the device tree (`/sys/firmware/devicetree/base/compatible`) and sets its quirks:
+
+| Quirk | Hardware | Handling |
+|-------|----------|----------|
+| `QUIRK_CODEC_FLUSH_WORKAROUND` | Raspberry Pi 2-5 (bcm2836, bcm2837, bcm2711, bcm2712) | The hardware decoder doesn't flush correctly (`avcodec_flush_buffers()`), so it is closed and opened again. |
+
+To add a quirk, extend `enum HardwareQuirks` and the device table in hardwaredevice.h and add a test in tests/test_hardwaredevice.cpp.
+
 ## DRM Buffer Strategies
 
 A frame can only be displayed, if it is in a DRM framebuffer.
