@@ -24,7 +24,7 @@ graph TD
     Player --> ToClearPlay["**Play():**<br>pmStill<br>pmFast(forward)<br>pmFast(backward)<br>pmSlow(backward)"]
     Player --> ToClearPause["**Pause():**<br>pmFast(forward)<br>pmFast(backward)<br>pmSlow(backward)"]
     Player--> ToClearForward["**Forward():**<br>pmPlay<br>pmFast(forward)<br>pmFast(backward)<br>pmSlow(backward)"]
-    Player --> ToClearBackward["**Backward():**<br>pmStill<br>pmPause<br>pmPlay<br>pmFast(forward)<br>pmFast(backward)<br>pmSlowforward<br>pmSlow(backward)"]
+    Player --> ToClearBackward["**Backward():**<br>pmStill<br>pmPause<br>pmPlay<br>pmFast(forward)<br>pmFast(backward)<br>pmSlow(forward)<br>pmSlow(backward)"]
 
     Player --> ToClearStillPicture["**Goto():**<br>Mark editing<br>(pause after edit)"]
     ToClearStillPicture ---> DeviceClear["DeviceClear()"]
@@ -62,7 +62,7 @@ graph TD
     ClearToMuteBackward --> DeviceMute["DeviceMute()"]
 
     DeviceMute --> ToTrickSpeedForward["**Forward():**<br>pmStill<br>pmPause<br>pmPlay<br>pmFast(backward)<br>pmSlow(backward)"]
-    DeviceMute --> ToTrickSpeedBackward["**Backward():**<br>pmStill<br>pmPause<br>pmStill<br>pmPause<br>pmPlay<br>pmFast(forward)<br>pmSlow(forward)"]
+    DeviceMute --> ToTrickSpeedBackward["**Backward():**<br>pmStill<br>pmPause<br>pmPlay<br>pmFast(forward)<br>pmSlow(forward)"]
     ToTrickSpeedForward --> DeviceTrickSpeed["DeviceTrickSpeed"]
     ToTrickSpeedBackward --> DeviceTrickSpeed["DeviceTrickSpeed"]
 
@@ -81,8 +81,8 @@ graph TD
     classDef endpoint fill:#e57373,stroke:#d32f2f,stroke-width:3px,color:#000000
     classDef commands fill:#81c784,stroke:#388e3c,stroke-width:2px,color:#000000
 
-    class Player, player
-    class DeviceClear,DeviceMute, commands
+    class Player player
+    class DeviceClear,DeviceMute commands
     class DevicePlay,DeviceFreeze,DeviceTrickSpeed,DeviceStillPicture endpoint
 ```
 
@@ -98,14 +98,15 @@ stateDiagram-v2
     Detached --> Stop: AttachEvent
 
     Stop --> Buffering: PlayEvent
+    Stop --> Detached: PlayEvent (audio init failed)
 
-    Buffering --> Play: BufferingThresholdReachedEvent
+    Buffering --> Play: BufferingThresholdReachedEvent<br/>ScheduleResyncAtPtsMsEvent
     Buffering --> Stop: StopEvent
-    Buffering --> TrickSpeed: TrickSpeedEvent
+    Buffering --> TrickSpeed: TrickSpeedEvent (via Play)
 
     Play --> TrickSpeed: TrickSpeedEvent
     Play --> Stop: StopEvent
-    Play --> Buffering: BufferUnderrunEvent
+    Play --> Buffering: BufferUnderrunEvent<br/>ResyncEvent
 
     TrickSpeed --> Play: PlayEvent
     TrickSpeed --> Stop: StopEvent
@@ -123,64 +124,75 @@ stateDiagram-v2
     class Buffering buffering
 ```
 
+Some events are handled without a state change:
+
+- `PauseEvent` pauses the playback in PLAY and TRICK_SPEED (ignored in BUFFERING).
+- `PlayEvent` resumes a paused playback in PLAY.
+- `TrickSpeedEvent` changes the speed or direction in TRICK_SPEED.
+- `StillPictureEvent` shows a still picture in STOP, BUFFERING, PLAY and TRICK_SPEED.
+- `DisplayChangeEvent` changes the display mode in every state except DETACHED.
+- `ScheduleResyncAtPtsMsEvent` schedules a resync in PLAY.
+- A `BufferUnderrunEvent` is ignored in STOP, BUFFERING and TRICK_SPEED.
+
 ## Video Data Flow Call Graph
 
 This section shows the complete data flow of video frames from VDR through the plugin to the display hardware.
 
-## Overview
+### Overview
 
 The video pipeline consists of 4 main threads:
 
-1. 🔵**VDR Thread** - Receives video data from VDR
-2. 🟣**Decoding Thread** - Decodes video packets using FFmpeg
-3. 🟠**Filter Thread** - Applies filters (deinterlacing, scaling)
-4. 🟢**Display Thread** - Syncs with audio and commits frames to DRM/KMS
+1. 🔵**VDR Thread** - Receives video data from VDR (`cOutputDevice::PlayVideo()`)
+2. 🟣**Decoding Thread** - Decodes video packets using FFmpeg (`cVideoStream::Action()`)
+3. 🟠**Filter Thread** - Applies filters (deinterlacing, conversion to NV12) (`cVideoFilter::Action()`)
+4. 🟢**Display Thread** - Syncs with audio and commits frames to DRM/KMS (`cVideoRender::Action()`)
 
 - 🔴 Hardware (DRM/KMS display hardware)
 - 🟡 Buffers (frame buffers and queues)
 
-## Detailed Call Graph
+Besides the video pipeline, the audio thread (`cAudioStream::Action()`) writes the audio to ALSA, the event handler thread (`cEventHandler::Action()`) runs the state machine and the OpenGL thread (`cOglThread::Action()`) renders the OSD.
+
+### Detailed Call Graph
 
 ```mermaid
 graph TD
     %% VDR Thread
     VDR[VDR Core] --> |PES Packet|PlayVideo["cOutputDevice::PlayVideo"]
-    PlayVideo --> |PES Packet|PushPes["cVideoStream::PushPesPacket"]
-    PushPes --> |Reassambled Codec Packet|CreatePkt["CreateAvPacket"]
-    CreatePkt --> |AVPacket|PktQueue["cVideoStream::m_packets<br/>**192**x AVPacket"]
+    PlayVideo --> |PES Packet|PlayVideoInternal["cOutputDevice::PlayVideoInternal"]
+    PlayVideoInternal --> |PES Payload|Reassembly["cReassemblyBufferVideo<br/>Push/PopAvPacket"]
+    Reassembly --> |AVPacket|PushPkt["cVideoStream::PushAvPacket"]
+    PushPkt --> |AVPacket|PktQueue["cVideoStream::m_packets<br/>**192**x AVPacket"]
 
     %% Decoding Thread
-    PktQueue --> DecThread["cDecodingThread::Action"]
+    PktQueue --> DecThread["cVideoStream::Action"]
     DecThread --> DecInput["cVideoStream::DecodeInput"]
     DecInput --> |AVPacket|SendPkt["cVideoDecoder::SendPacket"]
     SendPkt --> |MPEG2/H.264/HEVC Decoding|RecvFrame["cVideoDecoder::ReceiveFrame"]
     RecvFrame --> |AVFrame|DecInput
-    DecInput --> |AVFrame|RenderFrame["cVideoRender::RenderFrame"]
+    DecInput --> |AVFrame|RenderFrame["cVideoStream::RenderFrame"]
 
     %% Filter Thread Decision
     RenderFrame --> |AVFrame|FormatCheck{Frame format?}
-    FormatCheck -->|YUV420P or<br/>interlaced DRM_PRIME| FilterPush["cFilterThread::PushFrame"]
-    FormatCheck -->|Progressive DRM_PRIME| RenderRB["cVideoRender::m_drmBufferQueue"]
-    FormatCheck -->|NV12 Format| PushFrame["cVideoRender::PushFrame"]
+    FormatCheck -->|YUV420P or<br/>DRM_PRIME to be deinterlaced| FilterPush["cVideoFilter::PushFrame"]
+    FormatCheck -->|DRM_PRIME| PushMainFrame["cVideoRender::PushMainFrame"]
 
     %% Filter Thread Path
-    FilterPush --> FilterQueue["cFilterThread::m_frames<br/>**3**x AVFrame"]
-    FilterQueue --> FilterAction["cFilterThread::Action"]
-    FilterAction --> |Interlaced DRM_PRIME|HWDeint["FFMPEG filter:<br />HW Deinterlacer"]
-    FilterAction --> |YUV420P|SWDeint["FFMPEG filter:<br/>Convert to NV12 with optional SW Deinterlacing"]
-    HWDeint -->|Progressive DRM_PRIME| RenderRB["cVideoRender::m_drmBufferQueue<br/>Size: **3**x AVFrame"]
-    SWDeint --> |NV12 Format|PushFrame["cVideoRender::PushFrame"]
+    FilterPush --> FilterQueue["cVideoFilter::m_frames<br/>**3**x AVFrame"]
+    FilterQueue --> FilterAction["cVideoFilter::Action"]
+    FilterAction --> |Interlaced DRM_PRIME|HWDeint["FFmpeg filter:<br/>HW Deinterlacer"]
+    FilterAction --> |YUV420P|SWDeint["FFmpeg filter:<br/>Convert to NV12 with optional SW Deinterlacing"]
+    HWDeint -->|Progressive DRM_PRIME| PushMainFrame
+    SWDeint --> |NV12|PushMainFrame
 
-    %% PushFrame Path (Software frames need buffer prep)
-    PushFrame --> |Progressive DRM_PRIME|RenderRB
+    %% Render buffers
+    PushMainFrame --> |AVFrame|PushFrame["cVideoRender::PushFrame<br/>cVideoRender::m_drmBufferPool **36**x cDrmBuffer"]
+    PushFrame --> |cDrmBuffer|RenderQueue["cVideoRender::m_drmBufferQueue<br/>**5**x cDrmBuffer"]
 
     %% Display Thread
-    RenderRB --> |AVFrame|DispThread["cDisplayThread::Action"]
-    DispThread --> DisplayFrame["cVideoRender::DisplayFrame<br/>(A/V sync)<br/>cVideoRender::m_drmBufferPool **36**x cDrmBuffer"]
-    DisplayFrame --> |AVFrame & cDrmBuffer|PageFlipVid["cVideoRender::PageFlipVideo"]
-
-    PageFlipVid --> |AVFrame & cDrmBuffer|PageFlip["PageFlip"]
-    PageFlip --> |cDrmBuffer|CommitBuf["CommitBuffer"]
+    RenderQueue --> |cDrmBuffer|DispThread["cVideoRender::Action"]
+    DispThread --> DisplayFrame["cVideoRender::DisplayFrame<br/>(A/V sync)"]
+    DisplayFrame --> |cDrmBuffer|PageFlip["cVideoRender::PageFlip"]
+    PageFlip --> |cDrmBuffer|CommitBuf["cVideoRender::CommitBuffer"]
 
     CommitBuf --> |cDrmDevice|DrmCommit["drmModeAtomicCommit"]
 
@@ -194,14 +206,17 @@ graph TD
     classDef hardware fill:#e57373,stroke:#d32f2f,stroke-width:3px,color:#000000
     classDef buffer fill:#fff59d,stroke:#fbc02d,stroke-width:2px,color:#000000
 
-    class VDR,PlayVideo,PushPes,CreatePkt vdrThread
-    class DecThread,DecInput,SendPkt,RecvFrame,RenderFrame,FilterPush decThread
+    class VDR,PlayVideo,PlayVideoInternal,Reassembly,PushPkt vdrThread
+    class DecThread,DecInput,SendPkt,RecvFrame,RenderFrame,FormatCheck,FilterPush decThread
     class FilterAction,HWDeint,SWDeint filterThread
-    class DispThread,DisplayFrame,PageFlipVid,PageFlip,CommitBuf,DrmCommit displayThread
+    class DispThread,DisplayFrame,PageFlip,CommitBuf,DrmCommit displayThread
     class Hardware hardware
-    class PktQueue,FilterQueue,RenderRB,PushFrame buffer
-    class FormatCheck decThread
+    class PktQueue,FilterQueue,PushMainFrame,PushFrame,RenderQueue buffer
 ```
+
+The frames are pushed either by the decoding thread or by the filter thread into the render queue.
+`cVideoRender::PushFrame()` takes a `cDrmBuffer` from the pool and wraps the frame into it.
+If the HW deinterlacer is used, the filter thread waits, until two frames fit into the render queue (one for each field of the frame).
 
 ## Frame Routing
 
@@ -259,7 +274,7 @@ The following facts were observed when playing PES streams (live or recorded):
   - A frame can be fragmented across two PES packets (only 1080p HEVC and 720p H.264, not 576i MPEG2).
   - A frame always starts at the beginning of a PES packet.
   - A PES packet has only a PTS value when it starts with a new frame.
-- Audio (MP2, AC-3, E-AC-3, LATM/LOAS, ADTS)
+- Audio (MP2, AC-3, E-AC-3, LATM/LOAS, ADTS, DTS)
   - A PES packet can contain multiple frames (six were seen with MP2).
   - A frame can be fragmented across two PES packets (seen with LATM/LOAS, not with MP2).
   - An MP2 frame always starts at the beginning of a PES packet.
@@ -273,8 +288,11 @@ To avoid this complexity for video frame reassembly, two different approaches ar
 
 The payload of video PES packets is stored in a fragmentation buffer, when the received PES packet comes without PTS value.
 When a PES packet with a PTS value arrives (meaning there is a new frame at the start of the PES packet), the current content of the fragmentation buffer is finalized and sent to the decoder.
-The *last* received PTS value is used for this frame.
+The frame gets the PTS of the PES packet, which started it.
 After clearing the fragmentation buffer, the PES packet's payload is stored in the now empty fragmentation buffer, and the cycle continues.
+
+The reassembly starts with the first PES packet, which has a PTS value and a codec header (`cReassemblyBufferVideo::ParseCodecHeader()`).
+All PES packets before are dropped, because the decoder can't start with them.
 
 ### Audio Packet Reassembly
 
@@ -286,6 +304,7 @@ Every above-mentioned codec header contains the length of its payload.
 After the payload, another frame follows immediately in the data stream, again, starting with the sync word.
 If the second sync word is found at the expected position, we can be pretty sure that the parsed header and its length information are correct.
 Then, the frame with the first sync word is sent to the decoder, followed by the frame with the second sync word, and so on.
+If a PES packet contains multiple frames, only the first frame gets the PTS of the PES packet, the following frames have no PTS value.
 
 This synchronization mechanism is only done when a stream starts, or when the data after a frame does not start with the sync word.
 The latter can happen for example on bad reception when garbage is received.
@@ -303,20 +322,26 @@ If you switch a channel, you have the ability to choose between three different 
 This is the default option. The first audio PTS value and the first video PTS value which VDR sends (and which are received in `PlayVideo()`/`PlayAudio()`) differ in most cases (up to 3.5s were observed).
 The subset having only video or only audio is dropped, so that playback starts at the first frame where video *and* audio are present.
 However, the first received video frame is not dropped but displayed immediately after `Clear()` is called.
-This comes into handy when using `SkipSeconds()`, having a responsive experience when seeking in a recording.
+This comes in handy when using `SkipSeconds()`, having a responsive experience when seeking in a recording.
 
-To calculate if the buffer fill levels are sufficient to start playback, the following algorithm is implemented:
+To calculate if the buffer fill levels are sufficient to start playback, the following algorithm is implemented in `cOutputDevice::CheckPlaybackStartConditions()`:
 
 - Start decoding audio and video as soon as packets arrive, but do not start playback, yet.
-- On each `PlayAudio()` invocation and on each iteration of the rendering thread, find the oldest PTS in each buffer (audio and video).
-- Use the buffer with the newer of both values to calculate its fill level (this will be the buffer having audio *and* video the whole buffer).
-- When the fill threshold of that buffer is reached, truncate the above mentioned subset of the other buffer.
-- Wait until the display output queue is completely filled.
-- Start playback.
+- On each `PlayAudio()` invocation and on each iteration of the display thread, check the start conditions.
+- The common start PTS is the newer one of the oldest audio PTS and the oldest video PTS in the output buffers, shifted by the setup value `AudioDelay` (`GetFirstAudioPtsMsToPlay()`, `GetFirstVideoPtsMsToPlay()`).
+- The synced fill level of each buffer is the span from the common start PTS to the input PTS of that buffer.
+- The video is ready, when its synced fill level exceeds the threshold and the render queue is full.
+- The audio is ready, when its synced fill level exceeds the threshold (or the audio plays already in fast channel switch mode "video + audio").
+- If both are ready, `BufferingThresholdReachedEvent` is fired: the older audio samples are dropped (not in fast channel switch mode "video + audio") and the video starts at the common start PTS.
+
+The threshold is `MIN_BUFFER_FILL_LEVEL_THRESHOLD_MS` (450ms) plus the setup value `AdditionalBufferLengthMs` (`GetBufferFillLevelThresholdMs()`).
+
+If only one of both streams arrives, the stream is played alone, as soon as its buffer exceeds the threshold ("audio only" or "video only").
+If the video arrives later during an audio only playback, the device resyncs (`ResyncEvent`) and buffers again with audio and video.
 
 ```mermaid
 timeline
-title Channel switch lifetime (with CHANNEL_SWITCH_AV_SYNC, audio buffer 300ms) (ZDF HD -> DasErste HD H.264 720p)
+title Channel switch lifetime (with CHANNEL_SWITCH_AVSYNC, audio buffer 300ms) (ZDF HD -> DasErste HD H.264 720p)
 
 section VDR (422ms)
 + 0ms: channel switch invoked
@@ -363,7 +388,7 @@ section Displayed
 ### Fast channel switch: video + audio
 
 Same as the above mode with the difference, that (older) audio is also started immediately as soon as the audio buffer filllevel threshold is reached without respect to an a/v-sync. Audio data typically comes in with 160ms or 192ms packets,
-so we may not hit the target buffer threshold value exactly. Therefore, we shrink the audio buffer as soon it's threshold is reached back to the threshold. This mode drops the superflous audio data BEFORE the audio playback starts.
+so we may not hit the target buffer threshold value exactly. Therefore, we shrink the audio buffer as soon as its threshold is reached back to the threshold. This mode drops the superfluous audio data BEFORE the audio playback starts.
 Otherwise we may have to wait for all audio data to be played out later, although all buffers reached the filllevel thresholds already and audio and video could start in sync.
 
 ```mermaid
@@ -400,11 +425,11 @@ gantt
     tickInterval 20millisecond
 section Audio
     Buffered audio             :             0, 400
-    m_pAudio->GetUsedRingBufferMs() :             100, 400
+    m_pAudio->GetUsedRingbufferMs() :             100, 400
     m_pAudio->GetHardwareOutputDelayMs(): crit, 0, 100
     m_pAudio->GetHardwareOutputPtsMs(): milestone,  0,
     m_pAudio->GetOutputPtsMs(): milestone,  100,
-    m_pAudio->GetInputPts() : milestone, 400,
+    m_pAudio->GetInputPtsMs() : milestone, 400,
     m_pAudio->GetBufferFillLevelThresholdMs() :   crit, 100, 400
 ```
 
@@ -432,16 +457,16 @@ section Threshold
     GetFirstAudioPtsMsToPlay()                             : milestone,  80,
 section Audio
     audioBuffer             :              0, 480
-    m_pAudio->GetOutputPts(): milestone,   0,
-    m_pAudio->GetInputPts() : milestone, 480,
+    m_pAudio->GetOutputPtsMs(): milestone,   0,
+    m_pAudio->GetInputPtsMs() : milestone, 480,
 section AudioFilllevel
     to drop                    : crit,   0,  80
     syncedAudioBufferFillLevel :        80, 480
     to wait for                : crit, 480, 530
 section Video
     videoBuffer                  :             80, 720
-    m_pRender->GetOutputPts()    : milestone,  80,
-    m_pVideoStream->GetInputPts(): milestone, 720,
+    m_pRender->GetOutputPtsMs()  : milestone,  80,
+    m_pVideoStream->GetInputPtsMs(): milestone, 720,
 section VideoFilllevel
     syncedVideoBufferFillLevel : 80, 720
 ```
@@ -468,14 +493,14 @@ section Threshold
     GetFirstAudioPtsMsToPlay()                             : milestone,  80,
 section Audio
     audioBuffer             :             80, 720
-    m_pAudio->GetOutputPts(): milestone,  80,
-    m_pAudio->GetInputPts() : milestone, 720,
+    m_pAudio->GetOutputPtsMs(): milestone,  80,
+    m_pAudio->GetInputPtsMs() : milestone, 720,
 section AudioFilllevel
     syncedAudioBufferFillLevel : 80, 720
 section Video
     videoBuffer                  :              0, 480
-    m_pRender->GetOutputPts()    : milestone,   0,
-    m_pVideoStream->GetInputPts(): milestone, 480,
+    m_pRender->GetOutputPtsMs()  : milestone,   0,
+    m_pVideoStream->GetInputPtsMs(): milestone, 480,
 section VideoFilllevel
     to drop                    : crit,   0,  80
     syncedVideoBufferFillLevel :        80, 480
@@ -506,15 +531,15 @@ section Threshold
     GetFirstAudioPtsMsToPlay()                             : milestone,  80,
 section Audio
     audioBuffer             :             80, 400
-    m_pAudio->GetOutputPts(): milestone,  80,
-    m_pAudio->GetInputPts() : milestone, 400,
+    m_pAudio->GetOutputPtsMs(): milestone,  80,
+    m_pAudio->GetInputPtsMs() : milestone, 400,
 section AudioFilllevel
     syncedAudioBufferFillLevel :        80, 400
     to wait for                : crit, 400, 530
 section Video
     videoBuffer                  :              0, 480
-    m_pRender->GetOutputPts()    : milestone,   0,
-    m_pVideoStream->GetInputPts(): milestone, 480,
+    m_pRender->GetOutputPtsMs()  : milestone,   0,
+    m_pVideoStream->GetInputPtsMs(): milestone, 480,
 section VideoFilllevel
     to drop                    : crit,   0,  80
     syncedVideoBufferFillLevel :        80, 480
@@ -533,7 +558,7 @@ All audio samples are dropped (21.510-20.302=1.208s), which have PTS values befo
 At the point the buffer threshold is reached (450ms), the audio buffer has a size of 21.886-21.510=0.376s and the video buffer of 22.490-21.510=0.980s.
 
 The audio buffer size is apparently below the threshold in this example.
-Nevertheless, the buffer threshold is reached, because the the PTS values represent the start of a frame, and the threshold calculation takes the end of the last audio frame into account.
+Nevertheless, the buffer threshold is reached, because the PTS values represent the start of a frame, and the threshold calculation takes the end of the last audio frame into account.
 
 The PTS timestamps in the following timeline are truncated to seconds for simplicity, but represent real values.
 
@@ -572,10 +597,10 @@ This discrepancy leads to two inevitable failure states:
 - **Receiver is slower:** The device consumes samples too slowly. The buffer fills until it overflows.
 
 Without active compensation, this drift is constant.
-Calculations shows that with a positive clock skew of 10ppm, a buffer of 330ms will underrun in approximately 9 hours.
+Calculations show that with a positive clock skew of 10ppm, a buffer of 330ms will underrun in approximately 9 hours.
 
 This doesn't seem to be an issue when using audio passthrough.
-Probably because the audio receiving device takes care of compansation.
+Probably because the audio receiving device takes care of compensation.
 
 ### The Solution: PID-Controlled Resampling
 
@@ -628,8 +653,8 @@ This is essential for tuning the PID parameters.
 
 **To enable the tuning aid:**
 
-1. **Enable Telemetry:** In the source code, uncomment the macro `PID_CONTROLLER_TUNING_AID_ADDRESS` in `cPidController`.
-2. **Configure Target IP:** In `cPidController::SendTuningAidData()`, update the UDP target IP address to match the machine running PlotJuggler.
+1. **Enable Telemetry:** In `pidcontroller.h`, uncomment the macro `PID_CONTROLLER_TUNING_AID_ADDRESS`.
+2. **Configure Target IP:** Set the value of the macro to the IP address of the machine running PlotJuggler. `cPidController::SendTuningAidData()` sends the data via UDP to this address.
 3. **Setup PlotJuggler:**
     - Install [PlotJuggler](https://github.com/facontidavide/PlotJuggler).
     - Load the provided layout configuration file (located in the repo at `DEVELOPER/PidControllerPlotJugglerConfig.xml`). This will automatically configure the data series, graphs, and legends to match the screenshots above.
@@ -637,4 +662,4 @@ This is essential for tuning the PID parameters.
 
 ## Misc
 
-- The audio is initilized lazily (only when playback starts), because there is no sound device, yet, when HDMI is used as sound output, if the TV is off.
+- The audio is initialized lazily (only when playback starts), because there is no sound device, yet, when HDMI is used as sound output, if the TV is off.
