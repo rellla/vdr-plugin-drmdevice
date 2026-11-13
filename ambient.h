@@ -17,7 +17,7 @@
 #include <cstdint>
 #include <mutex>
 
-#include "ambientimage_service.h"
+#include "services/ambientimage_service.h"
 #include "framesampler.h"
 #include "framesnapshot.h"
 

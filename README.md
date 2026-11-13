@@ -619,7 +619,7 @@ detach and attach the plugin automatically.
 Ambient image service
 ---------------------
 drmdevice provides a small RGB image of the displayed video for the ambient lighting of
-vdr-plugin-hyperion with the VDR service "AmbientImage-v1.0", see ambientimage_service.h.
+vdr-plugin-hyperion with the VDR service "AmbientImage-v1.0", see services/ambientimage_service.h.
 ambientimage_service.h is under the MIT license, so other output plugins can provide the same
 service.
 
