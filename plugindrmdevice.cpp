@@ -180,9 +180,11 @@ bool cPluginDrmDevice::ProcessArgs(int argc, char *argv[])
 		case 'w':           // workarounds
 			if (!strcasecmp("disable-pip", optarg)) {
 				m_pDevice->SetDisablePip();
-#ifdef USE_GLES
 			} else if (!strcasecmp("disable-ogl-osd", optarg)) {
+#ifdef USE_GLES
 				m_pDevice->SetDisableOglOsd();
+#else
+				// without OpenGL/ES the osd is rendered by the CPU anyway, ignore it
 #endif
 			} else {
 				fprintf(stderr, gettext("Workaround '%s' unsupported\n"),
