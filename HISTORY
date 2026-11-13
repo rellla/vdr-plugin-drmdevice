@@ -237,3 +237,32 @@ https://github.com/rellla/vdr-plugin-softhddevice-drm-gles
   doesn't redraw the OSD anymore.
 - The video filter threads have names, which fit into the 15 characters of a
   thread name.
+
+2026-11-13: Version 2.3.1
+
+- Lost and damaged video TS packets: the video TS packets are checked for lost
+  (continuity counter), damaged (transport error indicator) and scrambled
+  packets. The numbers are shown in the statistics of the setup menu (the
+  packets before the stream start separately) and logged with the new debug
+  log category 32768 (TS error logs).
+- DropDamagedVideo (setup "Drop damaged video until key frame"): with a
+  hardware decoder, a damaged frame and the following frames are dropped up
+  to the next key frame, where the decoder is restarted. The default is
+  automatic, which is on with Amlogic (hardware quirk), whose decoder could
+  hang on an incomplete frame.
+- A failed hardware decoder (EIO) is restarted with the next packet, so the
+  decoding continues with the next I-frame instead of a stalled video.
+- Fixed the audio channel count with HDMI outputs, which are configured at the
+  stream start (e.g. Amlogic): the device is opened again, if the number of
+  channels changes (e.g. PCM 2.0 instead of 5.1 after a channel switch).
+- Fixed an invisible video after an attach with OpenGL/ES (e.g. Amlogic after
+  DETA/ATTA): the OSD plane is disabled at the init.
+- Fixed the hardware deinterlacer with few output buffers (e.g. Amlogic's
+  deinterlace_v4l2m2m): the filter keeps enough free buffers.
+- Fixed the overflow of an image cache size of 2048 MB or more (no image was
+  cached at all), the size is limited to 1024 MB.
+- The command line argument -w disable-ogl-osd is ignored without OpenGL/ES
+  support instead of stopping VDR.
+- The audio equalizer is shown in the audio section of the setup menu.
+- The service interfaces moved to the subdirectory services/.
+- Updated the README and the developer documentation.
