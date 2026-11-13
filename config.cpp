@@ -109,7 +109,7 @@ bool cDeviceConfig::SetupParse(const char *name, const char *value)
 	} else if (!strcasecmp(name, "ParseH264StreamStart"))       { ConfigParseH264StreamStart = atoi(value);
 	} else if (!strcasecmp(name, "DropInvalidH264PFrames"))     { ConfigDropInvalidH264PFrames = atoi(value);
 #ifdef USE_GLES
-	} else if (!strcasecmp(name, "MaxSizeGPUImageCache"))  { ConfigMaxSizeGPUImageCache = atoi(value);
+	} else if (!strcasecmp(name, "MaxSizeGPUImageCache"))  { ConfigMaxSizeGPUImageCache = std::clamp(atoi(value), 0, GPU_IMAGE_CACHE_MAX_MB);
 #endif
 	} else if (!strcasecmp(name, "ShowChannelSwitchDurationMessage"))  { ConfigShowChannelSwitchDurationMessage = atoi(value);
 	} else

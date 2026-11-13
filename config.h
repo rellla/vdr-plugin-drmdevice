@@ -109,6 +109,8 @@ public:
 	static constexpr int ZOOM_LEVELS = 5;       ///< number of zoom levels
 	static constexpr int ZOOM_MAX = 499;        ///< maximum zoom-in factor (1/10 %)
 
+	static constexpr int GPU_IMAGE_CACHE_MAX_MB = 1024; ///< maximum size of the gpu image cache (MB)
+
 	//
 	// setup.conf parameters
 	//

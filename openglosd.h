@@ -15,6 +15,7 @@
 #ifndef __DRMDEVICE_OPENGLOSD_H
 #define __DRMDEVICE_OPENGLOSD_H
 
+#include <cstdint>
 #include <cstdio>
 #include <memory>
 #include <mutex>
@@ -758,8 +759,8 @@ private:
 	std::queue<cOglCmd*> m_commands;
 	GLint m_maxTextureSize = 0;
 	sOglImage m_imageCache[OGL_MAX_OSDIMAGES];
-	long m_memCached = 0;
-	long m_maxCacheSize;
+	int64_t m_memCached = 0;
+	int64_t m_maxCacheSize;
 	cVideoRender *m_pRender;
 	std::mutex m_mutex;
 

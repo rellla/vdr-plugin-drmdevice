@@ -1721,7 +1721,7 @@ bool cOglCmdDropImage::Execute(void) {
 cOglThread::cOglThread(cCondWait *startWait, int maxCacheSize, cOutputDevice *device)
 	: cThread("oglThread"),
 	  m_startWait(startWait),
-	  m_maxCacheSize(maxCacheSize * 1024 * 1024),
+	  m_maxCacheSize(static_cast<int64_t>(maxCacheSize) * 1024 * 1024),
 	  m_pRender(device->Render())
 {
 	for (int i = 0; i < OGL_MAX_OSDIMAGES; i++) {
@@ -1824,7 +1824,7 @@ int cOglThread::StoreImage(const cImage &image)
 	}
 
 	int imgSize = image.Width() * image.Height();
-	int newMemUsed = imgSize * sizeof(tColor) + m_memCached;
+	int64_t newMemUsed = static_cast<int64_t>(imgSize) * sizeof(tColor) + m_memCached;
 	if (newMemUsed > m_maxCacheSize) {
 		float cachedMB = m_memCached / 1024.0f / 1024.0f;
 		float maxMB = m_maxCacheSize / 1024.0f / 1024.0f;
