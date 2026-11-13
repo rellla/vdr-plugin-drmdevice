@@ -356,6 +356,43 @@ stateDiagram-v2
 
 The buffer strategy is reset, when TRICK_SPEED is entered or left, both strategies are reset in STOP.
 
+## Picture in Picture
+
+The pip video is received by a second device and decoded by its own decoding thread.
+It is displayed on its own DRM plane, together with the main video in the same atomic commit.
+
+```mermaid
+graph TD
+    Handler["cPipHandler::Start<br/>switch a free device to the pip channel"] --> Receiver["cPipReceiver<br/>(video PID only)"]
+    Receiver --> |TS Packet|ParseTs["cPipReceiver::ParseTs<br/>cTsToPes"]
+    ParseTs --> |PES Packet|PlayPip["cOutputDevice::PlayPipVideo<br/>cOutputDevice::PlayVideoInternal"]
+    PlayPip --> |AVPacket|PipStream["cPipVideoStream<br/>own decoding thread,<br/>no deinterlacer"]
+    PipStream --> |AVFrame|PushPip["cVideoRender::PushPipFrame<br/>m_pipDrmBufferPool"]
+    PushPip --> |cDrmBuffer|PipQueue["cVideoRender::m_pipDrmBufferQueue"]
+    PipQueue --> DisplayFrame["cVideoRender::DisplayFrame"]
+    MainQueue["cVideoRender::m_drmBufferQueue"] --> DisplayFrame
+    DisplayFrame --> |main and pip cDrmBuffer|PageFlip["cVideoRender::PageFlip<br/>video, pip and osd plane"]
+
+    classDef vdrThread fill:#90caf9,stroke:#1976d2,stroke-width:2px,color:#000000
+    classDef decThread fill:#ce93d8,stroke:#8e24aa,stroke-width:2px,color:#000000
+    classDef displayThread fill:#81c784,stroke:#388e3c,stroke-width:2px,color:#000000
+    classDef buffer fill:#fff59d,stroke:#fbc02d,stroke-width:2px,color:#000000
+
+    class Handler,Receiver,ParseTs,PlayPip vdrThread
+    class PipStream,PushPip decThread
+    class DisplayFrame,PageFlip displayThread
+    class PipQueue,MainQueue buffer
+```
+
+- **Receiving:** `cPipHandler` switches a free device (`GetDevice()`) to the pip channel and attaches a `cPipReceiver` for the video PID.
+  The receiver converts the TS packets to PES packets like VDR's `cDevice::PlayTs()` and plays them with `PlayPipVideo()`, which uses the same video reassembly as the main video.
+- **Full queue:** `Receive()` runs in the receiving device's thread and must return fast.
+  If the packet queue is full, it retries 20 times every 5ms and then resets the pip stream (`TryResetPipStream()`, only if the state machine isn't locked).
+- **Decoding:** `cPipVideoStream` has its own decoder, DRM buffer pool and render queue. The deinterlacer is permanently disabled.
+- **Display:** The pip video has no audio and no A/V sync. The display thread takes one pip frame from the queue with every call of `DisplayFrame()` and commits it with the main video. It is scaled and positioned by the plane (`PipScalePercent`, `PipLeftPercent`, `PipTopPercent` or the `PipAlt*` values).
+- **Availability:** Pip needs a DRM plane for it (`cDrmDevice::HasPipPlane()`) and the attached state. It can be disabled with the start parameter `-w disable-pip`.
+  The pip stream is reset, when pip is stopped or the device is detached.
+
 ## Audio Data Flow Call Graph
 
 The audio is received and decoded in the VDR thread.
