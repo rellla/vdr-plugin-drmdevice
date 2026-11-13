@@ -310,6 +310,7 @@ Some hardware needs special handling.
 | Quirk | Hardware | Handling |
 |-------|----------|----------|
 | `QUIRK_CODEC_FLUSH_WORKAROUND` | Raspberry Pi 2-5 (bcm2836, bcm2837, bcm2711, bcm2712) | The hardware decoder doesn't flush correctly (`avcodec_flush_buffers()`), so it is closed and opened again. |
+| `QUIRK_DROP_DAMAGED_VIDEO` | Amlogic (gxbb, gxl, gxm, g12a, g12b, sm1, s4) | The hardware decoder may hang on an incomplete frame, so `DropDamagedVideo` (automatic) drops the damaged video up to the next key frame (see "Lost and Damaged Video TS Packets"). |
 
 To add a quirk, extend `enum HardwareQuirks` and the device table in hardwaredevice.h and add a test in tests/test_hardwaredevice.cpp.
 
@@ -546,6 +547,59 @@ If a PES packet contains multiple frames, only the first frame gets the PTS of t
 
 This synchronization mechanism is only done when a stream starts, or when the data after a frame does not start with the sync word.
 The latter can happen for example on bad reception when garbage is received.
+
+## Lost and Damaged Video TS Packets
+
+VDR receives a transport stream (TS) of 188 byte packets from the DVB device.
+A video PES packet (usually one frame) is split across many TS packets of the video PID; the first one has the *payload unit start indicator* (PUSI) set.
+VDR (`cTsToPes`) collects the payloads of a PID and passes the previous PES packet on, when the next packet with PUSI arrives.
+`cOutputDevice` then reassembles the frames from the PES packets (see above) and sends them to the decoder.
+
+```mermaid
+flowchart TB
+    PES["PES packet (one frame)<br/>PES header | slice data"]
+    PES --> TS1["TS packet<br/>PUSI=1, CC=5<br/>PES header, data"]
+    PES --> TS2["TS packet<br/>CC=6<br/>data"]
+    PES --> TS3["TS packet<br/>CC=7<br/>data"]
+    PES --> TSn["TS packet<br/>CC=...<br/>end of the data"]
+```
+
+```mermaid
+flowchart LR
+    DVB[DVB device] -->|TS packets, 188 bytes| PlayTs["cOutputDevice::PlayTs<br/>cTsVideoCheck"]
+    PlayTs -->|TS packets| VDR["VDR cTsToPes<br/>collects a PES"]
+    VDR -->|"complete PES<br/>(at the next PUSI)"| PlayVideo["cOutputDevice::PlayVideo<br/>frame reassembly"]
+    PlayVideo -->|AVPacket| Decoder[Decoder]
+```
+
+Every TS packet header contains information to detect a damaged stream:
+
+- **Transport error indicator (TEI)**: the demodulator couldn't correct bit errors. VDR drops the PES packet collected so far and waits for the next PUSI, so the decoder misses a whole frame.
+- **Continuity counter (CC)**: a 4 bit counter per PID, which is incremented with every packet with payload (0 to 15, then 0 again). A gap means lost packets. A duplicate packet (the same counter twice) and the discontinuity indicator of the adaptation field are no errors. VDR doesn't check the counter in live mode, it passes the PES packet with the missing data on.
+- **Scrambling control**: the packet is still scrambled, its payload is useless for the decoder.
+
+A gap of the continuity counter:
+
+```mermaid
+flowchart LR
+    CC5[CC=5] --> CC6[CC=6] --> CC7[CC=7] --> CC8[CC=8]
+    CC8 -.->|"9 to 13 lost"| CC14["CC=14<br/>expected 9: 5 packets lost"]
+    classDef gap fill:#f8d7da,stroke:#c00
+    class CC14 gap
+```
+
+`cTsVideoCheck` detects the video PIDs by the PES start code and a video stream ID (`cPesVideo::IsStart()`) in a packet with PUSI and checks their packets.
+The numbers of lost, damaged and scrambled packets are shown in the statistics of the setup menu, the details are logged with the debug category `L_TS`.
+The lost and damaged packets before the stream start (the decoder isn't open yet) are counted separately, because the PES packets before the first decodable frame are dropped anyway.
+
+A software decoder conceals an incomplete frame, but a hardware decoder may fail or hang (e.g. the Amlogic decoder after lost packets at the start of VDR).
+So with `DropDamagedVideo` (automatically with the hardware quirk `QUIRK_DROP_DAMAGED_VIDEO`) and a hardware decoder, the damaged frame and the following frames, which may refer to it, are dropped up to the next key frame, where the decoder is restarted like at a new stream.
+To find the damaged PES packet, `PlayTs()` then passes the packets one by one to VDR and checks every packet *before* VDR gets it:
+
+- A gap right before a packet with PUSI: the end of the previous PES packet is missing, it is the one VDR passes on now.
+- A gap within a PES packet: the PES packet collected now is damaged, VDR passes it on with the next PUSI.
+
+Limits: bit errors without TEI can't be detected in the TS, and exactly 16 (or a multiple of 16) lost packets don't change the 4 bit counter.
 
 ## Buffering - A/V-Sync
 
@@ -1070,6 +1124,7 @@ The debug logs are enabled with the setup value `LogLevel` (the values are liste
 | `L_PACKET` | 4096 | `[Packet]` | every packet and frame through the decoder and the display (very verbose) |
 | `L_GRAB` | 8192 | `[Grab]` | grabbing |
 | `L_FFMPEG` | 16384 | `[FFMpeg]` | FFmpeg's own logs up to `LogFFmpegLevel` |
+| `L_TS` | 32768 | `[TS]` | lost, damaged and scrambled video TS packets |
 
 Every log line starts with the thread id, so the threads can be told apart (e.g. `[1234] [drmdevice][AV_Sync] ...`).
 
