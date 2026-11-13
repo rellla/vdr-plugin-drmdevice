@@ -200,9 +200,14 @@ Environment values have a higher priority than command line arguments.
 
 Setup: /etc/vdr/setup.conf
 --------------------------
+The values are grouped like the sections of the setup menu.
+
+### General
 
 	drmdevice.HideMainMenuEntry = 0
 		0 = show drmdevice main menu entry, 1 = hide entry
+
+### Video
 
 	drmdevice.VideoEnableHDR = 0
 		0 = disable HDR, 1 = enable HDR
@@ -246,6 +251,8 @@ Setup: /etc/vdr/setup.conf
 		packets since an I-frame (drmdevice uses its service interface). In mode 2
 		the video of such a switch starts with the heard audio, the frames before
 		are skipped (a switch without the buffer doesn't skip frames).
+
+### Audio
 
 	drmdevice.AudioSoftvol = 0
 		0 = off, use hardware volume control
@@ -307,12 +314,16 @@ Setup: /etc/vdr/setup.conf
 	drmdevice.AudioStereoDescent = 0
 		0 - 1000 = reduce volume level (/1000) for stereo sources
 
+### Audio equalizer
+
 	drmdevice.AudioEq = 0
 		0 = Equalizer disabled
 		1 = Equalizer enabled
 
 	drmdevice.AudioEqBand[01b..18b] = 0
 		-15 to 1 = equalizer band gain (see Setup menu)
+
+### Picture-in-picture
 
 	drmdevice.PipScalePercent = 25
 		10 - 100 = scale factor for pip (%)
@@ -339,6 +350,8 @@ Setup: /etc/vdr/setup.conf
 	drmdevice.PipAltTopPercent = 0
 		0 - 100 = video top for alternative pip (%)
 		0 = top aligned, 100 = bottom aligned
+
+### Logging
 
 	drmdevice.LogLevel = 0
 		0 = default (no debug logs)
@@ -367,6 +380,8 @@ Setup: /etc/vdr/setup.conf
 		1 = verbose
 		2 = debug
 		3 = trace
+
+### Expert settings
 
 	drmdevice.AdditionalBufferLengthMs = 0
 		0 = default (min 450ms fixed)
