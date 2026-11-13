@@ -809,6 +809,42 @@ If the first audio packet arrives after the first decoded video frame, the initi
 Side note: For additional responsiveness/optimization, the first video packets (until the first sync word was received), were tried to put through the decoder (opened with the correct codec ID), but the decoder responded with invalid data.
 Only tried with H.264.
 
+## Channel Switch with the Zapcache Plugin
+
+The zapcache plugin receives some channels (e.g. the next channel) ahead with free devices.
+A channel switch to such a channel doesn't have to tune and starts with the buffered packets since the last I-frame.
+The interface is defined in zapcache_service.h, which the zapcache plugin provides and drmdevice copies.
+
+```mermaid
+sequenceDiagram
+    participant VDR
+    participant Device as cOutputDevice
+    participant ZapCache as zapcache plugin
+
+    Device->>ZapCache: Start(): CallFirstService(ZAPCACHE_SERVICE_V1_0)
+    loop VDR main loop
+        Device->>ZapCache: SetOutputAvailable(not detached and no pip)
+    end
+    VDR->>Device: channel switch, PlayTs(first packet of the new channel)
+    Device->>ZapCache: SpliceArmed()
+    Device->>ZapCache: Splice(packet, threshold, PlayBufferedTs)
+    ZapCache->>Device: PlayBufferedTs(buffered packets since the I-frame)
+    ZapCache-->>Device: delay to the live stream (>= 0: switch started with the buffer)
+    Device->>Device: cDevice::PlayTs(packet)
+    Device->>ZapCache: ReportSwitchEvent(ZAPCACHE_FIRST_PICTURE)
+    Device->>ZapCache: ReportSwitchEvent(ZAPCACHE_PLAYBACK_STARTED)
+    Device->>ZapCache: ReportFrameCorrection(dropped, repeated)
+```
+
+- `PlayTs()` calls `Splice()` for every TS packet, as long as `SpliceArmed()` returns true.
+  If the packet is the first one of the new channel, the zap cache plays its buffered packets with `PlayBufferedTs()` (the base class `cDevice::PlayTs()`) first.
+- The buffer contains more audio than the threshold.
+  In fast channel switch mode "video + audio", the audio starts as soon as its buffer exceeds the threshold, the surplus is dropped, but not the audio of the presented picture.
+  The video then starts with the frame of the heard audio: up to 1s (`MAX_START_WITH_AUDIO_SKIP_MS`) of older frames are skipped at once, instead of being dropped one by one by the A/V sync afterwards.
+- The zap cache measures the channel switch duration itself, the device reports the first picture and the playback start.
+  The repeated and dropped frames of the A/V sync are reported for the statistics of the first 5s after the playback start.
+- While the device is detached or shows pip (which needs a free device, too), it reports, that the zap cache can't be used.
+
 ## A/V Sync During Playback
 
 After the playback start, the display thread keeps the video in sync with the audio.
