@@ -111,9 +111,6 @@ msgstr "Video"
 msgid "Audio"
 msgstr "Audio"
 
-msgid "Audio equalizer"
-msgstr "Audio Equalizer"
-
 msgid "Picture-in-picture"
 msgstr "Bild-in-Bild"
 
