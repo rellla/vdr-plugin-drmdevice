@@ -215,7 +215,7 @@ graph TD
 ```
 
 The frames are pushed either by the decoding thread or by the filter thread into the render queue.
-`cVideoRender::PushFrame()` takes a `cDrmBuffer` from the pool and wraps the frame into it.
+`cVideoRender::PushFrame()` takes a `cDrmBuffer` from the pool and wraps the frame into it (see "DRM Buffer Strategies").
 If the HW deinterlacer is used, the filter thread waits, until two frames fit into the render queue (one for each field of the frame).
 
 ## Frame Routing
@@ -255,6 +255,61 @@ flowchart TD
     class Display displayThread
     class PushFrame buffer
 ```
+
+## DRM Buffer Strategies
+
+A frame can only be displayed, if it is in a DRM framebuffer.
+`cVideoRender::PushFrame()` takes a `cDrmBuffer` from the pool (`m_drmBufferPool`, 36 buffers) for every frame, which is pushed into the render queue.
+Two strategies decide how this is done. Both are chosen with the first frame after they were reset:
+
+- The **decoding strategy** (`cDecodingStrategy`) depends on the frame format and decides, how the frame gets into the buffer.
+- The **buffer strategy** (`cBufferStrategy`) depends on the frame format and the trick speed and decides, which buffer of the pool is used.
+
+| Frame                       | Decoding strategy           | Buffer strategy                 | Buffer used                                                         |
+|-----------------------------|-----------------------------|---------------------------------|---------------------------------------------------------------------|
+| DRM_PRIME (HW decoded)      | `cDecodingStrategyHardware` | `cBufferStrategyReuseHardware`  | the buffer, which already imported the DMA-BUF of the frame, otherwise an unused one |
+| NV12 (SW decoded, filtered) | `cDecodingStrategySoftware` | `cBufferStrategyReuseSoftware`  | a buffer, whose presentation has finished, otherwise an unused one  |
+| any frame in trick speed    | (as above)                  | `cBufferStrategyUseOnce`        | an unused buffer, which is destroyed after its presentation         |
+
+### Hardware Decoded Frames
+
+A hardware decoder outputs its frames in a small set of DMA-BUFs, which it uses again and again.
+The DMA-BUF is imported into a buffer only once (`drmPrimeFDToHandle()`, `drmModeAddFB2WithModifiers()`).
+The next frame in the same DMA-BUF uses the same buffer and its framebuffer again, the frame data isn't copied.
+
+When the decoder is reopened, its new DMA-BUFs may get the file descriptor numbers of the old ones.
+Therefore, a buffer is only reused, if the inode of the DMA-BUF is the same.
+Otherwise, the buffers of the closed DMA-BUFs are destroyed (`cDrmBufferPool::DestroyStaleImports()`).
+A buffer, which is queued or displayed, keeps its DMA-BUF open and is never destroyed.
+
+### Software Decoded Frames
+
+The frames of the filter thread are in normal memory.
+Each buffer gets its own NV12 dumb buffer, and the frame is copied into it line by line (`cDecodingStrategySoftware::PrepareDrmBuffer()`).
+After that, the frame is replaced by a DRM_PRIME frame, which references the buffer.
+A buffer is created again, if the resolution changes.
+
+### Trick Speed
+
+In trick speed, the decoder is drained and flushed (or reopened) often, so its DMA-BUFs change.
+Every buffer is used only once and destroyed after its presentation (`cBufferStrategyUseOnce`).
+
+### Lifetime of a Buffer
+
+```mermaid
+stateDiagram-v2
+    [*] --> Unused
+    Unused --> Queued: PushFrame()<br/>(setup, presentation pending)
+    Queued --> Displayed: PageFlip()
+    Queued --> Done: frame dropped (A/V sync)
+    Displayed --> Done: next frame displayed
+    Done --> Queued: reused for the next frame
+    Done --> Unused: destroyed (use once, stale import, resolution change)
+```
+
+`cDrmBuffer::PresentationFinished()` frees the frame, so a hardware decoder gets its DMA-BUF back.
+
+The buffer strategy is reset, when TRICK_SPEED is entered or left, both strategies are reset in STOP.
 
 ## Audio Data Flow Call Graph
 
