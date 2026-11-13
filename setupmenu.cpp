@@ -438,7 +438,7 @@ void cDeviceSetupMenu::Create(int current)
 #ifdef USE_GLES
 		Add(SeparatorName(tr("OSD settings")));
 		if (!m_pConfig->ConfigDisableOglOsd) {
-			Add(new cMenuEditIntItem(tr("GPU mem used for image caching (MB)"), &m_cMaxSizeGPUImageCache, 0, 4000));
+			Add(new cMenuEditIntItem(tr("GPU mem used for image caching (MB)"), &m_cMaxSizeGPUImageCache, 0, cDeviceConfig::GPU_IMAGE_CACHE_MAX_MB));
 		}
 #endif
 		Add(SeparatorName(tr("Misc settings")));
