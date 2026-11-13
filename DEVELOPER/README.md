@@ -220,30 +220,33 @@ If the HW deinterlacer is used, the filter thread waits, until two frames fit in
 
 ## Frame Routing
 
-The following graph shows the path of the frames from the decoder to the display output device, also considering trick speed mode.
+The following graph shows the path of the frames from the decoder to the render queue, also considering trick speed mode.
+The path only depends on the frame format, the interlacing and the mode.
 
 ```mermaid
 flowchart TD
-    FilterThreadForceProgressive["Filter Thread<br/>_only conversion to NV12_"]
-    FilterThreadProgressive["Filter Thread<br/>_only conversion to NV12_"]
+    FilterThreadForceProgressive["Filter Thread<br/>_scale_ (only conversion to NV12)"]
+    FilterThreadProgressive["Filter Thread<br/>_scale_ (only conversion to NV12)"]
     FilterThreadHwDeinterlacer["Filter Thread<br/>_deinterlace_v4l2m2m_"]
     FilterThreadSwDeinterlacer["Filter Thread<br/>_bwdif=1:-1:0_"]
+    PushFrame["cVideoRender::PushFrame"]
+    RenderQueue["Render Queue"]
 
     Decoder --> TrickSpeedDecision{Mode?}
     TrickSpeedDecision --> |Trick Speed|TrickSpeedFormat{Format?}
-    TrickSpeedFormat --> |__SW decoded__<br/>YUV420P<br/>_progressive or interlaced_<br/>RPI 4&5: 576i MPEG2<br/>RPI4: 1080p HEVC<br/>RPI5: 1080i H.264<br/>RK3399: __None__|FilterThreadForceProgressive
-    TrickSpeedFormat --> |__HW decoded__<br/>DRM_PRIME<br/>_progressive or interlaced_<br/>RPI4: 1080i H.264<br/>RPI5: 1080p HEVC<br/>RK3399: all|Display
-    PushFrame --> |DRM_PRIME<br/>progressive or interlaced|Display
+    TrickSpeedFormat --> |__SW decoded__<br/>YUV420P<br/>_progressive or interlaced_|FilterThreadForceProgressive
+    TrickSpeedFormat --> |__HW decoded__<br/>DRM_PRIME<br/>_progressive or interlaced_|PushFrame
     FilterThreadForceProgressive --> |NV12<br/>progressive or interlaced|PushFrame
 
     TrickSpeedDecision --> |Normal Playback|NormalPlaybackFormat{Format?}
-    NormalPlaybackFormat --> |__SW decoded__<br/>_YUV420P<br/>interlaced_<br/>RPI 4&5: 576i MPEG2<br/>RPI5: 1080i H.264<br/>RK3399: __None__|FilterThreadSwDeinterlacer
-    NormalPlaybackFormat --> |__SW decoded__<br/>_YUV420P<br/>progressive_<br/>RPI5: 720p H.264<br/>RPI4/RK3399: __None__|FilterThreadProgressive
-    NormalPlaybackFormat --> |__HW decoded__<br/>_DRM_PRIME<br/>interlaced_<br/>RPI4/RK3399: 1080i H.264<br/>RPI5: __None__|FilterThreadHwDeinterlacer
-    NormalPlaybackFormat --> |__HW decoded__<br/>DRM_PRIME<br/>_progressive_<br/>RPI 4&5/RK3399: 1080p HEVC<br/>RPI4/RK3399: 720p H.264|Display
+    NormalPlaybackFormat --> |__SW decoded__<br/>YUV420P<br/>_interlaced_|FilterThreadSwDeinterlacer
+    NormalPlaybackFormat --> |__SW decoded__<br/>YUV420P<br/>_progressive_|FilterThreadProgressive
+    NormalPlaybackFormat --> |__HW decoded__<br/>DRM_PRIME<br/>_interlaced_|FilterThreadHwDeinterlacer
+    NormalPlaybackFormat --> |__HW decoded__<br/>DRM_PRIME<br/>_progressive_|PushFrame
     FilterThreadSwDeinterlacer --> |NV12<br/>progressive|PushFrame
     FilterThreadProgressive --> |NV12<br/>progressive|PushFrame
-    FilterThreadHwDeinterlacer --> |DRM_PRIME<br/>progressive|Display
+    FilterThreadHwDeinterlacer --> |DRM_PRIME<br/>progressive|PushFrame
+    PushFrame --> |DRM_PRIME|RenderQueue
 
     classDef decThread fill:#ce93d8,stroke:#8e24aa,stroke-width:2px,color:#000000
     classDef filterThread fill:#ffb74d,stroke:#f57c00,stroke-width:2px,color:#000000
@@ -252,9 +255,18 @@ flowchart TD
 
     class Decoder decThread
     class FilterThreadForceProgressive,FilterThreadProgressive,FilterThreadHwDeinterlacer,FilterThreadSwDeinterlacer filterThread
-    class Display displayThread
+    class RenderQueue displayThread
     class PushFrame buffer
 ```
+
+An interlaced frame in normal playback is only deinterlaced (`cVideoStream::RenderFrame()`), if
+
+- the deinterlacer isn't disabled in the setup,
+- the stream is interlaced: not HEVC and at most 30 frames per second, or the frame is marked as interlaced,
+- the display can't show the interlaced mode or the display mode shall not follow the interlacing of the video.
+
+Otherwise, the interlaced frame takes the progressive path of the graph (e.g. to be shown in an interlaced display mode).
+The deinterlacer doubles the frame rate (one frame per field), so the requested display mode has the double refresh rate.
 
 ## Video Decoder
 
