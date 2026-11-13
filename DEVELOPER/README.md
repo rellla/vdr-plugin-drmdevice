@@ -1031,6 +1031,67 @@ This is essential for tuning the PID parameters.
     - Load the provided layout configuration file (located in the repo at `DEVELOPER/PidControllerPlotJugglerConfig.xml`). This will automatically configure the data series, graphs, and legends to match the screenshots above.
     - Start the UDP Server in PlotJuggler to begin receiving live data from the plugin.
 
+## Logging and Debugging
+
+### Log Categories
+
+The plugin logs to syslog. `LOGERROR`, `LOGWARNING` and `LOGINFO` are always logged.
+The debug logs are enabled with the setup value `LogLevel` (the values are listed in the README):
+
+- `LOGDEBUG()` logs, if any category is enabled.
+- `LOGDEBUG2(category, ...)` logs only, if its category is enabled, and adds the prefix of the category.
+
+| Category | Value | Prefix | Content |
+|----------|-------|--------|---------|
+| `L_DEBUG` | 1 | | standard debug logs (`LOGDEBUG()`) |
+| `L_AV_SYNC` | 2 | `[AV_Sync]` | buffering, playback start, dropped/repeated frames, channel switch trace |
+| `L_SOUND` | 4 | `[Sound]` | audio setup, passthrough, clock drift compensation |
+| `L_OSD` | 8 | `[Osd]` | osd |
+| `L_DRM` | 16 | `[Drm]` | display modes, planes, DRM buffers |
+| `L_CODEC` | 32 | `[Codec]` | decoder open/close/flush, H.264 stream start |
+| `L_STILL` | 64 | `[Still]` | still picture |
+| `L_TRICK` | 128 | `[Trick]` | trick speed |
+| `L_MEDIA` | 256 | `[Media]` | media player |
+| `L_OPENGL` | 512 | `[OpenGL]` | OpenGL osd |
+| `L_OPENGL_TIME` | 1024 | `[OpenGL]` | OpenGL osd flush time |
+| `L_OPENGL_TIME_ALL` | 2048 | `[OpenGL]` | OpenGL osd time of each command |
+| `L_PACKET` | 4096 | `[Packet]` | every packet and frame through the decoder and the display (very verbose) |
+| `L_GRAB` | 8192 | `[Grab]` | grabbing |
+| `L_FFMPEG` | 16384 | `[FFMpeg]` | FFmpeg's own logs up to `LogFFmpegLevel` |
+
+Every log line starts with the thread id, so the threads can be told apart (e.g. `[1234] [drmdevice][AV_Sync] ...`).
+
+### Channel Switch Trace
+
+With `L_AV_SYNC`, every step of a channel switch (or replay start) is logged with the time since the switch (lines starting with `TRACE:`).
+The timelines in "Buffering - A/V-Sync" were made from these lines:
+
+```text
+TRACE: channel switch
+TRACE: +  134ms SetPlayMode()
+TRACE: +  422ms PlayVideo() first valid video data
+TRACE: +  839ms PlayAudio() first valid audio data
+TRACE: +  961ms PlayVideo() first decodeable video packet
+TRACE: +  961ms decoder open (+  539ms after first data was received)
+TRACE: +  971ms decoder opened (+  549ms after first data was received)
+TRACE: +  974ms decoder first packet sent (+  552ms after first data was received)
+TRACE: + 1348ms decoder first frame received (+  926ms after first data was received)
+TRACE: + 1360ms first frame displayed (+  938ms after first data was received)
+TRACE: + 2133ms firing BufferingThresholdReached - PTS: ..., buffer fill levels: ...
+TRACE: + 2193ms playback start fired (+ 1771ms after first data was received)
+```
+
+(The values are an example; the lines are shortened. "first frame displayed" is only logged, if the first frame is shown before the playback start.)
+
+The setup option "Show channel switch duration" shows the duration of each channel switch as a message.
+
+### Statistics
+
+The setup menu section "Statistics" shows the current video and audio stream, the decoder, the deinterlacer, the display mode and the number of repeated and dropped frames.
+The expert settings show the jitter of the received audio and video packets (current and maximum), which helps to choose the buffer size (`AdditionalBufferLengthMs`).
+
+For the clock drift compensation, see "Tuning & Visualization with PlotJuggler".
+
 ## Misc
 
 - The audio is initialized lazily (only when playback starts), because there is no sound device, yet, when HDMI is used as sound output, if the TV is off.
