@@ -327,7 +327,7 @@ bool cPluginDrmDevice::Service(const char *id, void *data)
 {
 	//LOGDEBUG("plugin: %s: id %s", __FUNCTION__, id);
 
-	// image of the displayed video for ambient lighting plugins (see ambientimage_service.h)
+	// image of the displayed video for ambient lighting plugins (see services/ambientimage_service.h)
 	if (!strcmp(id, AMBIENTIMAGE_SERVICE)) {
 		cAmbientService *ambient = m_pDevice ? m_pDevice->Ambient() : nullptr;
 		if (!data)

@@ -565,7 +565,7 @@ bool cOutputDevice::VideoStreamStarted(void)
  * Play TS packets
  *
  * A channel switch to a channel of the zapcache plugin starts with its buffered
- * packets since an I-frame (see zapcache_service.h). They are played before the
+ * packets since an I-frame (see services/zapcache_service.h). They are played before the
  * first packet of the new channel.
  *
  * @param data        TS packets
