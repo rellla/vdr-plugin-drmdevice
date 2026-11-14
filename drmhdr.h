@@ -135,6 +135,9 @@ private:
 	AVMasteringDisplayMetadata m_mdMetadata = { }; ///< saved mastering display metadata fron AVFrame sidedata
 	AVContentLightMetadata m_clMetadata = { };     ///< saved content light metadata fron AVFrame sidedata
 	struct colorspace m_hdr10{};                     ///< hdr colorspace
+
+	bool m_hasMdMetadata = false;   ///< true, if m_mdMetadata belongs to the current video
+	bool m_hasClMetadata = false;   ///< true, if m_clMetadata belongs to the current video
 };
 
 #endif
