@@ -678,7 +678,7 @@ bool cVideoRender::FrameDropNecessary(int64_t audioPtsMs, int64_t videoPtsMs)
 	// skip the resync, if the difference between the resync-pts and the current video pts is greater
 	// than the AV_RESYNC_BORDER_MS to sort out false positives
 	if (m_scheduleResyncAtPtsMs != AV_NOPTS_VALUE && m_scheduleResyncAtPtsMs <= videoPtsMs) {
-		if (std::abs(PtsToMs(m_scheduleResyncAtPtsMs) - PtsToMs(videoPtsMs)) <= m_pAudio->GetAvResyncBorderMs()) {
+		if (std::abs(m_scheduleResyncAtPtsMs - videoPtsMs) <= m_pAudio->GetAvResyncBorderMs()) {
 			LOGDEBUG2(L_AV_SYNC, "videorender: resync schedule arrived at %s, current audio pts %s video pts %s",
 				Timestamp2StringMs(m_scheduleResyncAtPtsMs), Timestamp2StringMs(audioPtsMs), Timestamp2StringMs(videoPtsMs));
 			m_eventQueue.push_back(ResyncEvent{});
