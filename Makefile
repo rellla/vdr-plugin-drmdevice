@@ -150,6 +150,7 @@ OBJS = $(PLUGINENTRY).o \
 	drmdevice.o \
 	drmhdr.o \
 	drmplane.o \
+	edid.o \
 	filllevel.o \
 	framesampler.o \
 	framesnapshot.o \

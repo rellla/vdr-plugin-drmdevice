@@ -135,6 +135,7 @@ public:
 	void InitEvent(void);
 
 	bool CanHandleHdr(void) { return m_hdrMetadata != 0; }  ///< true, if the connector supports HDR output metadata
+	int SinkHdrEotfs(void) const { return m_sinkHdrEotfs; } ///< EOTFs, which the sink reports in its EDID (::EdidEotf)
 	bool CanHandleMode(sDrmMode *);
 
 	// drmModeAtomic* wrapper functions
@@ -167,6 +168,7 @@ private:
 	uint32_t m_crtcId = 0;                 ///< current crtc ID
 	uint32_t m_crtcIndex = 0;              ///< current crtc index
 	uint32_t m_hdrMetadata = 0;            ///< property id of HDR_OUTPUT_METADATA
+	int m_sinkHdrEotfs = 0;                ///< EOTFs, which the sink reports in its EDID (::EdidEotf)
 	drmModeCrtc *m_drmModeCrtcSaved = nullptr; ///< saved CRTC infos
 	drmEventContext m_drmEventCtx{};       ///< drm event context
 
@@ -188,6 +190,7 @@ private:
 	cDrmPlane m_pipPlane;                  ///< the pip drm plane
 
 	int GetPropertyValue(uint32_t, uint32_t, const char *, uint64_t *);
+	void ReadSinkHdrEotfs(void);
 	uint32_t GetPropertyID(uint32_t, uint32_t, const char *);
 
 	int SetPropertyRequest(drmModeAtomicReqPtr, uint32_t, uint32_t, const char *, uint64_t);

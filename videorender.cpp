@@ -67,7 +67,7 @@ cVideoRender::cVideoRender(cOutputDevice *device)
 	  m_pAmbient(device->Ambient()),
 	  m_pDrmDevice(new cDrmDevice(this, m_pConfig)),
 	  m_pHdrMetadata(this),
-	  m_enableHdr(m_pConfig->ConfigVideoEnableHDR)
+	  m_hdrMode(m_pConfig->ConfigVideoEnableHDR)
 {
 #ifdef USE_GLES
 	m_disableOglOsd = m_pConfig->ConfigDisableOglOsd;
@@ -281,12 +281,17 @@ int cVideoRender::SetVideoBuffer(cDrmBuffer *buf)
 
 	if (frame) {
 		bool hdr = false;
-		if (m_enableHdr) {
+		int colorTrc = frame->color_trc;
+		if (UseHdr(&colorTrc)) {
 			struct hdr_output_metadata hdrData;
-			AVFrameSideData *sd1 = av_frame_get_side_data(frame, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
-			AVFrameSideData *sd2 = av_frame_get_side_data(frame, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+			AVFrameSideData *sd1 = nullptr;
+			AVFrameSideData *sd2 = nullptr;
+			if (colorTrc == frame->color_trc) {
+				sd1 = av_frame_get_side_data(frame, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+				sd2 = av_frame_get_side_data(frame, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+			}
 
-			if (!m_pHdrMetadata.Build(&hdrData, frame->color_primaries, frame->color_trc, sd1, sd2)) {
+			if (!m_pHdrMetadata.Build(&hdrData, frame->color_primaries, colorTrc, sd1, sd2)) {
 				SetHdrBlob(hdrData);
 				SetColorSpace(COLORRANGE_LIMITED);
 				hdr = true;
@@ -924,6 +929,36 @@ int cVideoRender::DrmHandleEvent(void)
 bool cVideoRender::CanHandleHdr(void)
 {
 	return m_pDrmDevice->CanHandleHdr();
+}
+
+/**
+ * Check, if the HDR output metadata is used for a frame
+ *
+ * In automatic mode, the metadata is only used, if the sink reports HDR
+ * capabilities in its EDID. If the sink doesn't report the EOTF of the frame,
+ * the frame is output as SDR, so the sink doesn't stay in the HDR mode of a
+ * previous frame.
+ *
+ * @param[in,out] colorTrc  transfer characteristics of the frame (changed to SDR, if the sink can't show it)
+ *
+ * @return true, if the HDR output metadata is used
+ */
+bool cVideoRender::UseHdr(int *colorTrc)
+{
+	switch (m_hdrMode) {
+	case HDR_OFF:
+		return false;
+	case HDR_ON:
+		return true;
+	default: {
+		int eotfs = m_pDrmDevice->SinkHdrEotfs();
+		if (!eotfs)
+			return false;
+		if (!(eotfs & (1 << cHdrMetadata::Eotf(*colorTrc))))
+			*colorTrc = AVCOL_TRC_BT709;
+		return true;
+	}
+	}
 }
 
 /*****************************************************************************

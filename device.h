@@ -161,7 +161,7 @@ public:
 	// Playback, display and decoder
 	void SetDisableDeint(void);
 	void SetDecoderFallbackToSw(bool);
-	void SetEnableHdr(bool);
+	void SetHdrMode(int);
 	cAmbientService *Ambient(void) { return m_pAmbient; }  ///< get the ambient image service
 	void SetChannelSwitchMode(ChannelSwitchMode mode) { m_channelSwitchMode = mode; }  ///< set the channel switch mode
 	void SetDisplayMode(int);

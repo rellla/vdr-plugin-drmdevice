@@ -37,6 +37,7 @@
 #include "config.h"
 #include "drmplane.h"
 #include "drmdevice.h"
+#include "edid.h"
 #include "logger.h"
 #include "videorender.h"
 
@@ -481,6 +482,8 @@ int cDrmDevice::Init(void)
 	m_hdrMetadata = GetPropertyID(m_connectorId, DRM_MODE_OBJECT_CONNECTOR, "HDR_OUTPUT_METADATA");
 	if (m_hdrMetadata != 0)
 		LOGDEBUG2(L_DRM, "drmdevice: %s: HDR output metadata ID %d in connector %d", __FUNCTION__, m_hdrMetadata, m_connectorId);
+
+	ReadSinkHdrEotfs();
 
 	LOGINFO("DRM Setup: Using Monitor Mode %dx%d@%.2fHz on %s (%s), m_crtcId %d crtc_idx %d",
 		m_drmModeInfo.hdisplay, m_drmModeInfo.vdisplay, GetRefreshRateHz(&m_drmModeInfo), m_connectorName.c_str(), connected ? "connected" : "not connected", m_crtcId, m_crtcIndex);
@@ -1308,6 +1311,33 @@ int cDrmDevice::SetPropertyRequest(drmModeAtomicReqPtr ModeReq,
 	}
 
 	return drmModeAtomicAddProperty(ModeReq, objectID, id, value);
+}
+
+/**
+ * Read the EOTFs, which the sink supports, from the EDID of the connector
+ */
+void cDrmDevice::ReadSinkHdrEotfs(void)
+{
+	m_sinkHdrEotfs = 0;
+
+	uint64_t blobId = 0;
+	if (GetPropertyValue(m_connectorId, DRM_MODE_OBJECT_CONNECTOR, "EDID", &blobId) || !blobId) {
+		LOGDEBUG2(L_DRM, "drmdevice: %s: no EDID in connector %d", __FUNCTION__, m_connectorId);
+		return;
+	}
+
+	drmModePropertyBlobPtr blob = drmModeGetPropertyBlob(m_fdDrm, blobId);
+	if (!blob) {
+		LOGDEBUG2(L_DRM, "drmdevice: %s: cannot read the EDID of connector %d", __FUNCTION__, m_connectorId);
+		return;
+	}
+
+	m_sinkHdrEotfs = EdidHdrEotfs(static_cast<const uint8_t *>(blob->data), blob->length);
+	drmModeFreePropertyBlob(blob);
+
+	LOGDEBUG2(L_DRM, "drmdevice: %s: sink EOTFs:%s%s%s%s", __FUNCTION__,
+		m_sinkHdrEotfs & EDID_EOTF_SDR ? " SDR" : "", m_sinkHdrEotfs & EDID_EOTF_HDR ? " HDR" : "",
+		m_sinkHdrEotfs & EDID_EOTF_PQ ? " PQ" : "", m_sinkHdrEotfs & EDID_EOTF_HLG ? " HLG" : "");
 }
 
 /**

@@ -1127,12 +1127,12 @@ void cOutputDevice::SetDecoderFallbackToSw(bool enable)
 }
 
 /**
- * Enable HDR display mode
-*/
-void cOutputDevice::SetEnableHdr(bool enable)
+ * Set the HDR output mode (::HdrMode)
+ */
+void cOutputDevice::SetHdrMode(int mode)
 {
-    m_pRender->SetEnableHdr(enable);
-};
+	m_pRender->SetHdrMode(mode);
+}
 
 /**
  * Get the zoom-in factor of the active zoom level
