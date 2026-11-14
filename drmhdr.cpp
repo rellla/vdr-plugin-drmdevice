@@ -88,7 +88,7 @@ int cHdrMetadata::Eotf(int colorTrc)
  * @param[in]  sd2              content light metadata from ffmpeg frame's sidedata
  *
  * @retval 0    on success
- * @retval -1   on error
+ * @retval -1   on error or if nothing changed
  */
 int cHdrMetadata::Build(struct hdr_output_metadata *data, int colorPrimaries, int colorTrc, AVFrameSideData *sd1, AVFrameSideData *sd2)
 {
@@ -99,29 +99,37 @@ int cHdrMetadata::Build(struct hdr_output_metadata *data, int colorPrimaries, in
 	if (colorTrc == AVCOL_TRC_BT2020_10)
 		colorTrc = AVCOL_TRC_ARIB_STD_B67;
 
-	if (m_colorPrimaries == colorPrimaries && m_colorTrc == colorTrc && !sd1 && !sd2)
-		return -1;
-
-	AVMasteringDisplayMetadata *mdMetadata = nullptr;
-	if (sd1)
-		mdMetadata = reinterpret_cast<AVMasteringDisplayMetadata *>(sd1->data);
-
-	AVContentLightMetadata *clMetadata = nullptr;
-	if (sd2)
-		clMetadata = reinterpret_cast<AVContentLightMetadata *>(sd2->data);
-
-	if (mdMetadata && !memcmp(mdMetadata, &m_mdMetadata, sizeof(m_mdMetadata))) {
-		if (clMetadata && !memcmp(clMetadata, &m_clMetadata, sizeof(m_clMetadata))) {
-			return -1;
-		}
-	} else if (clMetadata && !memcmp(clMetadata, &m_clMetadata, sizeof(m_clMetadata))) {
-		return -1;
+	// The side data is only attached to some frames, the frames between keep the
+	// metadata. The stored metadata belongs to the previous video, if the format changed.
+	bool changed = m_colorPrimaries != colorPrimaries || m_colorTrc != colorTrc;
+	if (changed) {
+		m_hasMdMetadata = false;
+		m_hasClMetadata = false;
 	}
 
-	if (clMetadata)
-		memcpy(&m_clMetadata, clMetadata, sizeof(m_clMetadata));
-	if (mdMetadata)
-		memcpy(&m_mdMetadata, mdMetadata, sizeof(m_mdMetadata));
+	if (sd1) {
+		const AVMasteringDisplayMetadata *md = reinterpret_cast<AVMasteringDisplayMetadata *>(sd1->data);
+		if (!m_hasMdMetadata || memcmp(md, &m_mdMetadata, sizeof(m_mdMetadata))) {
+			memcpy(&m_mdMetadata, md, sizeof(m_mdMetadata));
+			m_hasMdMetadata = true;
+			changed = true;
+		}
+	}
+
+	if (sd2) {
+		const AVContentLightMetadata *cl = reinterpret_cast<AVContentLightMetadata *>(sd2->data);
+		if (!m_hasClMetadata || memcmp(cl, &m_clMetadata, sizeof(m_clMetadata))) {
+			memcpy(&m_clMetadata, cl, sizeof(m_clMetadata));
+			m_hasClMetadata = true;
+			changed = true;
+		}
+	}
+
+	if (!changed)
+		return -1;
+
+	const AVMasteringDisplayMetadata *mdMetadata = m_hasMdMetadata ? &m_mdMetadata : nullptr;
+	const AVContentLightMetadata *clMetadata = m_hasClMetadata ? &m_clMetadata : nullptr;
 
 	LOGDEBUG2(L_DRM, "HDR %s: Update HDR to TRC %d color %d", __FUNCTION__, colorTrc, colorPrimaries);
 
