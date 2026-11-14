@@ -143,6 +143,8 @@ bool cAudioDecoder::Open(AVCodecID codecId, AVCodecParameters *par, AVRational t
 	m_currentHwNumChannels = 0;
 	m_currentPassthroughMask = 0;
 	m_currentPassthrough = false;
+	m_currentEncode = false;
+	m_encodeFailed = false;
 	m_currentDtshdRate = 0;
 	m_passthroughFailed = false;
 	m_dtshdFailed = false;
@@ -184,6 +186,7 @@ void cAudioDecoder::CloseCodec(void)
 		return;
 
 	m_spdif.Close();
+	m_ac3Encoder.Close();
 
 	LOGDEBUG2(L_CODEC, "audiocodec: %s", __FUNCTION__);
 
@@ -220,12 +223,16 @@ bool cAudioDecoder::ShouldTryPassthrough(void)
 /**
  * Handle audio format changes and setup audio, if format changed
  *
+ * @param passthrough   true, if the audio is passed through
+ * @param encode        true, if the audio is encoded to AC-3 and passed through
+ *
  * @retval 0     if new audio was correctly set up,
  *               otherwise return value of cAudioStream::Setup()
  */
-int cAudioDecoder::CheckUpdateFormat(bool passthrough)
+int cAudioDecoder::CheckUpdateFormat(bool passthrough, bool encode)
 {
 	if (m_currentPassthrough     == passthrough &&
+	    m_currentEncode          == encode &&
 	    m_currentPassthroughMask == m_passthroughMask &&
 	    m_currentNumChannels     == m_currentHwNumChannels &&
 	    m_currentSampleRate      == m_currentHwSampleRate)
@@ -239,8 +246,9 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 		// The bitstream is sent with the sample rate of the stream. It is only known
 		// from the codec parameters (mediaplayer), the PES data isn't decoded.
 		// The DTS-HD profile is also only known from the codec parameters.
-		bool dtshd = (m_passthroughMask & CODEC_DTSHD) && !m_dtshdFailed;
-		sPassthroughFormat format = GetPassthroughFormat(m_pAudioCtx->codec_id, m_pAudioCtx->sample_rate, m_pAudioCtx->profile, dtshd);
+		bool dtshd = (m_passthroughMask & CODEC_DTSHD) && !m_dtshdFailed && !encode;
+		AVCodecID codecId = encode ? AV_CODEC_ID_AC3 : m_pAudioCtx->codec_id;
+		sPassthroughFormat format = GetPassthroughFormat(codecId, m_pAudioCtx->sample_rate, m_pAudioCtx->profile, dtshd);
 		m_currentHwSampleRate = format.sampleRate;
 		m_currentHwNumChannels = format.channels;
 		m_currentDtshdRate = format.dtshdRate;
@@ -260,8 +268,9 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
 	m_currentNumChannels = m_currentHwNumChannels;
 	m_currentPassthroughMask = m_passthroughMask;
 	m_currentPassthrough = passthrough;
+	m_currentEncode = encode;
 
-	UpdateStreamInfo(passthrough, m_currentHwSampleRate, m_currentHwNumChannels);
+	UpdateStreamInfo(passthrough, m_currentHwSampleRate, m_currentHwNumChannels, encode);
 
 	// audio was newly set up (err == 0)
 	if (!err)
@@ -278,8 +287,9 @@ int cAudioDecoder::CheckUpdateFormat(bool passthrough)
  * @param passthrough        true, if the stream is passed through
  * @param outputSampleRate   sample rate of the audio device
  * @param outputChannels     channels of the audio device
+ * @param encoded            true, if the stream is encoded to AC-3
  */
-void cAudioDecoder::UpdateStreamInfo(bool passthrough, int outputSampleRate, int outputChannels)
+void cAudioDecoder::UpdateStreamInfo(bool passthrough, int outputSampleRate, int outputChannels, bool encoded)
 {
 	const char *codec = avcodec_get_name(m_pAudioCtx->codec_id);
 	const char *profile = avcodec_profile_name(m_pAudioCtx->codec_id, m_pAudioCtx->profile);
@@ -289,6 +299,7 @@ void cAudioDecoder::UpdateStreamInfo(bool passthrough, int outputSampleRate, int
 	    m_streamInfo.sampleRate == m_pAudioCtx->sample_rate &&
 	    m_streamInfo.channels == m_pAudioCtx->ch_layout.nb_channels &&
 	    m_streamInfo.passthrough == passthrough &&
+	    m_streamInfo.encoded == encoded &&
 	    m_streamInfo.outputSampleRate == outputSampleRate &&
 	    m_streamInfo.outputChannels == outputChannels &&
 	    m_streamInfo.device == m_pAudio->GetDeviceName())
@@ -299,6 +310,7 @@ void cAudioDecoder::UpdateStreamInfo(bool passthrough, int outputSampleRate, int
 	m_streamInfo.sampleRate = m_pAudioCtx->sample_rate;
 	m_streamInfo.channels = m_pAudioCtx->ch_layout.nb_channels;
 	m_streamInfo.passthrough = passthrough;
+	m_streamInfo.encoded = encoded;
 	m_streamInfo.outputSampleRate = outputSampleRate;
 	m_streamInfo.outputChannels = outputChannels;
 	m_streamInfo.device = m_pAudio->GetDeviceName();
@@ -414,6 +426,11 @@ void cAudioDecoder::DecodePCM(const AVPacket *avpkt)
 				m_lastPts = frame->pts;
 			}
 
+			if (ShouldEncode(frame) && EncodeAc3(frame)) {
+				av_frame_unref(frame);
+				continue;
+			}
+
 			if (CheckUpdateFormat(false)) {
 				LOGERROR("audiocodec: %s: unsupported format!", __FUNCTION__);
 				av_frame_unref(frame);
@@ -432,6 +449,69 @@ void cAudioDecoder::DecodePCM(const AVPacket *avpkt)
 }
 
 /**
+ * Check, if a decoded frame is encoded to AC-3
+ *
+ * Multichannel audio is encoded, if it is enabled in the setup and the receiver
+ * takes AC-3 (AC-3 is passed through). It is only called for audio, which isn't
+ * passed through (passthrough of the codec disabled or failed).
+ *
+ * @param frame     decoded frame
+ */
+bool cAudioDecoder::ShouldEncode(const AVFrame *frame)
+{
+	return m_pAudio->Config()->ConfigAudioAc3Encode && !m_encodeFailed &&
+	       (m_passthroughMask & CODEC_AC3) && frame->ch_layout.nb_channels > 2;
+}
+
+/**
+ * Encode a decoded frame to AC-3 and pass it through
+ *
+ * If the encoder or the audio device can't be set up, the audio is played as
+ * PCM until the next codec change.
+ *
+ * @param frame     decoded frame
+ *
+ * @return true, if the frame was encoded, false, if it must be played as PCM
+ */
+bool cAudioDecoder::EncodeAc3(const AVFrame *frame)
+{
+	if (!m_ac3Encoder.IsOpen() || m_ac3Encoder.GetSampleRate() != frame->sample_rate) {
+		if (!m_ac3Encoder.Open(frame->sample_rate, m_pAudioCtx->pkt_timebase)) {
+			LOGWARNING("audiocodec: %s: can't encode %s to AC-3, play it as PCM until the next codec change", __FUNCTION__, avcodec_get_name(m_pAudioCtx->codec_id));
+			m_encodeFailed = true;
+			return false;
+		}
+	}
+
+	if (CheckUpdateFormat(true, true)) {
+		LOGWARNING("audiocodec: %s: passthrough of the encoded AC-3 is not possible, play %s as PCM until the next codec change", __FUNCTION__, avcodec_get_name(m_pAudioCtx->codec_id));
+		m_encodeFailed = true;
+		m_ac3Encoder.Close();
+		m_spdif.Close();
+		return false;
+	}
+
+	if (!m_spdif.IsOpen() && !m_spdif.Open(AV_CODEC_ID_AC3, m_currentHwSampleRate)) {
+		LOGERROR("audiocodec: %s: failed to open spdif muxer for AC-3 @ %dHz!", __FUNCTION__, m_currentHwSampleRate);
+		return true;
+	}
+
+	m_pAudio->SetTimebase(m_pAudioCtx->pkt_timebase);
+
+	bool ok = m_ac3Encoder.Encode(frame, [this](const AVPacket *pkt) {
+		int64_t pts = AV_NOPTS_VALUE;
+		const auto &burst = m_spdif.Mux(pkt, &pts);
+		if (!burst.empty())
+			m_pAudio->EnqueueSpdif(reinterpret_cast<const uint16_t *>(burst.data()), burst.size(), pts);
+	});
+
+	if (!ok)
+		LOGERROR("audiocodec: %s: encoding failed", __FUNCTION__);
+
+	return true;
+}
+
+/**
  * Flush the audio decoder buffers
  *
  * Also resets the last PTS and Codec ID
@@ -446,6 +526,7 @@ void cAudioDecoder::FlushBuffers(void)
 
 	// the muxer may hold data of a burst, which isn't complete yet (e.g. TrueHD)
 	m_spdif.Close();
+	m_ac3Encoder.Flush();
 
 	m_lastPts = AV_NOPTS_VALUE;
 	m_codecId = AV_CODEC_ID_NONE;
@@ -462,13 +543,14 @@ void cAudioDecoder::RetryPassthrough(void)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	if (m_passthroughFailed || m_dtshdFailed)
+	if (m_passthroughFailed || m_dtshdFailed || m_encodeFailed)
 		LOGDEBUG2(L_SOUND, "audiocodec: %s: try the passthrough again", __FUNCTION__);
 
 	m_passthroughMask = m_pAudio->GetPassthroughMask() & CODEC_PASSTHROUGH_ALL;
 
 	m_passthroughFailed = false;
 	m_dtshdFailed = false;
+	m_encodeFailed = false;
 }
 
 /**

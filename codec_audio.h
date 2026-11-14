@@ -25,6 +25,7 @@ extern "C" {
 
 #include <vdr/remux.h>
 
+#include "ac3encoder.h"
 #include "config.h"
 #include "spdif.h"
 
@@ -93,6 +94,8 @@ private:
 	int m_currentHwSampleRate = 0;              ///< current hw sample rate
 	int m_currentHwNumChannels = 0;             ///< current number of hw channels
 	bool m_currentPassthrough = false;          ///< true, if the audio is currently set up for passthrough
+	bool m_currentEncode = false;               ///< true, if the audio is currently encoded to AC-3
+	bool m_encodeFailed = false;                ///< true, if the AC-3 encoding of the current codec failed (play PCM instead)
 	std::atomic<bool> m_passthroughFailed = false; ///< true, if the passthrough of the current codec failed (decode it instead)
 	std::atomic<bool> m_dtshdFailed = false;    ///< true, if the DTS-HD passthrough failed (pass the DTS core through instead)
 	int m_currentDtshdRate = 0;                 ///< rate of the current DTS-HD bitstream (0: no DTS-HD)
@@ -100,14 +103,17 @@ private:
 	std::mutex m_mutex;                         ///< decoder mutex
 
 	cSpdifMuxer m_spdif;                        ///< spdif muxer
+	cAc3Encoder m_ac3Encoder;                   ///< AC-3 encoder for multichannel audio
 
 
 	void CloseCodec(void);
 	bool ShouldTryPassthrough(void);
 	int Passthrough(const AVPacket *);
 	void DecodePCM(const AVPacket *);
-	int CheckUpdateFormat(bool);
-	void UpdateStreamInfo(bool, int, int);
+	int CheckUpdateFormat(bool, bool = false);
+	void UpdateStreamInfo(bool, int, int, bool = false);
+	bool ShouldEncode(const AVFrame *);
+	bool EncodeAc3(const AVFrame *);
 };
 
 #endif

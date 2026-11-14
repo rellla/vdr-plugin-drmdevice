@@ -41,6 +41,7 @@ runs:
           libavfilter-dev \
           libavformat-dev \
           libavutil-dev \
+          libswresample-dev \
           libswscale-dev \
           libasound2-dev \
           libdrm-dev \

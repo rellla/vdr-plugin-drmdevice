@@ -17,6 +17,8 @@ Features
 - Audio decoding with alsa (PCM)
 - Audio passthrough support (AC3, E-AC3, DTS, TrueHD, DTS-HD), optionally
   with the formats reported by the HDMI sink
+- AC-3 encoding of multichannel audio for receivers, which only decode AC-3
+  (optional)
 - UHD support
 - HDR display support
 - Auto-switch display mode to video source (optional)
@@ -154,7 +156,7 @@ directory of the VDR source with its vdr.pc):
 	make install
 
 The build needs the development files of alsa, libavcodec, libavfilter, libavformat,
-libavutil, libswscale and libdrm (found with pkg-config). The OpenGL/ES OSD additionally
+libavutil, libswresample, libswscale and libdrm (found with pkg-config). The OpenGL/ES OSD additionally
 needs gles2, egl, gbm, freetype2 and glm. It is built automatically, if gles2, egl and gbm
 are found, "GLES=0 make" builds without it (see OpenGL/ES).
 
@@ -286,6 +288,15 @@ The values are grouped like the sections of the setup menu.
 		(HDMI), DTS-HD High Resolution Audio needs 192kHz. DTS-HD is only
 		recognized by the mediaplayer, otherwise (and if the device doesn't
 		offer the format) only the DTS core is passed through with DTS enabled.
+
+	drmdevice.AudioAc3Encode = 0
+		0 = off, 1 = encode multichannel audio to AC-3 and pass it through
+		Decoded audio with more than 2 channels (e.g. AAC, E-AC-3 or DTS, which
+		isn't passed through) is encoded to AC-3 5.1 with 640 kbit/s, if AC-3
+		is passed through (enabled or reported by the HDMI sink). This is for
+		receivers, which only decode AC-3 (e.g. via S/PDIF or the ARC of a TV).
+		The volume and the audio filters (equalizer, normalize, compression)
+		aren't applied to the encoded audio. FFmpeg needs the AC-3 encoder.
 
 	drmdevice.AudioDisableAutoAES = 0
 		0 = default: append the AES parameters (IEC 60958 channel status) to

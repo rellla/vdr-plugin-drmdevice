@@ -60,6 +60,7 @@ struct sAudioStreamInfo {
 	int sampleRate = 0;                 ///< sample rate of the stream (0, if unknown)
 	int channels = 0;                   ///< channels of the stream (0, if unknown)
 	bool passthrough = false;           ///< true, if the stream is passed through
+	bool encoded = false;               ///< true, if the stream is encoded to AC-3 (and passed through)
 	int outputSampleRate = 0;           ///< sample rate of the audio device
 	int outputChannels = 0;             ///< channels of the audio device
 	std::string device;                 ///< opened audio device
@@ -134,6 +135,7 @@ public:
 	int ConfigAudioDisableAutoAES = 0;          ///< don't append the AES parameters to the passthrough device
 	int ConfigVideoAudioDelayMs = 0;            ///< config audio delay
 	int ConfigPassthroughDelayMs = 0;           ///< config additional audio delay for passthrough
+	bool ConfigAudioAc3Encode = false;          ///< encode multichannel audio to AC-3
 	bool ConfigAudioNormalize = false;          ///< config use normalize volume
 	int ConfigAudioMaxNormalize = 0;            ///< config max normalize factor
 	bool ConfigAudioCompression = false;        ///< config use volume compression

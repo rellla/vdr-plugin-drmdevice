@@ -241,6 +241,8 @@ void cDeviceSetupMenu::AddStatistics(void)
 		sAudioStreamInfo audio = m_pConfig->GetAudioStreamInfo();
 		if (audio.codec.empty())
 			return cString(tr("Audio output: none"));
+		if (audio.encoded)
+			return cString::sprintf(tr("Audio output: encoded to AC-3, %d Hz, %d channels"), audio.outputSampleRate, audio.outputChannels);
 		return cString::sprintf(audio.passthrough ? tr("Audio output: passthrough, %d Hz, %d channels") : tr("Audio output: PCM, %d Hz, %d channels"),
 			audio.outputSampleRate, audio.outputChannels);
 	});
@@ -322,8 +324,10 @@ void cDeviceSetupMenu::Create(int current)
 			Add(new cMenuEditBoolItem(tr(" DTS-HD passthrough"), &m_cAudioPassthroughDTSHD, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr(" TrueHD passthrough"), &m_cAudioPassthroughTrueHD, trVDR("no"), trVDR("yes")));
 		}
-		if (m_cAudioPassthroughMode != PASSTHROUGH_OFF)
+		if (m_cAudioPassthroughMode != PASSTHROUGH_OFF) {
+			Add(new cMenuEditBoolItem(tr(" Encode multichannel audio to AC-3"), &m_cAudioAc3Encode, trVDR("no"), trVDR("yes")));
 			Add(new cMenuEditBoolItem(tr(" Disable automatic AES"), &m_cAudioDisableAutoAES, trVDR("no"), trVDR("yes")));
+		}
 		Add(new cMenuEditIntItem(tr("Audio/Video delay (ms)"), &m_cAudioDelay, -1000, 1000));
 		if (m_cAudioPassthroughMode != PASSTHROUGH_OFF)
 			Add(new cMenuEditIntItem(tr(" Additional passthrough delay (ms)"), &m_cAudioPassthroughDelay, -1000, 1000));
@@ -588,6 +592,7 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cAudioDisableAutoAES     = m_pConfig->ConfigAudioDisableAutoAES;
 	m_cAudioDelay              = m_pConfig->ConfigVideoAudioDelayMs;
 	m_cAudioPassthroughDelay   = m_pConfig->ConfigPassthroughDelayMs;
+	m_cAudioAc3Encode          = m_pConfig->ConfigAudioAc3Encode;
 	m_cAudioNormalize          = m_pConfig->ConfigAudioNormalize;
 	m_cAudioMaxNormalize       = m_pConfig->ConfigAudioMaxNormalize;
 	m_cAudioCompression        = m_pConfig->ConfigAudioCompression;
@@ -809,6 +814,7 @@ void cDeviceSetupMenu::Store(void)
 	bool autoAesChanged = StoreChanged("AudioDisableAutoAES", m_pConfig->ConfigAudioDisableAutoAES, m_cAudioDisableAutoAES);
 	StoreChanged("AudioDelay", m_pConfig->ConfigVideoAudioDelayMs, m_cAudioDelay);
 	StoreChanged("AudioPassthroughDelay", m_pConfig->ConfigPassthroughDelayMs, m_cAudioPassthroughDelay);
+	StoreChanged("AudioAc3Encode", m_pConfig->ConfigAudioAc3Encode, m_cAudioAc3Encode);
 	bool normalizeChanged = StoreChanged("AudioNormalize", m_pConfig->ConfigAudioNormalize, m_cAudioNormalize);
 	normalizeChanged |= StoreChanged("AudioMaxNormalize", m_pConfig->ConfigAudioMaxNormalize, m_cAudioMaxNormalize);
 	bool compressionChanged = StoreChanged("AudioCompression", m_pConfig->ConfigAudioCompression, m_cAudioCompression);
