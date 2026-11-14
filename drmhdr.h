@@ -124,6 +124,7 @@ public:
 	/** Create the HDR metadata handler for the given renderer */
 	cHdrMetadata(cVideoRender *render) : m_pRender(render) { };
 	int Build(struct hdr_output_metadata *,int, int, AVFrameSideData *, AVFrameSideData *);
+	static int Eotf(int);
 	int GetColorPrimaries(void) { return m_colorPrimaries; } ///< get the saved color primaries
 	int GetColorTrc(void) { return m_colorTrc; }             ///< get the saved transfer characteristics
 

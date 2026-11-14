@@ -43,6 +43,7 @@ TEST_SOURCES = $(sort $(wildcard test_*.cpp))
 SOURCES_UNDER_TEST = \
 	audioprocessor.cpp \
 	config.cpp \
+	edid.cpp \
 	filllevel.cpp \
 	framesampler.cpp \
 	h264parser.cpp \

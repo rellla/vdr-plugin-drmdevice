@@ -89,6 +89,17 @@ enum ChannelSwitchMode {
 };
 
 /**
+ * Modes of the HDR output
+ *
+ * @ingroup device
+ */
+enum HdrMode {
+	HDR_OFF,
+	HDR_ON,
+	HDR_AUTO,  ///< only, if the sink reports the EOTF of the video in its EDID
+};
+
+/**
  * Modes to drop damaged video
  *
  * @ingroup device
@@ -119,7 +130,7 @@ public:
 	bool ConfigHideMainMenuEntry = false;       ///< config hide main menu entry
 
 	// Video
-	int ConfigVideoEnableHDR = 0;               ///< enable HDR
+	int ConfigVideoEnableHDR = HDR_AUTO;                      ///< HDR output (::HdrMode)
 	int ConfigVideoDisplayMode = CONFIG_DISPLAY_MODE_DEFAULT; ///< display mode (enum ConfigDisplayModes)
 	int ConfigVideoChannelSwitchMode = CHANNEL_SWITCH_AVSYNC; ///< channel switch mode (enum ChannelSwitchMode)
 	/** zoom-in factor of the zoom levels in 1/10 % (0 = level disabled): +34.4% fills 2.39:1, +12.5% fills 2.00:1 on 16:9 */

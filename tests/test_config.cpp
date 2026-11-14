@@ -88,6 +88,16 @@ TEST_CASE("cDeviceConfig - Passthrough delay", "[config]") {
 	REQUIRE(config.ConfigPassthroughDelayMs == 1000);
 }
 
+TEST_CASE("cDeviceConfig - HDR mode", "[config]") {
+	cDeviceConfig config;
+
+	REQUIRE(config.ConfigVideoEnableHDR == HDR_AUTO);
+	REQUIRE(config.SetupParse("VideoEnableHDR", "1"));
+	REQUIRE(config.ConfigVideoEnableHDR == HDR_ON);
+	REQUIRE(config.SetupParse("VideoEnableHDR", "7"));
+	REQUIRE(config.ConfigVideoEnableHDR == HDR_AUTO);
+}
+
 TEST_CASE("cDeviceConfig - Automatic AES", "[config]") {
 	cDeviceConfig config;
 

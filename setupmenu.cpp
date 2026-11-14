@@ -301,7 +301,7 @@ void cDeviceSetupMenu::Create(int current)
 	// Video
 	//
 	if (m_section == SECTION_VIDEO) {
-		Add(new cMenuEditBoolItem(tr("Enable HDR"), &m_cVideoEnableHDR, trVDR("no"), trVDR("yes")));
+		Add(new cMenuEditStraItem(tr("Enable HDR"), &m_cVideoEnableHDR, 3, m_hdrModes));
 		Add(new cMenuEditStraItem(tr("Display mode"), &m_cVideoDisplayMode, m_displayModePtrs.size(), m_displayModePtrs.data()));
 		Add(new cMenuEditStraItem(tr("Enable fast channel switch"), &m_cVideoChannelSwitchMode, m_channelSwitchModePtrs.size(), m_channelSwitchModePtrs.data()));
 		for (int i = 0; i < cDeviceConfig::ZOOM_LEVELS; i++)
@@ -544,6 +544,9 @@ cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	m_passthroughModes[PASSTHROUGH_MANUAL] = tr("manual");
 	m_passthroughModes[PASSTHROUGH_AUTO] = tr("automatic");
 
+	m_hdrModes[HDR_OFF] = trVDR("no");
+	m_hdrModes[HDR_ON] = trVDR("yes");
+	m_hdrModes[HDR_AUTO] = tr("automatic");
 	m_dropDamagedVideoModes[DROP_DAMAGED_VIDEO_OFF] = trVDR("no");
 	m_dropDamagedVideoModes[DROP_DAMAGED_VIDEO_ON] = trVDR("yes");
 	m_dropDamagedVideoModes[DROP_DAMAGED_VIDEO_AUTO] = tr("automatic");
@@ -904,7 +907,7 @@ void cDeviceSetupMenu::Store(void)
 		return;
 
 	if (hdrChanged)
-		m_pDevice->SetEnableHdr(m_pConfig->ConfigVideoEnableHDR);
+		m_pDevice->SetHdrMode(m_pConfig->ConfigVideoEnableHDR);
 
 	// the audio stream is recreated on an attach, so don't store its pointer in the menu
 	cAudioStream *audio = m_pDevice->Audio();

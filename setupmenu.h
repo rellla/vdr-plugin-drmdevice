@@ -144,6 +144,7 @@ private:
 	std::vector<std::string> m_displayMode;            ///< texts of the display mode selection
 	std::vector<const char *> m_displayModePtrs;       ///< pointers to m_displayMode for cMenuEditStraItem
 	const char *m_passthroughModes[3];                 ///< texts of the passthrough mode selection
+	const char *m_hdrModes[3];                         ///< texts of the HDR mode selection
 	const char *m_dropDamagedVideoModes[3];            ///< texts of the drop damaged video selection
 	std::vector<std::string> m_channelSwitchMode;      ///< texts of the channel switch mode selection
 	std::vector<const char *> m_channelSwitchModePtrs; ///< pointers to m_channelSwitchMode for cMenuEditStraItem

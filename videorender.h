@@ -233,7 +233,8 @@ public:
 	// DRM
 	int DrmHandleEvent(void);
 	bool CanHandleHdr(void);
-	void SetEnableHdr(bool enable) { m_enableHdr = enable; }  ///< enable/disable HDR output
+	bool UseHdr(int *);
+	void SetHdrMode(int mode) { m_hdrMode = mode; }           ///< set the HDR output mode (::HdrMode)
 
 	// Frame and buffer
 	bool DisplayFrame();
@@ -368,7 +369,7 @@ private:
 
 	cHdrMetadata m_pHdrMetadata;                             ///< hdr metadata object
 	bool m_hasDoneHdrModeset = false;                        ///< true, if we ever created an hdr blob and did a modesetting
-	std::atomic<bool> m_enableHdr = false;                   ///< hdr is enabled
+	std::atomic<int> m_hdrMode;                              ///< HDR output mode (::HdrMode)
 	drmColorRange m_originalColorRange = COLORRANGE_LIMITED; ///< initial color range
 	bool m_colorRangeStored = false;                         ///< true, if the original color range was stored
 

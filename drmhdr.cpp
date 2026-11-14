@@ -56,6 +56,29 @@ static inline uint16_t EncodeXYY(float xyy)
 }
 
 /**
+ * Get the EOTF of the HDR output metadata for the transfer characteristics
+ *
+ * @param colorTrc      transfer characteristics (AVColorTransferCharacteristic)
+ *
+ * @return the EOTF (::hdrMetadataEotf), its bit in the EDID is 1 << EOTF (::EdidEotf)
+ */
+int cHdrMetadata::Eotf(int colorTrc)
+{
+	switch (colorTrc) {
+		case AVCOL_TRC_BT2020_10:    // 14
+		case AVCOL_TRC_BT2020_12:
+		case AVCOL_TRC_ARIB_STD_B67: // 18 HLG
+			return EOTF_HLG;
+		case AVCOL_TRC_SMPTE2084:    // 16
+			return EOTF_ST2084;
+		case AVCOL_TRC_BT709:        // 1
+		case AVCOL_TRC_UNSPECIFIED:  // 2
+		default:
+			return EOTF_TRADITIONAL_GAMMA_SDR;
+	}
+}
+
+/**
  * Build an HDR static metadata blob
  *
  * @param[out] data             blob data
@@ -105,22 +128,7 @@ int cHdrMetadata::Build(struct hdr_output_metadata *data, int colorPrimaries, in
 	m_colorPrimaries = colorPrimaries;
 	m_colorTrc = colorTrc;
 
-	enum hdrMetadataEotf eotf;
-	switch (colorTrc) {
-		case AVCOL_TRC_BT2020_10:    // 14
-		case AVCOL_TRC_BT2020_12:
-		case AVCOL_TRC_ARIB_STD_B67: // 18 HLG
-			eotf = EOTF_HLG;
-			break;
-		case AVCOL_TRC_SMPTE2084:    // 16
-			eotf = EOTF_ST2084;
-			break;
-		case AVCOL_TRC_BT709:        // 1
-		case AVCOL_TRC_UNSPECIFIED:  // 2
-		default:
-			eotf = EOTF_TRADITIONAL_GAMMA_SDR;
-			break;
-	}
+	int eotf = Eotf(colorTrc);
 
 	struct colorspace *cs;
 	switch (colorPrimaries) {

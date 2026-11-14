@@ -209,8 +209,11 @@ The values are grouped like the sections of the setup menu.
 
 ### Video
 
-	drmdevice.VideoEnableHDR = 0
-		0 = disable HDR, 1 = enable HDR
+	drmdevice.VideoEnableHDR = 2
+		0 = disable HDR, 1 = enable HDR,
+		2 = automatic: the HDR output metadata is only sent, if the TV reports HDR in
+		    its EDID, a video with a transfer function (PQ or HLG), which the TV
+		    doesn't report, is output as SDR
 
 	drmdevice.VideoDisplayMode = 0
 		0  = use the display mode, which was either set by command line or autodetected at plugin start
