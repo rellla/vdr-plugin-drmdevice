@@ -294,6 +294,10 @@ int cVideoRender::SetVideoBuffer(cDrmBuffer *buf)
 				SetHdrBlob(hdrData);
 				SetColorSpace(COLORRANGE_LIMITED);
 			}
+		} else if (m_hasDoneHdrModeset) {
+			// HDR was switched off (or the sink doesn't report it anymore)
+			RestoreColorSpace();
+			m_pHdrMetadata.Reset();
 		}
 		m_pConfig->StatHdrActive = m_pHdrMetadata.IsHdr();   // for the statistics
 	}
