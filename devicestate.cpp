@@ -405,7 +405,7 @@ void cOutputDevice::ResumeFromPause(void)
 			m_pAudio->SetPaused(false);
 			break;
 		case AUDIO_AND_VIDEO:
-			audioBehindVideoByMs = m_pRender->GetOutputPtsMs() - m_pAudio->GetOutputPtsMs() - m_pConfig->ConfigVideoAudioDelayMs;
+			audioBehindVideoByMs = m_pRender->GetOutputPtsMs() - m_pAudio->GetOutputPtsMs() - GetVideoAudioDelayMs();
 			m_pAudio->SetHwDelayBaseline();
 			if (audioBehindVideoByMs > 0) {
 				m_pAudio->DropSamplesOlderThanPtsMs(m_pAudio->GetOutputPtsMs() + audioBehindVideoByMs);
@@ -433,7 +433,7 @@ void cOutputDevice::ResumeFromPause(void)
 void cOutputDevice::PausePlayback(bool schedulePause)
 {
 	if (schedulePause && m_playbackMode == AUDIO_AND_VIDEO)
-		m_pRender->ScheduleVideoPlaybackPauseAt(m_pAudio->GetOutputPtsMs() - m_pConfig->ConfigVideoAudioDelayMs);
+		m_pRender->ScheduleVideoPlaybackPauseAt(m_pAudio->GetOutputPtsMs() - GetVideoAudioDelayMs());
 	else
 		m_pRender->SetPlaybackPaused(true);
 

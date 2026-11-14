@@ -133,6 +133,7 @@ public:
 	bool ConfigAudioPassthroughAuto = false;    ///< pass the codecs through, which the sink reports in its ELD
 	int ConfigAudioDisableAutoAES = 0;          ///< don't append the AES parameters to the passthrough device
 	int ConfigVideoAudioDelayMs = 0;            ///< config audio delay
+	int ConfigPassthroughDelayMs = 0;           ///< config additional audio delay for passthrough
 	bool ConfigAudioNormalize = false;          ///< config use normalize volume
 	int ConfigAudioMaxNormalize = 0;            ///< config max normalize factor
 	bool ConfigAudioCompression = false;        ///< config use volume compression

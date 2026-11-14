@@ -56,6 +56,7 @@ bool cDeviceConfig::SetupParse(const char *name, const char *value)
 	// replaced by AudioDisableAutoAES: the automatic AES is enabled by default now, the stored default (0) is ignored
 	} else if (!strcasecmp(name, "AudioAutoAES"))          {
 	} else if (!strcasecmp(name, "AudioDelay"))            { ConfigVideoAudioDelayMs = atoi(value);
+	} else if (!strcasecmp(name, "AudioPassthroughDelay")) { ConfigPassthroughDelayMs = std::clamp(atoi(value), -1000, 1000);
 	} else if (!strcasecmp(name, "AudioNormalize"))        { ConfigAudioNormalize = atoi(value);
 	} else if (!strcasecmp(name, "AudioMaxNormalize"))     { ConfigAudioMaxNormalize = atoi(value);
 	} else if (!strcasecmp(name, "AudioCompression"))      { ConfigAudioCompression = atoi(value);

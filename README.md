@@ -299,6 +299,11 @@ The values are grouped like the sections of the setup menu.
 		-1000 - 1000 ms
 		+n delays the audio, -n delays the video
 
+	drmdevice.AudioPassthroughDelay = 0
+		-1000 - 1000 ms
+		added to AudioDelay, while the audio is passed through
+		(a receiver often needs more time to decode the passed through audio)
+
 	drmdevice.AudioNormalize = 0
 		0 = off, 1 = enable audio normalize
 

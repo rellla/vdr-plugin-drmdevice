@@ -68,6 +68,7 @@ protected:
 	int m_cAudioPassthroughDTSHD;
 	int m_cAudioDisableAutoAES;
 	int m_cAudioDelay;
+	int m_cAudioPassthroughDelay;
 	int m_cAudioNormalize;
 	int m_cAudioMaxNormalize;
 	int m_cAudioCompression;

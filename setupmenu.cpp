@@ -325,6 +325,8 @@ void cDeviceSetupMenu::Create(int current)
 		if (m_cAudioPassthroughMode != PASSTHROUGH_OFF)
 			Add(new cMenuEditBoolItem(tr(" Disable automatic AES"), &m_cAudioDisableAutoAES, trVDR("no"), trVDR("yes")));
 		Add(new cMenuEditIntItem(tr("Audio/Video delay (ms)"), &m_cAudioDelay, -1000, 1000));
+		if (m_cAudioPassthroughMode != PASSTHROUGH_OFF)
+			Add(new cMenuEditIntItem(tr(" Additional passthrough delay (ms)"), &m_cAudioPassthroughDelay, -1000, 1000));
 		Add(new cMenuEditBoolItem(tr("Enable normalize volume"), &m_cAudioNormalize, trVDR("no"), trVDR("yes")));
 		if (m_cAudioNormalize)
 			Add(new cMenuEditIntItem(tr(" Max normalize factor (/1000)"), &m_cAudioMaxNormalize, 0, 10000));
@@ -584,6 +586,7 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cAudioPassthroughDTSHD   = m_pConfig->ConfigAudioPassthroughMask & CODEC_DTSHD;
 	m_cAudioDisableAutoAES     = m_pConfig->ConfigAudioDisableAutoAES;
 	m_cAudioDelay              = m_pConfig->ConfigVideoAudioDelayMs;
+	m_cAudioPassthroughDelay   = m_pConfig->ConfigPassthroughDelayMs;
 	m_cAudioNormalize          = m_pConfig->ConfigAudioNormalize;
 	m_cAudioMaxNormalize       = m_pConfig->ConfigAudioMaxNormalize;
 	m_cAudioCompression        = m_pConfig->ConfigAudioCompression;
@@ -803,6 +806,7 @@ void cDeviceSetupMenu::Store(void)
 	}
 	bool autoAesChanged = StoreChanged("AudioDisableAutoAES", m_pConfig->ConfigAudioDisableAutoAES, m_cAudioDisableAutoAES);
 	StoreChanged("AudioDelay", m_pConfig->ConfigVideoAudioDelayMs, m_cAudioDelay);
+	StoreChanged("AudioPassthroughDelay", m_pConfig->ConfigPassthroughDelayMs, m_cAudioPassthroughDelay);
 	bool normalizeChanged = StoreChanged("AudioNormalize", m_pConfig->ConfigAudioNormalize, m_cAudioNormalize);
 	normalizeChanged |= StoreChanged("AudioMaxNormalize", m_pConfig->ConfigAudioMaxNormalize, m_cAudioMaxNormalize);
 	bool compressionChanged = StoreChanged("AudioCompression", m_pConfig->ConfigAudioCompression, m_cAudioCompression);
