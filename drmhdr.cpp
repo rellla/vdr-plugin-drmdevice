@@ -89,6 +89,17 @@ bool cHdrMetadata::IsHdr(void) const
 }
 
 /**
+ * Forget the metadata, which was built last (e.g. after it was removed from the connector)
+ */
+void cHdrMetadata::Reset(void)
+{
+	m_colorPrimaries = -1;
+	m_colorTrc = -1;
+	m_hasMdMetadata = false;
+	m_hasClMetadata = false;
+}
+
+/**
  * Build an HDR static metadata blob
  *
  * @param[out] data             blob data
