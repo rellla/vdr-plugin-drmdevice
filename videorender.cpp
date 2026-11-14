@@ -280,7 +280,6 @@ int cVideoRender::SetVideoBuffer(cDrmBuffer *buf)
 	AVFrame *frame = buf->frame;
 
 	if (frame) {
-		bool hdr = false;
 		int colorTrc = frame->color_trc;
 		if (UseHdr(&colorTrc)) {
 			struct hdr_output_metadata hdrData;
@@ -294,10 +293,9 @@ int cVideoRender::SetVideoBuffer(cDrmBuffer *buf)
 			if (!m_pHdrMetadata.Build(&hdrData, frame->color_primaries, colorTrc, sd1, sd2)) {
 				SetHdrBlob(hdrData);
 				SetColorSpace(COLORRANGE_LIMITED);
-				hdr = true;
 			}
 		}
-		m_pConfig->StatHdrActive = hdr;                // for the statistics
+		m_pConfig->StatHdrActive = m_pHdrMetadata.IsHdr();   // for the statistics
 	}
 
 	// set display dimensions as default

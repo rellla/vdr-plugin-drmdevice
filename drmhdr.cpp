@@ -79,6 +79,16 @@ int cHdrMetadata::Eotf(int colorTrc)
 }
 
 /**
+ * Check, if the metadata, which was built last, signals HDR
+ *
+ * @return true, if the EOTF isn't SDR
+ */
+bool cHdrMetadata::IsHdr(void) const
+{
+	return m_colorTrc >= 0 && Eotf(m_colorTrc) != EOTF_TRADITIONAL_GAMMA_SDR;
+}
+
+/**
  * Build an HDR static metadata blob
  *
  * @param[out] data             blob data
