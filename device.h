@@ -194,7 +194,7 @@ public:
 	void SetScreenSize(int, int);
 
 	// Audio
-	int GetVideoAudioDelayMs(void) { return m_pConfig->ConfigVideoAudioDelayMs; }             ///< get the configured video/audio delay
+	int GetVideoAudioDelayMs(void);
 	int GetMinBufferFillLevelThresholdMs(void) { return MIN_BUFFER_FILL_LEVEL_THRESHOLD_MS; } ///< get the minimum buffer fill level to start playback
 	void SetPassthroughOn(bool);
 	bool IsPassthroughOn(void) const { return m_passthroughOn; }                              ///< true, if the passthrough is switched on

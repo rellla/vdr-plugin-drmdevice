@@ -78,6 +78,16 @@ TEST_CASE("cDeviceConfig - Passthrough of all codecs", "[config]") {
 	REQUIRE(config.ConfigAudioPassthroughState);
 }
 
+TEST_CASE("cDeviceConfig - Passthrough delay", "[config]") {
+	cDeviceConfig config;
+
+	REQUIRE(config.ConfigPassthroughDelayMs == 0);
+	REQUIRE(config.SetupParse("AudioPassthroughDelay", "-80"));
+	REQUIRE(config.ConfigPassthroughDelayMs == -80);
+	REQUIRE(config.SetupParse("AudioPassthroughDelay", "5000"));
+	REQUIRE(config.ConfigPassthroughDelayMs == 1000);
+}
+
 TEST_CASE("cDeviceConfig - Automatic AES", "[config]") {
 	cDeviceConfig config;
 

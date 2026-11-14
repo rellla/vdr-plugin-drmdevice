@@ -100,6 +100,7 @@ public:
 	void SetTimebase(AVRational timebase) { m_timebase = timebase; }           ///< set the timebase of the pts values
 	void SetDownmix(int downMix) { m_alsa.SetDownmix(downMix); }               ///< downmix to stereo
 	int GetPassthroughMask(void) { return m_alsa.GetPassthroughMask(); }       ///< get the codecs, which are passed through (read from the ELD in auto mode)
+	bool IsPassthroughActive(void) { return m_alsa.IsPassthroughActive(); }    ///< true, if the current audio is passed through
 	/** codecs of the last read ELD (-1: not read yet) */
 	int GetEldPassthroughMask(void) const { return m_alsa.GetEldPassthroughMask(); }
 	/** name of the used alsa device */

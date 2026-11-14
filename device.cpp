@@ -2042,6 +2042,24 @@ void cOutputDevice::HandleDisplayModeChange(const sDrmMode &mode)
 }
 
 /**
+ * Get the configured video/audio delay
+ *
+ * A receiver needs more time to decode passed through audio than to play PCM,
+ * so the passthrough delay is added, while the audio is passed through.
+ *
+ * @return the delay in ms (positive: the audio is delayed, negative: the video is delayed)
+ */
+int cOutputDevice::GetVideoAudioDelayMs(void)
+{
+	int delayMs = m_pConfig->ConfigVideoAudioDelayMs;
+
+	if (m_pAudio && m_pAudio->IsPassthroughActive())
+		delayMs += m_pConfig->ConfigPassthroughDelayMs;
+
+	return delayMs;
+}
+
+/**
  * Calculate the first audio PTS that should be played during synchronized playback
  *
  * This method determines the starting audio presentation timestamp when transitioning
@@ -2050,15 +2068,16 @@ void cOutputDevice::HandleDisplayModeChange(const sDrmMode &mode)
  *
  * @return the first audio PTS in milliseconds that should be played
  *
- * @note Positive ConfigVideoAudioDelayMs means audio is intentionally delayed (video ahead)
- * @note Negative ConfigVideoAudioDelayMs means video is intentionally delayed (audio ahead)
+ * @note A positive delay (GetVideoAudioDelayMs()) means audio is intentionally delayed (video ahead)
+ * @note A negative delay means video is intentionally delayed (audio ahead)
  */
 int64_t cOutputDevice::GetFirstAudioPtsMsToPlay()
 {
 	int64_t ret = std::max(m_pRender->GetOutputPtsMs(), m_pAudio->GetOutputPtsMs());
+	int delayMs = GetVideoAudioDelayMs();
 
-	if (m_pConfig->ConfigVideoAudioDelayMs < 0)
-		ret -= m_pConfig->ConfigVideoAudioDelayMs;
+	if (delayMs < 0)
+		ret -= delayMs;
 
 	return ret;
 }
@@ -2069,9 +2088,10 @@ int64_t cOutputDevice::GetFirstAudioPtsMsToPlay()
 int64_t cOutputDevice::GetFirstVideoPtsMsToPlay()
 {
 	int64_t ret = std::max(m_pRender->GetOutputPtsMs(), m_pAudio->GetOutputPtsMs());
+	int delayMs = GetVideoAudioDelayMs();
 
-	if (m_pConfig->ConfigVideoAudioDelayMs > 0)
-		ret += m_pConfig->ConfigVideoAudioDelayMs;
+	if (delayMs > 0)
+		ret += delayMs;
 
 	return ret;
 }
