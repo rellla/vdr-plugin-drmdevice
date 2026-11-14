@@ -406,6 +406,11 @@ The values are grouped like the sections of the setup menu.
 		maximum number of packets (at least 22) sent to the hardware decoder
 		until the software fallback jumps in
 
+	drmdevice.DecoderWatchdog = 1
+		0 = off
+		1 = restart a hardware decoder, which stalls without an error: it didn't
+		    output a frame for 2s during the playback, while packets were waiting
+
 	drmdevice.ParseH264StreamStart = 0
 		0 = disable parsing, 1-20 = parse H.264 stream up to the given number of I-Frames
 

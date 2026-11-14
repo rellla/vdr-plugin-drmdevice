@@ -295,6 +295,7 @@ The decoder name and type are shown in the setup menu statistics.
 | The decoder doesn't accept the packet (`EAGAIN`) | The packet stays in the queue and is sent again. |
 | The decoder was drained (`EOF`) | The decoder is flushed. With `QUIRK_CODEC_FLUSH_WORKAROUND`, it is closed and opened again instead. |
 | The hardware decoder fails (`EIO` on send or receive) | The decoder is restarted (`cVideoStream::RestartDecoder()`): it is closed and opened again with the next packet like a new stream. |
+| The hardware decoder stalls: no frame for 2s, while packets are waiting and the output isn't full (normal playback of the main stream) | The decoder is restarted (`cDecoderWatchdog`, can be switched off with `DecoderWatchdog`). |
 | The hardware decoder doesn't output a frame after `DecoderFallbackToSwNumPkts` packets | If `DecoderFallbackToSw` is set, the software decoder is used. |
 | The PTS jumps more than 5s | The decoder is drained, so the frames before the jump are output first. |
 | H.264 stream start with P-frames referencing missing frames | If `DropInvalidH264PFrames` is set, these P-frames are dropped up to the configured number of I-frames. |

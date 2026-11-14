@@ -167,6 +167,7 @@ public:
 	int ConfigDropDamagedVideo = DROP_DAMAGED_VIDEO_AUTO; ///< drop damaged video (lost TS packets) up to the next key frame (enum DropDamagedVideoMode)
 	bool ConfigDecoderFallbackToSw = false;     ///< fallback to software decoder if the hardware decoder fails
 	int ConfigDecoderFallbackToSwNumPkts = 22;  ///< maximum number of packets sent before fallback to sw decoder
+	bool ConfigDecoderWatchdog = true;          ///< restart a stalled hardware decoder
 	int ConfigParseH264StreamStart = 0;         ///< log frames at stream start up to the given number of I-Frames
 	int ConfigDropInvalidH264PFrames = 0;       ///< drop P-Frames with invalid references on stream start up to the given number of I-Frames
 #ifdef USE_GLES
