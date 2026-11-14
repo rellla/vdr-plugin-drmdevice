@@ -127,6 +127,7 @@ public:
 	static int Eotf(int);
 	int GetColorPrimaries(void) { return m_colorPrimaries; } ///< get the saved color primaries
 	int GetColorTrc(void) { return m_colorTrc; }             ///< get the saved transfer characteristics
+	bool IsHdr(void) const;
 
 private:
 	cVideoRender *m_pRender;                       ///< pointer to cVideoRender object
