@@ -172,6 +172,10 @@ msgid "Audio output: none"
 msgstr "Audioausgabe: keine"
 
 #, c-format
+msgid "Audio output: encoded to AC-3, %d Hz, %d channels"
+msgstr "Audioausgabe: nach AC-3 kodiert, %d Hz, %d Kanäle"
+
+#, c-format
 msgid "Audio output: passthrough, %d Hz, %d channels"
 msgstr "Audioausgabe: Passthrough, %d Hz, %d Kanäle"
 
@@ -238,6 +242,9 @@ msgstr " Aktiviere DTS-HD Passthrough"
 
 msgid " TrueHD passthrough"
 msgstr " Aktiviere TrueHD Passthrough"
+
+msgid " Encode multichannel audio to AC-3"
+msgstr " Mehrkanalton nach AC-3 kodieren"
 
 msgid " Disable automatic AES"
 msgstr " Deaktiviere automatische AES Parameter"

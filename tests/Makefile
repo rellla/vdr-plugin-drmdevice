@@ -20,9 +20,9 @@ CXX ?= g++
 CXXFLAGS ?= -g -O1
 
 override CXXFLAGS += -std=c++17 -W -Wall -Wextra -Werror=format -I.. -isystem $(VDRINCDIR) -D_GNU_SOURCE
-override CXXFLAGS += $(shell pkg-config --cflags libavcodec libavformat libavutil libdrm catch2-with-main)
+override CXXFLAGS += $(shell pkg-config --cflags libavcodec libavformat libavutil libswresample libdrm catch2-with-main)
 override CXXFLAGS += -DTEST_DATA_DIR='"$(CURDIR)/data"'
-LIBS = $(shell pkg-config --libs libavformat libavcodec libavutil libdrm catch2-with-main)
+LIBS = $(shell pkg-config --libs libavformat libavcodec libavutil libswresample libdrm catch2-with-main)
 
 ifeq ($(BUILD),sanitize)
 SANITIZE_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all
@@ -41,6 +41,7 @@ TEST_SOURCES = $(sort $(wildcard test_*.cpp))
 
 # Plugin sources under test (in the parent directory)
 SOURCES_UNDER_TEST = \
+	ac3encoder.cpp \
 	audioprocessor.cpp \
 	config.cpp \
 	edid.cpp \
