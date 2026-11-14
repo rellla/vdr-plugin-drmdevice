@@ -107,6 +107,7 @@ bool cDeviceConfig::SetupParse(const char *name, const char *value)
 	} else if (!strcasecmp(name, "DropDamagedVideo"))           { ConfigDropDamagedVideo = std::clamp(atoi(value), 0, 2);
 	} else if (!strcasecmp(name, "DecoderFallbackToSw"))        { ConfigDecoderFallbackToSw = atoi(value);
 	} else if (!strcasecmp(name, "DecoderFallbackToSwNumPkts")) { ConfigDecoderFallbackToSwNumPkts = atoi(value);
+	} else if (!strcasecmp(name, "DecoderWatchdog"))            { ConfigDecoderWatchdog = atoi(value);
 	} else if (!strcasecmp(name, "ParseH264StreamStart"))       { ConfigParseH264StreamStart = atoi(value);
 	} else if (!strcasecmp(name, "DropInvalidH264PFrames"))     { ConfigDropInvalidH264PFrames = atoi(value);
 #ifdef USE_GLES

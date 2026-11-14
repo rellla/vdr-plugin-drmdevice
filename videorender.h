@@ -221,6 +221,7 @@ public:
 	bool IsForwardTrickspeed(void) { return m_forwardTrickspeed; } ///< true, if trick speed plays forward
 	void SetStillpicture(bool active) { m_stillpicture = active; } ///< enable/disable still picture mode
 	bool IsStillpicture(void) { return m_stillpicture; }           ///< true, if a still picture is displayed
+	bool IsPlaybackPaused(void) { return m_videoPlaybackPaused; }  ///< true, if the video playback is paused (also while buffering)
 
 	// Grab
 	int TriggerGrab(void);

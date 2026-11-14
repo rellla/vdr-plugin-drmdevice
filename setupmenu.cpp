@@ -428,6 +428,7 @@ void cDeviceSetupMenu::Create(int current)
 			Add(new cOsdItem(cString::sprintf(tr(" (minimum: %d)"), m_pConfig->GetDecoderNeedsMaxPackets() + 1), osUnknown, false));
 			Add(new cMenuEditIntItem(tr(" fallback after num packets"), &m_cDecoderFallbackToSwNumPkts, 22));
 		}
+		Add(new cMenuEditBoolItem(tr("Restart a stalled HW decoder"), &m_cDecoderWatchdog, trVDR("no"), trVDR("yes")));
 		Add(new cMenuEditIntItem(tr("H.264: Parse stream until num I-Frames"), &m_cParseH264StreamStart, 0, 20));
 		Add(new cMenuEditIntItem(tr("H.264: Drop invalid P-Frames until num I-Frames"), &m_cDropInvalidH264PFrames, 0, 20));
 #ifdef USE_GLES
@@ -642,6 +643,7 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cDropDamagedVideo = m_pConfig->ConfigDropDamagedVideo;
 	m_cDecoderFallbackToSw = m_pConfig->ConfigDecoderFallbackToSw;
 	m_cDecoderFallbackToSwNumPkts = m_pConfig->ConfigDecoderFallbackToSwNumPkts;
+	m_cDecoderWatchdog = m_pConfig->ConfigDecoderWatchdog;
 	m_cParseH264StreamStart = m_pConfig->ConfigParseH264StreamStart;
 	m_cDropInvalidH264PFrames = m_pConfig->ConfigDropInvalidH264PFrames;
 #ifdef USE_GLES
@@ -883,6 +885,7 @@ void cDeviceSetupMenu::Store(void)
 	StoreChanged("DropDamagedVideo", m_pConfig->ConfigDropDamagedVideo, m_cDropDamagedVideo);
 	bool fallbackChanged = StoreChanged("DecoderFallbackToSw", m_pConfig->ConfigDecoderFallbackToSw, m_cDecoderFallbackToSw);
 	fallbackChanged |= StoreChanged("DecoderFallbackToSwNumPkts", m_pConfig->ConfigDecoderFallbackToSwNumPkts, m_cDecoderFallbackToSwNumPkts);
+	StoreChanged("DecoderWatchdog", m_pConfig->ConfigDecoderWatchdog, m_cDecoderWatchdog);
 	if (fallbackChanged)
 		m_pDevice->SetDecoderFallbackToSw(m_pConfig->ConfigDecoderFallbackToSw);
 	StoreChanged("ParseH264StreamStart", m_pConfig->ConfigParseH264StreamStart, m_cParseH264StreamStart);

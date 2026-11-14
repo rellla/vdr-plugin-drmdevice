@@ -114,6 +114,7 @@ protected:
 	int m_cDropDamagedVideo;
 	int m_cDecoderFallbackToSw;
 	int m_cDecoderFallbackToSwNumPkts;
+	int m_cDecoderWatchdog;
 	int m_cParseH264StreamStart;
 	int m_cDropInvalidH264PFrames;
 #ifdef USE_GLES

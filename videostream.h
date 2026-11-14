@@ -27,6 +27,7 @@ extern "C" {
 #include <vdr/thread.h>
 
 #include "config.h"
+#include "decoderwatchdog.h"
 #include "queue.h"
 #include "videofilter.h"
 
@@ -120,6 +121,9 @@ private:
 	bool m_deinterlacerDeactivated;                 ///< set, if the deinterlacer should be disabled temporarily (trickspeed, stillpicture, pip)
 	bool m_useDeinterlacer = false;                 ///< set, if the deinterlacer is used
 	int m_decoderFallbackToSwNumPkts = 22;          ///< fallback to sw decoder if hw decoder fails after the given number of packets sent
+
+	static constexpr int DECODER_STALL_TIMEOUT_MS = 2000;  ///< a hw decoder without a frame for this time is restarted
+	cDecoderWatchdog m_watchdog{DECODER_STALL_TIMEOUT_MS}; ///< detects a stalled hw decoder
 
 	constexpr static int VIDEO_PACKET_MAX = 192;    ///< max number of video packets held in the buffer
 	cQueue<AVPacket> m_packets{VIDEO_PACKET_MAX};   ///< AVPackets queue

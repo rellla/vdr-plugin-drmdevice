@@ -476,8 +476,11 @@ int cVideoStream::ReceiveFrame(AVFrame **frame)
  */
 void cVideoStream::DecodeInput(void)
 {
-	if (m_codecId == AV_CODEC_ID_NONE || m_pDrmBufferQueue->IsFull() || m_videoFilter.IsInputBufferFull())
+	// the decoder can't make progress, if the output is full
+	if (m_codecId == AV_CODEC_ID_NONE || m_pDrmBufferQueue->IsFull() || m_videoFilter.IsInputBufferFull()) {
+		m_watchdog.Progress(cTimeMs::Now());
 		return;
+	}
 
 	// a key frame after damaged video starts the decoder like a new stream
 	if (!m_packets.IsEmpty() && m_packets.Peek() && m_packets.Peek()->opaque == &s_restartDecoder) {
@@ -507,9 +510,23 @@ void cVideoStream::DecodeInput(void)
 	AVFrame *frame = nullptr;
 	int ret = ReceiveFrame(&frame);
 	if (!ret) {
+		m_watchdog.Progress(cTimeMs::Now());
 		RenderFrame(frame);
 	} else if (ret == AVERROR(EIO) && m_pDecoder->IsHardwareDecoder()) {
 		LOGWARNING("videostream %s: %s: the decoder failed, restart it", m_identifier, __FUNCTION__);
+		RestartDecoder();
+		return;
+	}
+
+	// A hardware decoder may also stall without an error: it doesn't output frames anymore
+	// (and soon doesn't take packets either). Only watch a decoder, which already output
+	// frames, during the normal playback of the main stream with waiting packets.
+	bool waiting = m_pConfig->ConfigDecoderWatchdog && m_pDecoder->IsHardwareDecoder() && m_pDecoder->GetFramesReceived() && !m_isPipStream &&
+	               !m_pRender->IsTrickSpeed() && !m_pRender->IsStillpicture() && !m_pRender->IsPlaybackPaused() &&
+	               !m_packets.IsEmpty();
+	if (m_watchdog.Stalled(cTimeMs::Now(), waiting)) {
+		LOGWARNING("videostream %s: %s: the decoder output no frame for %d ms, restart it", m_identifier, __FUNCTION__, DECODER_STALL_TIMEOUT_MS);
+		m_watchdog.Progress(cTimeMs::Now());
 		RestartDecoder();
 		return;
 	}
