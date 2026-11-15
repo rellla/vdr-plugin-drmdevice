@@ -144,6 +144,8 @@ OBJS = $(PLUGINENTRY).o \
 	codec_video.o \
 	config.o \
 	device.o \
+	devicepip.o \
+	devicestate.o \
 	drmbuffer.o \
 	drmdevice.o \
 	drmhdr.o \
