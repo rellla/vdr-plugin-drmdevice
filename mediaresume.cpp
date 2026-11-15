@@ -68,6 +68,7 @@ cMediaResume::Entries cMediaResume::Load(void)
  *
  * @param entries   the positions
  * @retval true     on success
+ * @retval false    the file couldn't be written
  */
 bool cMediaResume::Save(const Entries &entries)
 {
@@ -111,6 +112,7 @@ int64_t cMediaResume::Get(const std::string &path)
  * @param path        path of the media file
  * @param positionMs  position in ms
  * @retval true       on success
+ * @retval false      the positions couldn't be written
  */
 bool cMediaResume::Store(const std::string &path, int64_t positionMs)
 {
@@ -136,6 +138,7 @@ bool cMediaResume::Store(const std::string &path, int64_t positionMs)
  *
  * @param path      path of the media file
  * @retval true     on success (also if no position was stored)
+ * @retval false    the positions couldn't be written
  */
 bool cMediaResume::Delete(const std::string &path)
 {

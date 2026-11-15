@@ -1105,6 +1105,7 @@ static void ReleaseFrame( __attribute__ ((unused)) void *opaque, uint8_t *data)
  * It is full, if the next chunk of frames doesn't fit (e.g. both fields of a hardware deinterlacer).
  *
  * @retval true     render output buffer is full
+ * @retval false    the next chunk of frames fits
  */
 bool cVideoRender::IsOutputBufferFull(void)
 {
@@ -1256,7 +1257,6 @@ void cVideoRender::SetTrickSpeed(double speed, bool active, bool forward)
  * This is calculated based on the inter-frame gap (distance between each I-frame VDR sends us during trickspeed), the refresh rate of the output device, and the trickspeed speed.
  *
  * @param interFrameGapMs      inter-frame gap in ms
- * @retval                     number of times the current frame shall be presented
  */
 int cVideoRender::GetFramePresentationCount(int64_t interFrameGapMs)
 {

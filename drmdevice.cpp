@@ -373,7 +373,7 @@ bool cDrmDevice::CanHandleMode(sDrmMode *mode)
  * 8) Init EGL
  *
  * @retval 0                on success
- * @retval -errno           on error
+ * @retval -1               on error
  */
 int cDrmDevice::Init(void)
 {

@@ -316,7 +316,7 @@ void cVideoDecoder::Close(void)
  * @param avpkt    video packet
  *
  * @retval 0       extradata set
- * @retval -1      something went wrong
+ * @retval <0      something went wrong (-1 or the error code of FFmpeg)
  */
 int cVideoDecoder::GetExtraData(const AVPacket * avpkt)
 {

@@ -1471,7 +1471,7 @@ bool cOutputDevice::CheckAudioPlaybackStartConditions()
 
 #ifdef USE_GLES
 /**
- * Get the maximum GPU image cache size
+ * Get the maximum GPU image cache size in MB
  */
 int cOutputDevice::MaxSizeGPUImageCache(void)
 {
@@ -1663,6 +1663,7 @@ void cOutputDevice::GetStats(int *duped, int *dropped, int *counter)
  * @param par           audio codec parameters
  * @param timebase      timebase
  *
+ * @retval true         the codec was opened
  * @retval false        the codec can't be decoded
  */
 bool cOutputDevice::SetAudioCodec(enum AVCodecID codecId, AVCodecParameters * par, AVRational timebase)
