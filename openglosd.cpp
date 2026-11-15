@@ -2590,10 +2590,16 @@ eOsdError cOglOsd::SetAreas(const tArea *areas, int numAreas)
 	tArea area = { r.Left(), r.Top(), r.Right(), r.Bottom(), 32 };
 
 	// now we know the actual osd size, create double buffer frame buffer
-	if (m_pBufferFramebuffer) {
+	if (m_pBufferFramebuffer)
 		m_pOglThread->DoCmd(new cOglCmdDeleteFb(m_pBufferFramebuffer));
-		DestroyPixmap(m_pOglPixmaps[0]);
+
+	// cOsd::SetAreas() deletes all pixmaps of this osd, so forget them
+	{
+		LOCK_PIXMAPS;
+		for (int i = 0; i < m_pOglPixmaps.Size(); i++)
+			m_pOglPixmaps[i] = NULL;
 	}
+
 	m_pBufferFramebuffer = new cOglFb(r.Width(), r.Height(), r.Width(), r.Height());
 	cCondWait initiated;
 	m_pOglThread->DoCmd(new cOglCmdInitFb(m_pBufferFramebuffer, &initiated));
