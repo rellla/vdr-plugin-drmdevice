@@ -14,6 +14,8 @@
  * @license{AGPL-3.0-or-later}
  */
 
+#include <algorithm>
+
 #include "device.h"
 #include "logger.h"
 #include "softosd.h"
@@ -90,6 +92,12 @@ eOsdError cSoftOsd::SetAreas(const tArea * areas, int n)
 		m_pDevice->OsdClose();
 		m_dirty = true;
 	}
+
+	// Width() and Height() of a true color osd are the size of the area, which
+	// may start anywhere inside the osd. So remember, where the areas end.
+	m_areaEnd.Set(0, 0);
+	for (int i = 0; i < n; i++)
+		m_areaEnd.Set(std::max(m_areaEnd.X(), areas[i].x2 + 1), std::max(m_areaEnd.Y(), areas[i].y2 + 1));
 
 	return cOsd::SetAreas(areas, n);
 }
@@ -240,10 +248,10 @@ void cSoftOsd::Flush(void)
 			y = 0;
 		}
 
-		if (w > Width() - x)
-			w = Width() - x;
-		if (h > Height() - y)
-			h = Height() - y;
+		if (w > m_areaEnd.X() - x)
+			w = m_areaEnd.X() - x;
+		if (h > m_areaEnd.Y() - y)
+			h = m_areaEnd.Y() - y;
 
 		x += Left();
 		y += Top();

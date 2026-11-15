@@ -45,6 +45,7 @@ private:
 	bool m_dirty = false;            ///< flag to force redrawing everything
 	int m_osdLevel;                  ///< current osd level
 	std::vector<uint32_t> m_argb;    ///< buffer for the converted area of a bitmap (reused by Flush())
+	cPoint m_areaEnd;                ///< bottom right corner (exclusive) of the areas
 };
 
 #endif
