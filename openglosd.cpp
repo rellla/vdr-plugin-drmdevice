@@ -2583,10 +2583,16 @@ cOglOsd::~cOglOsd()
 eOsdError cOglOsd::SetAreas(const tArea *areas, int numAreas)
 {
 	cRect r;
-	if (numAreas > 1)
-		m_isSubtitleOsd = true;
 	for (int i = 0; i < numAreas; i++)
 		r.Combine(cRect(areas[i].x1, areas[i].y1, areas[i].Width(), areas[i].Height()));
+
+	// A true color osd has exactly one area with 32 bit. All other areas are bitmap areas,
+	// which are drawn in the coordinates of the osd. They are replaced by one true color
+	// area, but cOsd draws into its pixmap without converting the coordinates. So this
+	// area must start at the corner of the osd (a subtitle osd converts the coordinates).
+	bool trueColor = numAreas == 1 && areas[0].bpp == 32;
+	if (!trueColor && !m_isSubtitleOsd)
+		r.Combine(cPoint(0, 0));
 
 	tArea area = { r.Left(), r.Top(), r.Right(), r.Bottom(), 32 };
 
