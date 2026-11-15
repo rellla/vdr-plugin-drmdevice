@@ -2575,7 +2575,8 @@ cOglOsd::~cOglOsd()
 	m_pOglThread->DoCmd(new cOglCmdBufferFill(OutputFramebuffer, clrTransparent));
 
 	SetActive(false); // OsdClose() is done in cOglCmdCopyBufferToOutputFb()
-	m_pOglThread->DoCmd(new cOglCmdCopyBufferToOutputFb(m_pBufferFramebuffer, OutputFramebuffer, Left(), Top(), 0, m_pDevice));
+	m_pOglThread->DoCmd(new cOglCmdCopyBufferToOutputFb(m_pBufferFramebuffer, OutputFramebuffer,
+	                                                    Left() + m_areaOrigin.X(), Top() + m_areaOrigin.Y(), 0, m_pDevice));
 	m_pOglThread->DoCmd(new cOglCmdDeleteFb(m_pBufferFramebuffer));
 }
 
@@ -2588,6 +2589,10 @@ eOsdError cOglOsd::SetAreas(const tArea *areas, int numAreas)
 		r.Combine(cRect(areas[i].x1, areas[i].y1, areas[i].Width(), areas[i].Height()));
 
 	tArea area = { r.Left(), r.Top(), r.Right(), r.Bottom(), 32 };
+
+	// The buffer has the size of the area, which may start anywhere inside the osd.
+	// So the pixmaps are rendered relative to the corner of the area.
+	m_areaOrigin = m_isSubtitleOsd ? cPoint(0, 0) : cPoint(r.Left(), r.Top());
 
 	// now we know the actual osd size, create double buffer frame buffer
 	if (m_pBufferFramebuffer)
@@ -2677,12 +2682,15 @@ void cOglOsd::Flush(void)
 	if (m_pDirtyViewport.IsEmpty())
 		return;
 
+	// the dirty area in the private buffer
+	const cRect dirty = m_pDirtyViewport.Shifted(-m_areaOrigin.X(), -m_areaOrigin.Y());
+
 	// clear private buffer within the dirty area
 	m_pOglThread->DoCmd(new cOglCmdDrawRectangle(m_pBufferFramebuffer,
-	                                             m_pDirtyViewport.X(),
-	                                             m_pDirtyViewport.Y(),
-	                                             m_pDirtyViewport.Width(),
-	                                             m_pDirtyViewport.Height(),
+	                                             dirty.X(),
+	                                             dirty.Y(),
+	                                             dirty.Width(),
+	                                             dirty.Height(),
 	                                             clrTransparent));
 
 	// render pixmap textures blended to private buffer
@@ -2703,15 +2711,15 @@ void cOglOsd::Flush(void)
 			bool alphablending = layer == 0 ? false : true; // decide wether to render (with alpha) or copy a pixmap
 			m_pOglThread->DoCmd(new cOglCmdRenderFbToBufferFb(m_pOglPixmaps[i]->Framebuffer(),
 			                                                  m_pBufferFramebuffer,
-			                                                  m_isSubtitleOsd ? 0 : m_pOglPixmaps[i]->ViewPort().X(),
-			                                                  m_isSubtitleOsd ? 0 : m_pOglPixmaps[i]->ViewPort().Y(),
+			                                                  m_isSubtitleOsd ? 0 : m_pOglPixmaps[i]->ViewPort().X() - m_areaOrigin.X(),
+			                                                  m_isSubtitleOsd ? 0 : m_pOglPixmaps[i]->ViewPort().Y() - m_areaOrigin.Y(),
 			                                                  m_pOglPixmaps[i]->Alpha(),
 			                                                  m_pOglPixmaps[i]->DrawPort().X(),
 			                                                  m_pOglPixmaps[i]->DrawPort().Y(),
-			                                                  m_pDirtyViewport.X(),
-			                                                  m_pDirtyViewport.Top(),
-			                                                  m_pDirtyViewport.Width(),
-			                                                  m_pDirtyViewport.Height(),
+			                                                  dirty.X(),
+			                                                  dirty.Top(),
+			                                                  dirty.Width(),
+			                                                  dirty.Height(),
 			                                                  alphablending));
 		}
 	}
@@ -2719,8 +2727,8 @@ void cOglOsd::Flush(void)
 	m_pOglThread->DoCmd(new cOglCmdBufferFill(OutputFramebuffer, clrTransparent));
 
 	m_pOglThread->DoCmd(new cOglCmdCopyBufferToOutputFb(m_pBufferFramebuffer, OutputFramebuffer,
-	                                                    Left() + (m_isSubtitleOsd ? m_pOglPixmaps[0]->ViewPort().X() : 0),
-	                                                    Top() + (m_isSubtitleOsd ? m_pOglPixmaps[0]->ViewPort().Y() : 0), 1, m_pDevice));
+	                                                    Left() + (m_isSubtitleOsd ? m_pOglPixmaps[0]->ViewPort().X() : m_areaOrigin.X()),
+	                                                    Top() + (m_isSubtitleOsd ? m_pOglPixmaps[0]->ViewPort().Y() : m_areaOrigin.Y()), 1, m_pDevice));
 }
 
 void cOglOsd::DrawScaledBitmap(int x, int y, const cBitmap &Bitmap, double FactorX, double FactorY, bool AntiAlias)
