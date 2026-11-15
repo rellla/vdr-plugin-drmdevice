@@ -568,8 +568,9 @@ the plugin uses the highest possible resolution with a refresh rate which is
 first discovered.
 
 When the plugin is unable to detect any resolution (e.g. if there is no TV/Monitor
-attached), the plugin will not start. You can work around this by providing
-a fixed EDID (see the documentation of your platform, the way differs between architectures).
+attached), the plugin starts detached: VDR runs, but without video and audio. Attach
+it, after the TV/Monitor is connected (see Detach/Attach), or provide a fixed EDID
+(see the documentation of your platform, the way differs between architectures).
 
 When using the -d switch, make sure you use the syntax of "widthXheight@refreshrate",
 so for example: "-d 3840x2160@50" for 4K at 50Hz.
