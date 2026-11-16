@@ -115,6 +115,13 @@ void cPidController::Reset(void)
  * 1. Define PID_CONTROLLER_TUNING_AID_ADDRESS at the top of this file.
  * 2. Update the IP address in the implementation to match your receiving
  *    machine running PlotJuggler with UDP server.
+ *
+ * @param pTerm        proportional term
+ * @param iTerm        integral term
+ * @param dTerm        derivative term
+ * @param input        input value of the controller
+ * @param output       output value of the controller
+ * @param targetValue  target value of the controller
  */
 void cPidController::SendTuningAidData(double pTerm, double iTerm, double dTerm, double input, double output, double targetValue)
 {

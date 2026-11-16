@@ -555,6 +555,8 @@ void cH264Parser::PrintNalUnits(void)
 
 /**
  * Read the next bit of a stream
+ *
+ * @return the bit (0 at the end of the stream)
  */
 unsigned int cH264Parser::ReadBit()
 {
@@ -572,6 +574,10 @@ unsigned int cH264Parser::ReadBit()
 
 /**
  * Read n number of bits of a stream
+ *
+ * @param n  number of bits
+ *
+ * @return the bits (0 at the end of the stream)
  */
 unsigned int cH264Parser::ReadBits(int n)
 {
@@ -591,6 +597,8 @@ unsigned int cH264Parser::ReadBits(int n)
 
 /**
  * Read an unsigned exponential-golomb coded integer
+ *
+ * @return the integer (0 on an invalid code)
  */
 unsigned int cH264Parser::ReadExponentialGolombCode()
 {

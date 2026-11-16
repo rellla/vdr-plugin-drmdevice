@@ -276,6 +276,8 @@ void cVideoFilter::Action(void)
 
 /**
  * Puts a frame in the buffer to be filtered
+ *
+ * @param frame  frame to filter (the filter takes the ownership)
  */
 void cVideoFilter::PushFrame(AVFrame *frame)
 {

@@ -48,6 +48,8 @@ enum metadataId {
 /**
  * Encode a chromaticity coordinate in units of 0.00002 (CTA-861-G)
  *
+ * @param xyy  chromaticity coordinate (0.0 - 1.0)
+ *
  * @ingroup drm
  */
 static inline uint16_t EncodeXYY(float xyy)

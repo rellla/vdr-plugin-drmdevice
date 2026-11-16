@@ -79,6 +79,14 @@ extern "C" {
 
 /**
  * Convert the luma (Y plane) from SAND to linear buffer (8bit)
+ *
+ * @param dst        destination plane
+ * @param dstStride  bytes per line of the destination plane
+ * @param src        source plane in the SAND column layout
+ * @param stride1    width of a SAND column in bytes
+ * @param stride2    height of a SAND column in lines
+ * @param w          width in bytes
+ * @param h          height in lines
  */
 void Sand128ToPlanarY8(uint8_t *dst, const unsigned int dstStride, const uint8_t *src,
                        unsigned int stride1, unsigned int stride2,
@@ -116,6 +124,14 @@ void Sand128ToPlanarY8(uint8_t *dst, const unsigned int dstStride, const uint8_t
 
 /**
  * Convert the luma (Y plane) from SAND to linear buffer (10bit)
+ *
+ * @param dst        destination plane
+ * @param dstStride  bytes per line of the destination plane
+ * @param src        source plane in the SAND column layout
+ * @param stride1    width of a SAND column in bytes
+ * @param stride2    height of a SAND column in lines
+ * @param w          width in pixels
+ * @param h          height in lines
  */
 static void Sand30ToPlanarY16(uint8_t *dst, const unsigned int dstStride,
                               const uint8_t *src,
@@ -159,6 +175,16 @@ static void Sand30ToPlanarY16(uint8_t *dst, const unsigned int dstStride,
 
 /**
  * Convert the chroma (UV plane) from SAND to linear buffer (10bit)
+ *
+ * @param dstU        destination U plane
+ * @param dstStrideU  bytes per line of the destination U plane
+ * @param dstV        destination V plane
+ * @param dstStrideV  bytes per line of the destination V plane
+ * @param src         source UV plane in the SAND column layout
+ * @param stride1     width of a SAND column in bytes
+ * @param stride2     height of a SAND column in lines
+ * @param w           width of a chroma plane in pixels
+ * @param h           height of a chroma plane in lines
  */
 static void Sand30ToPlanarC16(uint8_t *dstU, const unsigned int dstStrideU,
                               uint8_t *dstV, const unsigned int dstStrideV,
@@ -214,6 +240,10 @@ static void Sand30ToPlanarC16(uint8_t *dstU, const unsigned int dstStrideU,
 
 /**
  * Convert a DRM format to a ffmpeg AV format
+ *
+ * @param pixFmt  drm pixel format
+ *
+ * @return the AV format (AV_PIX_FMT_NONE, if there is no matching one)
  */
 enum AVPixelFormat DrmFormatToAVFormat(uint32_t pixFmt)
 {
@@ -379,6 +409,14 @@ static int BlitVideo(uint8_t *dst, uint8_t *src, int dstW, int dstH, int dstX, i
 
 /**
  * Call rgb to jpeg for C Plugin
+ *
+ * @param image    RGB24 image
+ * @param size     receives the size of the JPEG data
+ * @param quality  JPEG quality
+ * @param width    width of the image
+ * @param height   height of the image
+ *
+ * @return JPEG data, which the caller must free (NULL on error)
  */
 extern "C" uint8_t * CreateJpeg(uint8_t * image, int *size, int quality,
 	int width, int height)
@@ -701,6 +739,8 @@ uint8_t *cGrabBuffer::ConvertToRgb(int *size)
  * @param height          height of requested grab image
  * @param screenWidth     current screen width
  * @param screenHeight    current screen height
+ *
+ * @return true, if the grab was triggered, false on timeout
  */
 bool cGrabber::Start(bool jpeg, int quality, int width, int height, int screenWidth, int screenHeight)
 {
@@ -742,21 +782,51 @@ void cGrabber::Finish(void)
 	m_active = false;
 }
 
-/** Get the grabbed video as RGB image, see GetGrabbedData() */
+/**
+ * Get the grabbed video as RGB image, see GetGrabbedData()
+ *
+ * @param size    size of the image in bytes
+ * @param width   width of the image
+ * @param height  height of the image
+ * @param x       x offset of the image on the screen
+ * @param y       y offset of the image on the screen
+ *
+ * @return the image (nullptr on error)
+ */
 uint8_t *cGrabber::GetGrabbedVideoData(int *size, int *width, int *height, int *x, int *y)
 {
 	cGrabBuffer *grab = m_pRender->GetGrabbedVideoBuffer();
 	return GetGrabbedData(size, width, height, x, y, grab);
 }
 
-/** Get the grabbed pip video as RGB image, see GetGrabbedData() */
+/**
+ * Get the grabbed pip video as RGB image, see GetGrabbedData()
+ *
+ * @param size    size of the image in bytes
+ * @param width   width of the image
+ * @param height  height of the image
+ * @param x       x offset of the image on the screen
+ * @param y       y offset of the image on the screen
+ *
+ * @return the image (nullptr on error)
+ */
 uint8_t *cGrabber::GetGrabbedPipData(int *size, int *width, int *height, int *x, int *y)
 {
 	cGrabBuffer *grab = m_pRender->GetGrabbedPipBuffer();
 	return GetGrabbedData(size, width, height, x, y, grab);
 }
 
-/** Get the grabbed osd as RGB image, see GetGrabbedData() */
+/**
+ * Get the grabbed osd as RGB image, see GetGrabbedData()
+ *
+ * @param size    size of the image in bytes
+ * @param width   width of the image
+ * @param height  height of the image
+ * @param x       x offset of the image on the screen
+ * @param y       y offset of the image on the screen
+ *
+ * @return the image (nullptr on error)
+ */
 uint8_t *cGrabber::GetGrabbedOsdData(int *size, int *width, int *height, int *x, int *y)
 {
 	cGrabBuffer *grab = m_pRender->GetGrabbedOsdBuffer();

@@ -339,6 +339,8 @@ int cVideoRender::SetVideoBuffer(cDrmBuffer *buf)
 /**
  * Modesetting for osd
  *
+ * @param modeReq  atomic mode setting request
+ *
  * @retval 1     osd is not dirty, do nothing
  * @retval 0     osd modesetting was done
  */
@@ -909,6 +911,8 @@ void cVideoRender::DisplayBlackFrame(void)
 
 /**
  * Convert a PTS to milliseconds
+ *
+ * @param pts  pts in the timebase of the video stream
  */
 int64_t cVideoRender::PtsToMs(int64_t pts)
 {
@@ -919,6 +923,8 @@ int64_t cVideoRender::PtsToMs(int64_t pts)
 
 /**
  * Wrapper for drmHandleEvent()
+ *
+ * @return result of drmHandleEvent() (0 on success)
  */
 int cVideoRender::DrmHandleEvent(void)
 {
@@ -982,6 +988,16 @@ static void ClearSoftOsd(cDrmBuffer *buf)
  *
  * Copies the area of width x height pixel at xi, yi of the ARGB image to the position x, y
  * of the OSD buffer. The area is clipped to the buffer.
+ *
+ * @param buf     osd buffer
+ * @param xi      x position of the area in the image
+ * @param yi      y position of the area in the image
+ * @param width   width of the area
+ * @param height  height of the area
+ * @param pitch   bytes per line of the image
+ * @param argb    ARGB image
+ * @param x       x position in the osd buffer
+ * @param y       y position in the osd buffer
  */
 static void DrawSoftOsd(cDrmBuffer *buf, int xi, int yi,
                         int width, int height, int pitch,
@@ -1091,6 +1107,9 @@ void cVideoRender::OsdDraw(int xi, int yi,
 
 /**
  * Callback free primedata if av_buffer is unreferenced
+ *
+ * @param opaque  unused
+ * @param data    the prime data (AVDRMFrameDescriptor)
  */
 static void ReleaseFrame( __attribute__ ((unused)) void *opaque, uint8_t *data)
 {
@@ -1114,6 +1133,8 @@ bool cVideoRender::IsOutputBufferFull(void)
 
 /**
  * Push a main frame into the render ringbuffer
+ *
+ * @param frame  decoded (and filtered) frame
  */
 void cVideoRender::PushMainFrame(AVFrame *frame)
 {
@@ -1122,6 +1143,8 @@ void cVideoRender::PushMainFrame(AVFrame *frame)
 
 /**
  * Push a PiP frame into the render ringbuffer
+ *
+ * @param frame  decoded (and filtered) frame
  */
 void cVideoRender::PushPipFrame(AVFrame *frame)
 {
@@ -1130,6 +1153,14 @@ void cVideoRender::PushPipFrame(AVFrame *frame)
 
 /**
  * Push the frame into the render ringbuffer
+ *
+ * @param frame                decoded (and filtered) frame
+ * @param trickspeed           true, if trickspeed is active
+ * @param bufferReuseStrategy  strategy to get a drm buffer for the frame
+ * @param decodingStrategy     strategy to prepare the drm buffer (hardware or software decoded frame)
+ * @param drmBufferQueue       queue of the buffers to display
+ * @param drmBufferPool        pool of the drm buffers
+ * @param mainFrame            true for the main video, false for pip
  */
 void cVideoRender::PushFrame(
 	AVFrame *frame,
@@ -1687,6 +1718,13 @@ void cVideoRender::SetPipSize(bool useAlt)
 /*****************************************************************************
  * Buffer reuse strategy: use-once
  ****************************************************************************/
+/**
+ * Get a drm buffer, which is destroyed after its presentation
+ *
+ * @param pool  pool of the drm buffers
+ *
+ * @return the buffer (nullptr, if the pool has no free buffer)
+ */
 cDrmBuffer *cBufferStrategyUseOnce::GetBuffer(cDrmBufferPool *pool, AVDRMFrameDescriptor *)
 {
 	cDrmBuffer *buf = pool->FindUninitilized();
@@ -1700,6 +1738,14 @@ cDrmBuffer *cBufferStrategyUseOnce::GetBuffer(cDrmBufferPool *pool, AVDRMFrameDe
 /*****************************************************************************
  * Buffer reuse strategy: reuse
  ****************************************************************************/
+/**
+ * Get the drm buffer of a hardware frame, which the decoder reuses
+ *
+ * @param pool       pool of the drm buffers
+ * @param primedata  frame descriptor of the hardware frame
+ *
+ * @return the buffer of the frame or a clean one (nullptr, if the pool has no free buffer)
+ */
 cDrmBuffer *cBufferStrategyReuseHardware::GetBuffer(cDrmBufferPool *pool, AVDRMFrameDescriptor *primedata)
 {
 	cDrmBuffer *buf = pool->FindByDmaBufHandle(primedata->objects[0].fd);
@@ -1730,6 +1776,15 @@ cDrmBuffer *cBufferStrategyReuseSoftware::GetBuffer(cDrmBufferPool *pool, AVDRMF
 /*****************************************************************************
  * Decoding strategy: software
  ****************************************************************************/
+/**
+ * Copy a software decoded frame into a drm buffer
+ *
+ * @param buf          drm buffer
+ * @param drmDeviceFd  file descriptor of the drm device
+ * @param inframe      software decoded frame
+ *
+ * @return frame, which belongs to the buffer
+ */
 AVFrame *cDecodingStrategySoftware::PrepareDrmBuffer(cDrmBuffer *buf, int drmDeviceFd, AVFrame *inframe)
 {
 	// a reused buffer may have a different size after a resolution change
@@ -1780,6 +1835,15 @@ AVFrame *cDecodingStrategySoftware::PrepareDrmBuffer(cDrmBuffer *buf, int drmDev
 /*****************************************************************************
  * Decoding strategy: hardware
  ****************************************************************************/
+/**
+ * Set up a drm buffer for a hardware decoded frame
+ *
+ * @param buf          drm buffer
+ * @param drmDeviceFd  file descriptor of the drm device
+ * @param frame        hardware decoded frame
+ *
+ * @return the frame
+ */
 AVFrame *cDecodingStrategyHardware::PrepareDrmBuffer(cDrmBuffer *buf, int drmDeviceFd, AVFrame *frame)
 {
 	if (!buf->IsDirty()) {

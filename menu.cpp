@@ -34,6 +34,14 @@ std::string cDeviceMenu::s_mediaSource;                  ///< file or playlist o
 
 /**
  * Build main or playlist menu
+ *
+ * @param title   title of the menu
+ * @param device  output device
+ * @param c0      width of the 1st column
+ * @param c1      width of the 2nd column
+ * @param c2      width of the 3rd column
+ * @param c3      width of the 4th column
+ * @param c4      width of the 5th column
  */
 cDeviceMenu::cDeviceMenu(const char *title, cOutputDevice *device,
                          int c0, int c1, int c2, int c3, int c4)
@@ -264,6 +272,8 @@ void cDeviceMenu::HandleHotKey(int code) {
  * Handle key event
  *
  * @param key       key event
+ *
+ * @return state of the menu after the key (osEnd closes it)
  */
 eOSState cDeviceMenu::ProcessKey(eKeys key)
 {

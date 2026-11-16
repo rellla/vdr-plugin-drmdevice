@@ -59,6 +59,9 @@
  *
  * Translates color from ARGB value to glm::vec4
  *
+ * @param colARGB  ARGB color
+ * @param col      receives the color as RGBA vector (0.0 - 1.0)
+ *
  * @ingroup osd
  */
 static void ConvertColor(const GLint &colARGB, glm::vec4 &col) {
@@ -220,6 +223,12 @@ bool cOglShader::CheckCompileErrors(GLuint object, bool program) {
 /****************************************************************************************
  * cOglGlyph
  ***************************************************************************************/
+/**
+ * Create a glyph from a rendered FreeType bitmap glyph
+ *
+ * @param charCode  character code
+ * @param ftGlyph   rendered bitmap glyph
+ */
 cOglGlyph::cOglGlyph(FT_ULong charCode, FT_BitmapGlyph ftGlyph)
 	: m_charCode(charCode),
 	  m_bearingLeft(ftGlyph->left),
@@ -287,6 +296,12 @@ void cOglGlyph::LoadTexture(void)
 /****************************************************************************************
  * cOglFontAtlas
  ***************************************************************************************/
+/**
+ * Create a texture atlas of the ASCII glyphs of a font
+ *
+ * @param face    FreeType font face
+ * @param height  font height in pixels
+ */
 cOglFontAtlas::cOglFontAtlas(FT_Face face, int height)
 {
 	int maxAtlasWidth;
@@ -644,6 +659,14 @@ int cOglFont::Kerning(cOglGlyph *glyph, FT_ULong prevSym) const
 /****************************************************************************************
  * cOglFb
  ***************************************************************************************/
+/**
+ * Create a framebuffer object (it is initialized by Init() in the OpenGL thread)
+ *
+ * @param width           width of the framebuffer
+ * @param height          height of the framebuffer
+ * @param viewPortWidth   width of the viewport
+ * @param viewPortHeight  height of the viewport
+ */
 cOglFb::cOglFb(GLint width, GLint height, GLint viewPortWidth, GLint viewPortHeight)
 	: m_width(width),
 	  m_height(height),
@@ -712,6 +735,11 @@ bool cOglFb::BindTexture(void)
 /****************************************************************************************
  * cOglOutputFb
  ***************************************************************************************/
+/**
+ * Init the output framebuffer
+ *
+ * @return true on success
+ */
 bool cOglOutputFb::Init(void)
 {
 	GL_CHECK(glGenTextures(1, &m_texture));
@@ -748,6 +776,11 @@ void cOglOutputFb::Unbind(void)
  * cOglVb
  ***************************************************************************************/
 
+/**
+ * Init the vertex buffer of its type
+ *
+ * @return always true
+ */
 bool cOglVb::Init(void)
 {
 	switch (m_type) {
@@ -1719,6 +1752,13 @@ bool cOglCmdDropImage::Execute(void) {
 /******************************************************************************
  * cOglThread
  *****************************************************************************/
+/**
+ * Create and start the OpenGL worker thread
+ *
+ * @param startWait     signaled, after the thread initialized OpenGL
+ * @param maxCacheSize  maximum size of the image cache in MB
+ * @param device        output device
+ */
 cOglThread::cOglThread(cCondWait *startWait, int maxCacheSize, cOutputDevice *device)
 	: cThread("oglThread"),
 	  m_startWait(startWait),
@@ -2126,6 +2166,14 @@ void cOglThread::Cleanup(void)
 /******************************************************************************
  * cOglPixmap
  *****************************************************************************/
+/**
+ * Create a pixmap, which is rendered into its own framebuffer
+ *
+ * @param oglThread  OpenGL worker thread
+ * @param layer      layer of the pixmap
+ * @param viewPort   view port of the pixmap
+ * @param drawPort   draw port of the pixmap (the view port, if empty)
+ */
 cOglPixmap::cOglPixmap(std::shared_ptr<cOglThread> oglThread, int layer, const cRect &viewPort, const cRect &drawPort)
 	: cPixmap(layer, viewPort, drawPort),
 	  m_pOglThread(oglThread)

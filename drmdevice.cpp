@@ -101,6 +101,8 @@ static int get_resources(int fd, drmModeRes **resources)
 /**
  * Test drm capabilities
  *
+ * @param fd  file descriptor of the drm device
+ *
  * @retval 0   if all needed caps match
  * @retval 1   on mismatch
  */
@@ -158,6 +160,8 @@ static int OpenDrmDevice(const char* device, drmModeRes **resources)
 /**
  * Find and open a suitable device with the wanted capabilities
  *
+ * @param resources  receives the resources of the opened device
+ *
  * @return          the file descriptor of the opened device
  *
  * @ingroup drm
@@ -207,6 +211,8 @@ static int FindDrmDevice(drmModeRes **resources)
 
 /**
  * Returns the connector type name if available
+ *
+ * @param connector  drm connector
  */
 static std::string ConnectorName(drmModeConnector *connector)
 {
@@ -222,6 +228,12 @@ static std::string ConnectorName(drmModeConnector *connector)
  * 1) Try user requested connector (-x HDMI-A-1)
  * 2) Try suitable connected connector
  * 3) Try suitable unconnected connector
+ *
+ * @param fd                      file descriptor of the drm device
+ * @param resources               resources of the drm device
+ * @param userRequestedConnector  name of the connector requested by the user (nullptr, if none)
+ *
+ * @return connector, which the caller must free (NULL, if none was found)
  *
  * @ingroup drm
  */
@@ -282,6 +294,8 @@ static double GetRefreshRateHz(drmModeModeInfo *modeInfo)
 
 /**
  * Returns true, if the interlaced flag of the mode is set
+ *
+ * @param flags  flags of the drm mode
  */
 static inline bool InterlacedMode(uint32_t flags)
 {
@@ -289,7 +303,10 @@ static inline bool InterlacedMode(uint32_t flags)
 }
 
 /**
- * Return true, if both values are equivalent within a tolerance
+ * Return true, if both values are equivalent within a tolerance of 0.001
+ *
+ * @param a  first value
+ * @param b  second value
  */
 static inline bool AlmostEqual(double a, double b)
 {
@@ -331,6 +348,8 @@ static bool Contains(drmModeModeInfo *mode, const std::vector<sDrmMode> &modes)
 
 /**
  * Return true, if the given mode is one of the collected ones
+ *
+ * @param mode  display mode
  */
 bool cDrmDevice::CanHandleMode(sDrmMode *mode)
 {
@@ -846,6 +865,8 @@ int cDrmDevice::FindMode(void)
  *   - mode with biggest width at 50Hz
  *   - mode with biggest width at 60Hz
  *   - mode with biggest width at any refresh rate
+ *
+ * @return 0 on success, -1 on error
  */
 int cDrmDevice::ReInit(void)
 {
@@ -1075,6 +1096,9 @@ void cDrmDevice::ExitEGL(void)
 
 /**
  * Callback function to destroy a drm buffer which stays in the gbm_bo's user data
+ *
+ * @param bo    gbm buffer object (unused)
+ * @param data  the drm buffer (cDrmBuffer)
  *
  * @ingroup drm
  */
@@ -1487,67 +1511,141 @@ void cDrmDevice::InitEvent(void)
  * they return a negative value on errors (see SetPropertyRequest()).
  */
 
-/** Add the connector property "CRTC_ID" (the current crtc) to the request */
+/**
+ * Add the connector property "CRTC_ID" (the current crtc) to the request
+ *
+ * @param modeReq  atomic mode setting request
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::SetConnectorCrtcId(drmModeAtomicReqPtr modeReq)
 {
 	return SetPropertyRequest(modeReq, m_connectorId, DRM_MODE_OBJECT_CONNECTOR, "CRTC_ID", m_crtcId);
 }
 
-/** Add the connector property "HDR_OUTPUT_METADATA" (blob id, 0 disables HDR) to the request */
+/**
+ * Add the connector property "HDR_OUTPUT_METADATA" (blob id, 0 disables HDR) to the request
+ *
+ * @param modeReq  atomic mode setting request
+ * @param id       blob id of the HDR metadata (0 disables HDR)
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::SetConnectorHdrOutputMetadata(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_connectorId, DRM_MODE_OBJECT_CONNECTOR, "HDR_OUTPUT_METADATA", id);
 }
 
-/** Add the connector property "Colorspace" (see ::drmColorSpace) to the request */
+/**
+ * Add the connector property "Colorspace" (see ::drmColorSpace) to the request
+ *
+ * @param modeReq  atomic mode setting request
+ * @param id       color space (::drmColorSpace)
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::SetConnectorColorspace(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_connectorId, DRM_MODE_OBJECT_CONNECTOR, "Colorspace", id);
 }
 
-/** Add the video plane property "COLOR_ENCODING" (see ::drmColorEncoding) to the request */
+/**
+ * Add the video plane property "COLOR_ENCODING" (see ::drmColorEncoding) to the request
+ *
+ * @param modeReq  atomic mode setting request
+ * @param id       color encoding (::drmColorEncoding)
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::SetVideoPlaneColorEncoding(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_videoPlane.GetId(), DRM_MODE_OBJECT_PLANE, "COLOR_ENCODING", id);
 }
 
-/** Add the video plane property "COLOR_RANGE" (see ::drmColorRange) to the request */
+/**
+ * Add the video plane property "COLOR_RANGE" (see ::drmColorRange) to the request
+ *
+ * @param modeReq  atomic mode setting request
+ * @param id       color range (::drmColorRange)
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::SetVideoPlaneColorRange(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_videoPlane.GetId(), DRM_MODE_OBJECT_PLANE, "COLOR_RANGE", id);
 }
 
-/** Get the current value of the video plane property "COLOR_RANGE", returns 0 on success */
+/**
+ * Get the current value of the video plane property "COLOR_RANGE"
+ *
+ * @param value  receives the color range
+ *
+ * @return 0 on success, -1 if the property wasn't found
+ */
 int cDrmDevice::GetVideoPlaneColorRange(uint64_t *value)
 {
 	return GetPropertyValue(m_videoPlane.GetId(), DRM_MODE_OBJECT_PLANE, "COLOR_RANGE", value);
 }
 
-/** Add the crtc property "MODE_ID" (blob id of the mode) to the request */
+/**
+ * Add the crtc property "MODE_ID" (blob id of the mode) to the request
+ *
+ * @param modeReq  atomic mode setting request
+ * @param id       blob id of the mode
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::SetCrtcModeId(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_crtcId, DRM_MODE_OBJECT_CRTC, "MODE_ID", id);
 }
 
-/** Add the crtc property "ACTIVE" to the request */
+/**
+ * Add the crtc property "ACTIVE" to the request
+ *
+ * @param modeReq  atomic mode setting request
+ * @param id       1 to activate the crtc, 0 to deactivate it
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::SetCrtcActive(drmModeAtomicReqPtr modeReq, uint32_t id)
 {
 	return SetPropertyRequest(modeReq, m_crtcId, DRM_MODE_OBJECT_CRTC, "ACTIVE", id);
 }
 
-/** Create a property blob of the current mode, returns 0 on success */
+/**
+ * Create a property blob of the current mode
+ *
+ * @param modeID  receives the blob id
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::CreateModeBlob(uint32_t *modeID)
 {
 	return drmModeCreatePropertyBlob(m_fdDrm, &m_drmModeInfo, sizeof(m_drmModeInfo), modeID);
 }
 
-/** Destroy a mode property blob, returns 0 on success */
+/**
+ * Destroy a mode property blob
+ *
+ * @param modeID  blob id
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::DestroyModeBlob(uint32_t modeID)
 {
 	return drmModeDestroyPropertyBlob(m_fdDrm, modeID);
 }
 
-/** Create a property blob of the HDR metadata, returns 0 on success */
+/**
+ * Create a property blob of the HDR metadata
+ *
+ * @param data    HDR metadata
+ * @param size    size of the HDR metadata
+ * @param blobID  receives the blob id
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::CreateHdrBlob(struct hdr_output_metadata *data, size_t size, uint32_t *blobID)
 {
 	int ret = drmModeCreatePropertyBlob(m_fdDrm, data, size, blobID);
@@ -1557,7 +1655,13 @@ int cDrmDevice::CreateHdrBlob(struct hdr_output_metadata *data, size_t size, uin
 	return ret;
 }
 
-/** Set the connector property "HDR_OUTPUT_METADATA" directly (without atomic request), returns 0 on success */
+/**
+ * Set the connector property "HDR_OUTPUT_METADATA" directly (without atomic request)
+ *
+ * @param blobID  blob id of the HDR metadata
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::SetConnectorHdrBlobProperty(uint32_t blobID)
 {
 	int ret = drmModeConnectorSetProperty(m_fdDrm, m_connectorId, m_hdrMetadata, blobID);
@@ -1568,7 +1672,13 @@ int cDrmDevice::SetConnectorHdrBlobProperty(uint32_t blobID)
 	return ret;
 }
 
-/** Destroy a HDR metadata property blob, returns 0 on success */
+/**
+ * Destroy a HDR metadata property blob
+ *
+ * @param blobID  blob id
+ *
+ * @return 0 on success, a negative error code otherwise
+ */
 int cDrmDevice::DestroyHdrBlob(uint32_t blobID)
 {
 	return drmModeDestroyPropertyBlob(m_fdDrm, blobID);

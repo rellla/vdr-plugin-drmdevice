@@ -136,6 +136,8 @@ const char *cPluginDrmDevice::CommandLineHelp(void)
  *
  * @param argc	number of arguments
  * @param argv	arguments vector
+ *
+ * @return true, if the arguments are valid
  */
 bool cPluginDrmDevice::ProcessArgs(int argc, char *argv[])
 {
@@ -218,6 +220,8 @@ bool cPluginDrmDevice::ProcessArgs(int argc, char *argv[])
  * Initializes the DVB devices
  *
  * Must be called before accessing any DVB functions
+ *
+ * @return true on success
  */
 bool cPluginDrmDevice::Initialize(void)
 {
@@ -228,6 +232,8 @@ bool cPluginDrmDevice::Initialize(void)
 
 /**
  * Start any background activities the plugin shall perform
+ *
+ * @return true on success
  */
 bool cPluginDrmDevice::Start(void)
 {
@@ -250,6 +256,8 @@ void cPluginDrmDevice::Stop(void)
 
 /**
  * Create main menu entry
+ *
+ * @return the text (NULL, if the entry is hidden)
  */
 const char *cPluginDrmDevice::MainMenuEntry(void)
 {
@@ -260,6 +268,8 @@ const char *cPluginDrmDevice::MainMenuEntry(void)
 
 /**
  * Perform the action when selected from the main VDR menu
+ *
+ * @return the plugin menu
  */
 cOsdObject *cPluginDrmDevice::MainMenuAction(void)
 {
@@ -322,6 +332,8 @@ bool cPluginDrmDevice::SetupParse(const char *name, const char *value)
  * @param id     unique identification string that identifies the
  *               service protocol
  * @param data	 custom data structure
+ *
+ * @return true, if the service is supported (and was executed, if data is set)
  */
 bool cPluginDrmDevice::Service(const char *id, void *data)
 {
@@ -417,6 +429,8 @@ static int FindChannelNumber(const char *channel)
  * @param command       SVDRP command
  * @param option        all command arguments
  * @param reply_code    reply code
+ *
+ * @return reply text (NULL, if the command is unknown)
  */
 cString cPluginDrmDevice::SVDRPCommand(const char *command, const char *option, int &reply_code)
 {

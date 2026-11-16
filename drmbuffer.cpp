@@ -410,6 +410,8 @@ int cDrmBufferPool::DestroyStaleImports(void)
 
 /**
  * Find a clean drm buffer from the buffer pool
+ *
+ * @return the buffer (nullptr, if there is none)
  */
 cDrmBuffer *cDrmBufferPool::FindUninitilized()
 {
@@ -423,6 +425,8 @@ cDrmBuffer *cDrmBufferPool::FindUninitilized()
 
 /**
  * Find a dirty drm buffer from the buffer pool which presentation has finished
+ *
+ * @return the buffer (nullptr, if there is none)
  */
 cDrmBuffer *cDrmBufferPool::FindNoPresentationPending()
 {

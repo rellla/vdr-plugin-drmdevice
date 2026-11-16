@@ -51,6 +51,8 @@ extern "C" {
 
 /**
  * Create a new audio context
+ *
+ * @param device  output device
  */
 cAudioStream::cAudioStream(cOutputDevice *device)
 	: cThread("drmdev audio"),
@@ -203,6 +205,8 @@ std::string cAudioStream::BuildChannelMapFilter(const AVChannelLayout &layout)
  *   - superequalizer
  *   - aformat
  *   - abuffersink
+ *
+ * @param audioCtx  codec context of the decoded stream
  *
  * @retval 0    everything ok
  * @retval 1    didn't support channels, downmix set -> scrap this frame, test next

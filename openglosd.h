@@ -121,7 +121,12 @@ protected:
 	/** Kerning of this glyph after a previous symbol */
 	struct tKerning {
 		public:
-			/** Create a kerning cache entry */
+			/**
+			 * Create a kerning cache entry
+			 *
+			 * @param prevSym  character code of the previous symbol
+			 * @param kerning  kerning to the previous symbol
+			 */
 			tKerning(FT_ULong prevSym, GLfloat kerning = 0.0f)  {
 				this->prevSym = prevSym;
 				this->kerning = kerning;

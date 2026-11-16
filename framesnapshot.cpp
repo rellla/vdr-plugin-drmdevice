@@ -43,6 +43,8 @@ extern "C" {
  * IsDirty() isn't checked: the OpenGL osd buffer is marked clean, when it was
  * shown, but it is still valid (and it isn't mapped). A destroyed buffer has
  * no DMA-BUF descriptor anymore.
+ *
+ * @param buf  drm buffer
  */
 bool cFrameSnapshot::CanTake(cDrmBuffer *buf)
 {
@@ -172,6 +174,8 @@ void cFrameSnapshot::Release(void)
  * Exchange the content of two snapshots
  *
  * This is used to hand over a snapshot between threads without copying.
+ *
+ * @param o  the other snapshot
  */
 void cFrameSnapshot::Swap(cFrameSnapshot &o)
 {

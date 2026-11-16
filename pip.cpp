@@ -61,6 +61,9 @@ void cPipReceiver::Activate(bool on)
  *
  * This code is taken from VDRs cTransfer::Receive()
  *
+ * @param data  TS packet
+ * @param size  size of the data
+ *
  * @note Receive() must return as soon as possible, because it's part of the VDR device main loop
  */
 void cPipReceiver::Receive(const uchar *data, int size)
@@ -88,6 +91,11 @@ void cPipReceiver::Receive(const uchar *data, int size)
  * Parse the ts stream and send it to the pes player
  *
  * This code is taken from VDRs cDevice::PlayTs()
+ *
+ * @param data  TS packets (nullptr resets the parser)
+ * @param size  size of the data
+ *
+ * @return number of consumed bytes
  */
 int cPipReceiver::ParseTs(const uchar *data, int size)
 {
@@ -133,6 +141,11 @@ int cPipReceiver::ParseTs(const uchar *data, int size)
  * Get the pes payload and send it to the player
  *
  * This code is taken from VDRs cDevice::PlayTsVideo()
+ *
+ * @param data  TS packet
+ * @param size  size of the packet
+ *
+ * @return size, if the packet was taken, 0 or less, if the device can't take the data at the moment
  */
 int cPipReceiver::PlayTs(const uchar *data, int size)
 {
@@ -156,6 +169,11 @@ int cPipReceiver::PlayTs(const uchar *data, int size)
  * cPipHandler class
  ****************************************************************************/
 
+/**
+ * Create the pip handler
+ *
+ * @param device  output device
+ */
 cPipHandler::cPipHandler(cOutputDevice *device)
 	: m_pDevice(device)
 {

@@ -48,6 +48,8 @@ std::shared_ptr<cLogger> cLogger::GetLogger()
 
 /**
  * Log to syslog LOG_ERR and abort
+ *
+ * @param format  printf like format string, followed by its arguments
  */
 void cLogger::LogFatal(const char *format, ...)
 {
@@ -69,6 +71,8 @@ void cLogger::LogFatal(const char *format, ...)
 
 /**
  * Log to syslog LOG_ERR
+ *
+ * @param format  printf like format string, followed by its arguments
  */
 void cLogger::LogError(const char *format, ...)
 {
@@ -88,6 +92,8 @@ void cLogger::LogError(const char *format, ...)
 
 /**
  * Log to syslog LOG_WARNING
+ *
+ * @param format  printf like format string, followed by its arguments
  */
 void cLogger::LogWarning(const char *format, ...)
 {
@@ -107,6 +113,8 @@ void cLogger::LogWarning(const char *format, ...)
 
 /**
  * Log to syslog LOG_INFO
+ *
+ * @param format  printf like format string, followed by its arguments
  */
 void cLogger::LogInfo(const char *format, ...)
 {
@@ -126,6 +134,8 @@ void cLogger::LogInfo(const char *format, ...)
 
 /**
  * Log to syslog LOG_DEBUG
+ *
+ * @param format  printf like format string, followed by its arguments
  */
 void cLogger::LogDebug(const char *format, ...)
 {
@@ -145,6 +155,9 @@ void cLogger::LogDebug(const char *format, ...)
 
 /**
  * Log to syslog LOG_DEBUG and add logging category to output
+ *
+ * @param cat     logging category (L_*)
+ * @param format  printf like format string, followed by its arguments
  */
 void cLogger::LogDebug2(const int cat, const char *format, ...)
 {
@@ -208,6 +221,9 @@ void cLogger::LogDebug2(const int cat, const char *format, ...)
 
 /**
  * Log to syslog LOG_DEBUG and add prefix [FFMpeg] to output
+ *
+ * @param fmt  printf like format string
+ * @param vl   arguments of the format string
  */
 void cLogger::LogFFmpeg(const char *fmt, va_list vl)
 {
@@ -228,6 +244,11 @@ void cLogger::LogFFmpeg(const char *fmt, va_list vl)
  * Callback for ffmpeg logs
  *
  * Log to LOG_DEBUG and add prefix to output
+ *
+ * @param ptr    context of the message (unused)
+ * @param level  FFmpeg log level of the message
+ * @param fmt    printf like format string
+ * @param vl     arguments of the format string
  */
 void cLogger::LogFFmpegCallback([[maybe_unused]] void *ptr, int level, const char *fmt, va_list vl)
 {

@@ -123,6 +123,8 @@ void cAc3Encoder::Flush(void)
 
 /**
  * Convert a number of samples into the timebase of the pts values
+ *
+ * @param samples  number of samples
  */
 int64_t cAc3Encoder::SamplesToPts(int64_t samples) const
 {

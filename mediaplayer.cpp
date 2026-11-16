@@ -75,6 +75,8 @@ cPlaylistEntry::cPlaylistEntry(const std::string &path)
 
 /**
  * Compose a full-path-string for the OSD entry
+ *
+ * @return string "folder - subfolder - file"
  */
 std::string cPlaylistEntry::OsdItemString(void)
 {
@@ -1934,6 +1936,8 @@ void cDrmDeviceControl::TimeSearch(void)
  * The keys work like in VDR's cReplayControl.
  *
  * @param key     pressed key
+ *
+ * @return osContinue, if the key was handled, osEnd, if the replay ends, osUnknown otherwise
  */
 eOSState cDrmDeviceControl::ProcessKey(eKeys key)
 {

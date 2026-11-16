@@ -74,6 +74,11 @@ void cSoftOsd::SetActive(bool on)
 
 /**
  * Set the sub-areas to the given areas
+ *
+ * @param areas  the areas
+ * @param n      number of areas
+ *
+ * @return oeOk on success, otherwise the error of cOsd::SetAreas()
  */
 eOsdError cSoftOsd::SetAreas(const tArea * areas, int n)
 {

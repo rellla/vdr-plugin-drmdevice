@@ -34,6 +34,8 @@
  * The caller must ensure, that PlayPipVideo() is not called in detached state.
  * (CanReplay() and HasDecoder() return false in this state and we are not
  * the primary device.)
+ *
+ * @return size, if the packet was taken (or dropped), 0, if it must be sent again
  */
 int cOutputDevice::PlayPipVideo(const uchar *data, int size)
 {
@@ -149,7 +151,11 @@ void cOutputDevice::SetRenderPipSize(void)
 	m_pRender->Resume();
 };
 
-/** Show or hide the pip window in the renderer (attached state only) */
+/**
+ * Show or hide the pip window in the renderer (attached state only)
+ *
+ * @param active  true to show the pip window
+ */
 void cOutputDevice::SetRenderPipActive(bool active)
 {
 	auto lock = m_pStateMachine->Lock();
