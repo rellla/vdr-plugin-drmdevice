@@ -2561,7 +2561,6 @@ cOglOutputFb *cOglOsd::OutputFramebuffer = NULL;
 cOglOsd::cOglOsd(int left, int top, uint level, std::shared_ptr<cOglThread> oglThread, cOutputDevice *device)
 	: cOsd(left, top, level),
 	  m_pOglThread(oglThread),
-	  m_isSubtitleOsd(level == OSD_LEVEL_SUBTITLES),
 	  m_pDevice(device)
 {
 	int osdWidth = 0;
@@ -2609,13 +2608,12 @@ eOsdError cOglOsd::SetAreas(const tArea *areas, int numAreas)
 	for (int i = 0; i < numAreas; i++)
 		r.Combine(cRect(areas[i].x1, areas[i].y1, areas[i].Width(), areas[i].Height()));
 
-	// A true color osd has exactly one area with 32 bit. All other areas are bitmap areas,
-	// which are drawn in the coordinates of the osd. They are replaced by one true color
-	// area, but cOsd draws into its pixmap without converting the coordinates. So this
-	// area must start at the corner of the osd (a subtitle osd converts the coordinates).
+	// A true color osd has exactly one area with 32 bit, which is drawn in its own
+	// coordinates. All other areas are bitmap areas, which are drawn in the coordinates
+	// of the osd. They are replaced by one true color area, but cOsd draws into its
+	// pixmap without converting the coordinates. So the draw functions convert them.
 	bool trueColor = numAreas == 1 && areas[0].bpp == 32;
-	if (!trueColor && !m_isSubtitleOsd)
-		r.Combine(cPoint(0, 0));
+	m_drawOrigin = trueColor ? cPoint(0, 0) : r.Point();
 
 	tArea area = { r.Left(), r.Top(), r.Right(), r.Bottom(), 32 };
 
@@ -2677,17 +2675,14 @@ void cOglOsd::DestroyPixmap(cPixmap *Pixmap)
 		return;
 
 	LOCK_PIXMAPS;
-	int start = 1;
-	if (m_isSubtitleOsd)
-		start = 0;
-	for (int i = start; i < m_pOglPixmaps.Size(); i++) {
+	// like cOsd, keep the pixmap of the area (index 0)
+	for (int i = 1; i < m_pOglPixmaps.Size(); i++) {
 		if (m_pOglPixmaps[i] == Pixmap) {
 			if (Pixmap->Layer() >= 0)
 				m_pOglPixmaps[0]->MarkViewPortDirty(m_pOglPixmaps[i]->ViewPort());
 
 			m_pOglPixmaps[i] = NULL;
-			if (i)
-				cOsd::DestroyPixmap(Pixmap);
+			cOsd::DestroyPixmap(Pixmap);
 
 			return;
 		}
@@ -2759,27 +2754,75 @@ void cOglOsd::Flush(void)
 	                                                    Left() + m_areaOrigin.X(), Top() + m_areaOrigin.Y(), 1, m_pDevice));
 }
 
-void cOglOsd::DrawScaledBitmap(int x, int y, const cBitmap &Bitmap, double FactorX, double FactorY, bool AntiAlias)
+/*
+ * cOsd draws into the pixmap of the area without converting the coordinates. So the
+ * following functions convert them, if they are coordinates of the osd (bitmap areas,
+ * see SetAreas()).
+ */
+void cOglOsd::SaveRegion(int x1, int y1, int x2, int y2)
 {
-	if (!m_pOglPixmaps[0])
-		return;
+	if (m_pOglPixmaps[0])
+		cOsd::SaveRegion(x1 - m_drawOrigin.X(), y1 - m_drawOrigin.Y(), x2 - m_drawOrigin.X(), y2 - m_drawOrigin.Y());
+}
 
-	std::unique_ptr<cBitmap> scaledBitmap;
-	const cBitmap *b = &Bitmap;
+void cOglOsd::DrawImage(const cPoint &Point, const cImage &Image)
+{
+	if (m_pOglPixmaps[0])
+		cOsd::DrawImage(Point - m_drawOrigin, Image);
+}
 
-	if (!DoubleEqual(FactorX, 1.0) || !DoubleEqual(FactorY, 1.0)) {
-		scaledBitmap.reset(Bitmap.Scaled(FactorX, FactorY, AntiAlias));
-		b = scaledBitmap.get();
-	}
+void cOglOsd::DrawImage(const cPoint &Point, int ImageHandle)
+{
+	if (m_pOglPixmaps[0])
+		cOsd::DrawImage(Point - m_drawOrigin, ImageHandle);
+}
 
-	int xNew = x;
-	int yNew = y;
+#if APIVERSNUM >= 20606
+void cOglOsd::DrawScaledImage(const cPoint &Point, const cImage &Image, double FactorX, double FactorY, bool AntiAlias)
+{
+	if (m_pOglPixmaps[0])
+		cOsd::DrawScaledImage(Point - m_drawOrigin, Image, FactorX, FactorY, AntiAlias);
+}
 
-	const cRect &viewport = m_pOglPixmaps[0]->ViewPort();
-	if (m_isSubtitleOsd && (x >= viewport.X()))
-		xNew -= viewport.X();
-	if (m_isSubtitleOsd && (y >= viewport.Y()))
-		yNew -= viewport.Y();
+void cOglOsd::DrawScaledImage(const cPoint &Point, int ImageHandle, double FactorX, double FactorY, bool AntiAlias)
+{
+	if (m_pOglPixmaps[0])
+		cOsd::DrawScaledImage(Point - m_drawOrigin, ImageHandle, FactorX, FactorY, AntiAlias);
+}
+#endif
 
-	m_pOglPixmaps[0]->DrawBitmap(cPoint(xNew, yNew), *b);
+void cOglOsd::DrawPixel(int x, int y, tColor Color)
+{
+	if (m_pOglPixmaps[0])
+		cOsd::DrawPixel(x - m_drawOrigin.X(), y - m_drawOrigin.Y(), Color);
+}
+
+void cOglOsd::DrawBitmap(int x, int y, const cBitmap &Bitmap, tColor ColorFg, tColor ColorBg, bool ReplacePalette, bool Overlay)
+{
+	if (m_pOglPixmaps[0])
+		cOsd::DrawBitmap(x - m_drawOrigin.X(), y - m_drawOrigin.Y(), Bitmap, ColorFg, ColorBg, ReplacePalette, Overlay);
+}
+
+void cOglOsd::DrawText(int x, int y, const char *s, tColor ColorFg, tColor ColorBg, const cFont *Font, int Width, int Height, int Alignment)
+{
+	if (m_pOglPixmaps[0])
+		cOsd::DrawText(x - m_drawOrigin.X(), y - m_drawOrigin.Y(), s, ColorFg, ColorBg, Font, Width, Height, Alignment);
+}
+
+void cOglOsd::DrawRectangle(int x1, int y1, int x2, int y2, tColor Color)
+{
+	if (m_pOglPixmaps[0])
+		cOsd::DrawRectangle(x1 - m_drawOrigin.X(), y1 - m_drawOrigin.Y(), x2 - m_drawOrigin.X(), y2 - m_drawOrigin.Y(), Color);
+}
+
+void cOglOsd::DrawEllipse(int x1, int y1, int x2, int y2, tColor Color, int Quadrants)
+{
+	if (m_pOglPixmaps[0])
+		cOsd::DrawEllipse(x1 - m_drawOrigin.X(), y1 - m_drawOrigin.Y(), x2 - m_drawOrigin.X(), y2 - m_drawOrigin.Y(), Color, Quadrants);
+}
+
+void cOglOsd::DrawSlope(int x1, int y1, int x2, int y2, tColor Color, int Type)
+{
+	if (m_pOglPixmaps[0])
+		cOsd::DrawSlope(x1 - m_drawOrigin.X(), y1 - m_drawOrigin.Y(), x2 - m_drawOrigin.X(), y2 - m_drawOrigin.Y(), Color, Type);
 }
