@@ -153,7 +153,6 @@ void cSoftOsd::Flush(void)
 			xs = bitmap->X0() + Left();
 			ys = bitmap->Y0() + Top();
 
-			// FIXME: negtative position bitmaps
 			w = x2 - x1 + 1;
 			h = y2 - y1 + 1;
 
@@ -162,24 +161,19 @@ void cSoftOsd::Flush(void)
 			int height;
 			double videoAspect;
 
-			if (xs < 0) {
-				if (xs + x1 < 0) {
-					x1 -= xs + x1;
-					w += xs + x1;
-					if (w <= 0)
-						continue;
-				}
-				xs = 0;
+			// the pixel x1, y1 of the bitmap is shown at xs + x1, ys + y1
+			if (xs + x1 < 0) {
+				x1 = -xs;
+				w = x2 - x1 + 1;
+				if (w <= 0)
+					continue;
 			}
 
-			if (ys < 0) {
-				if (ys + y1 < 0) {
-					y1 -= ys + y1;
-					h += ys + y1;
-					if (h <= 0)
-						continue;
-				}
-				ys = 0;
+			if (ys + y1 < 0) {
+				y1 = -ys;
+				h = y2 - y1 + 1;
+				if (h <= 0)
+					continue;
 			}
 
 			m_pDevice->GetOsdSize(width, height, videoAspect);
