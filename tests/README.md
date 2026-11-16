@@ -18,6 +18,7 @@ The tests cover the parts of the plugin, which can be tested without any hardwar
 | `test_pidcontroller.cpp`  | PID controller of the clock drift compensation          |
 | `test_queue.cpp`          | thread-safe queue                                       |
 | `test_ringbuffer.cpp`     | audio ring buffer                                       |
+| `test_statemachine.cpp`   | states and transitions of the device                    |
 
 Every `test_*.cpp` in this directory is built automatically. Regression tests of fixed bugs
 are kept in `test_*_regressions.cpp`. `h264streamwriter.h` composes H.264 NAL units for the

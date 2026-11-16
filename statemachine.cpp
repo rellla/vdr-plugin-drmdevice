@@ -18,6 +18,8 @@
 #include <variant>
 #include <vector>
 
+#include <unistd.h>
+
 #include <vdr/thread.h>
 
 #include "logger.h"
