@@ -1,19 +1,29 @@
 name: Create release
 
 # Creates the tag v<version> and a GitHub release, as soon as a new version
-# number (VERSION in plugindrmdevice.cpp) arrives on main. The release notes
-# are the section of this version in HISTORY.
+# number (VERSION in plugindrmdevice.cpp) arrives on main and the build, the
+# unit tests and the static analysis of this commit succeeded. The release
+# notes are the section of this version in HISTORY.
 
 on:
-  push:
+  # runs after each of these workflows, the release is created after the last one
+  workflow_run:
+    workflows:
+      - Build vdr-plugin-drmdevice
+      - Unit tests
+      - Static analysis
+    types:
+      - completed
     branches:
       - main
-    paths:
-      - 'plugindrmdevice.cpp'
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read    # read the results of the other workflows
+
+env:
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 concurrency:
   group: ${{ github.workflow }}
@@ -23,10 +33,16 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-24.04
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success')
 
     steps:
       - name: Checkout plugin repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
 
       - name: Read version
         id: version
@@ -47,8 +63,29 @@ jobs:
             echo "released=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Extract release notes from HISTORY
+      - name: Check the workflows of the commit
+        id: checks
         if: steps.version.outputs.released == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ready=true
+          for workflow in c-cpp.yml tests.yml static-analysis.yml; do
+            conclusion=$(gh run list --workflow "$workflow" --commit "$SHA" --event push \
+              --limit 1 --json conclusion --jq '.[0].conclusion // ""')
+            echo "$workflow: ${conclusion:-not finished}"
+            if [ "$conclusion" != "success" ]; then
+              ready=false
+            fi
+          done
+
+          if [ "$ready" = false ]; then
+            echo "::notice::No release of $SHA (yet): not all workflows succeeded"
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes from HISTORY
+        if: steps.checks.outputs.ready == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -65,13 +102,13 @@ jobs:
           cat release-notes.md
 
       - name: Create tag and release
-        if: steps.version.outputs.released == 'false'
+        if: steps.checks.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           gh release create "$TAG" \
-            --target "$GITHUB_SHA" \
+            --target "$SHA" \
             --title "Version $VERSION" \
             --notes-file release-notes.md
