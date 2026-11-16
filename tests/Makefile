@@ -44,6 +44,7 @@ SOURCES_UNDER_TEST = \
 	ac3encoder.cpp \
 	audioprocessor.cpp \
 	config.cpp \
+	drmhdr.cpp \
 	edid.cpp \
 	filllevel.cpp \
 	framesampler.cpp \
