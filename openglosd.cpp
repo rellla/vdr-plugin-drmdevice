@@ -2586,6 +2586,10 @@ cOglOsd::~cOglOsd()
 
 eOsdError cOglOsd::SetAreas(const tArea *areas, int numAreas)
 {
+	// nobody would create the buffer, if the thread was stopped (e.g. the device was detached)
+	if (!m_pOglThread->Active())
+		return oeUnknown;
+
 	cRect r;
 	for (int i = 0; i < numAreas; i++)
 		r.Combine(cRect(areas[i].x1, areas[i].y1, areas[i].Width(), areas[i].Height()));
@@ -2618,7 +2622,13 @@ eOsdError cOglOsd::SetAreas(const tArea *areas, int numAreas)
 	m_pBufferFramebuffer = new cOglFb(r.Width(), r.Height(), r.Width(), r.Height());
 	cCondWait initiated;
 	m_pOglThread->DoCmd(new cOglCmdInitFb(m_pBufferFramebuffer, &initiated));
-	initiated.Wait();
+	// the thread may end meanwhile, then nobody executes the command
+	while (!initiated.Wait(100)) {
+		if (!m_pOglThread->Active()) {
+			LOGWARNING("openglosd: %s: the OpenGL thread stopped, the areas aren't set", __FUNCTION__);
+			return oeUnknown;
+		}
+	}
 
 	return cOsd::SetAreas(&area, 1);
 }
