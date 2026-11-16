@@ -21,9 +21,9 @@ extern "C" {
 #include <libavutil/mastering_display_metadata.h>
 }
 
-#include <drm_mode.h>
+#include <cstring>
 
-class cVideoRender;
+#include <drm_mode.h>
 
 /**
  * @addtogroup drm
@@ -121,8 +121,6 @@ static inline struct colorspace *colorspace_lookup(const char *name)
  */
 class cHdrMetadata {
 public:
-	/** Create the HDR metadata handler for the given renderer */
-	cHdrMetadata(cVideoRender *render) : m_pRender(render) { };
 	int Build(struct hdr_output_metadata *,int, int, AVFrameSideData *, AVFrameSideData *);
 	static int Eotf(int);
 	int GetColorPrimaries(void) { return m_colorPrimaries; } ///< get the saved color primaries
@@ -131,7 +129,6 @@ public:
 	void Reset(void);
 
 private:
-	cVideoRender *m_pRender;                       ///< pointer to cVideoRender object
 	int m_colorPrimaries = -1;                     ///< saved color primaries
 	int m_colorTrc = -1;                           ///< saved transfer charateristics
 	AVMasteringDisplayMetadata m_mdMetadata = { }; ///< saved mastering display metadata fron AVFrame sidedata

@@ -66,7 +66,6 @@ cVideoRender::cVideoRender(cOutputDevice *device)
 	  m_grabPip("PIP"),
 	  m_pAmbient(device->Ambient()),
 	  m_pDrmDevice(new cDrmDevice(this, m_pConfig)),
-	  m_pHdrMetadata(this),
 	  m_hdrMode(m_pConfig->ConfigVideoEnableHDR)
 {
 #ifdef USE_GLES
@@ -290,7 +289,7 @@ int cVideoRender::SetVideoBuffer(cDrmBuffer *buf)
 				sd2 = av_frame_get_side_data(frame, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
 			}
 
-			if (!m_pHdrMetadata.Build(&hdrData, frame->color_primaries, colorTrc, sd1, sd2)) {
+			if (CanHandleHdr() && !m_pHdrMetadata.Build(&hdrData, frame->color_primaries, colorTrc, sd1, sd2)) {
 				SetHdrBlob(hdrData);
 				SetColorSpace(COLORRANGE_LIMITED);
 			}
