@@ -856,7 +856,7 @@ private:
 	bool m_isSubtitleOsd;                          ///< true, if this is a subtitle osd
 	cSize m_maxPixmapSize;                         ///< maximum allowed size of a pixmap (depends on the maximum OpenGL texture size)
 	cRect m_pDirtyViewport;                        ///< the dirty viewport
-	cPoint m_areaOrigin;                           ///< top left corner of the area inside the osd (0, 0 for a subtitle osd)
+	cPoint m_areaOrigin;                           ///< top left corner of the area inside the osd
 	cOutputDevice *m_pDevice;                      ///< pointer to cOutputDevice
 };
 
