@@ -2561,7 +2561,7 @@ cOglOutputFb *cOglOsd::OutputFramebuffer = NULL;
 cOglOsd::cOglOsd(int left, int top, uint level, std::shared_ptr<cOglThread> oglThread, cOutputDevice *device)
 	: cOsd(left, top, level),
 	  m_pOglThread(oglThread),
-	  m_isSubtitleOsd(level == 10 ? true : false),
+	  m_isSubtitleOsd(level == OSD_LEVEL_SUBTITLES),
 	  m_pDevice(device)
 {
 	int osdWidth = 0;
