@@ -9,6 +9,7 @@ The tests cover the parts of the plugin, which can be tested without any hardwar
 | `test_audioprocessor.cpp` | software volume, normalizer, compressor and equalizer   |
 | `test_audiostreams.cpp`   | reassembly and passthrough of real audio streams        |
 | `test_config.cpp`         | parsing of the setup.conf parameters                    |
+| `test_drmhdr.cpp`         | HDR output metadata of the connector                    |
 | `test_filllevel.cpp`      | low pass filter of the audio buffer fill level          |
 | `test_h264parser.cpp`     | H.264 SPS/PPS/slice header parser                       |
 | `test_mediaresume.cpp`    | resume positions of the mediaplayer                     |
