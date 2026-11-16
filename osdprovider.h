@@ -42,7 +42,7 @@ public:
 	void StopOpenGlThread(void);
 	bool LockOpenGlThread(void);
 	void UnlockOpenGlThread(void);
-	const cImage *GetImageData(int ImageHandle);
+	static const cImage *GetImageData(int ImageHandle);
 	void OsdSizeChanged(void);
 #endif
 

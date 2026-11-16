@@ -181,18 +181,21 @@ void cDeviceOsdProvider::UnlockOpenGlThread(void) {
 
 /**
  * Store image data
+ *
+ * The image is stored as a texture by the OpenGL thread (negative handle). If
+ * this isn't possible (OpenGL osd disabled, device detached, cache full, image
+ * too big), VDR keeps the image in the memory (positive handle).
  */
 int cDeviceOsdProvider::StoreImageData(const cImage &Image)
 {
 	// there is no renderer to start the OpenGL thread, if the device is detached
-	if (m_pDevice->IsDetached())
-		return 0;
-
-	if (StartOpenGlThread()) {
+	if (!m_pDevice->IsDetached() && StartOpenGlThread()) {
 		int imgHandle = m_pOglThread->StoreImage(Image);
-		return imgHandle;
+		if (imgHandle)
+			return imgHandle;
 	}
-	return 0;
+
+	return cOsdProvider::StoreImageData(Image);
 }
 
 /**
@@ -207,6 +210,12 @@ const cImage *cDeviceOsdProvider::GetImageData(int ImageHandle) {
  */
 void cDeviceOsdProvider::DropImageData(int imgHandle)
 {
+	// VDR keeps the images with a positive handle
+	if (imgHandle > 0) {
+		cOsdProvider::DropImageData(imgHandle);
+		return;
+	}
+
 	// the images of a stopped OpenGL thread are already deleted
 	if (m_pOglThread)
 		m_pOglThread->DropImageData(imgHandle);

@@ -39,6 +39,7 @@
 #include "misc.h"
 #include "openglosd.h"
 #include "openglshader.h"
+#include "osdprovider.h"
 #include "videorender.h"
 
 // This maybe useful for skin developing and marks the rects of the single draws
@@ -1818,7 +1819,7 @@ int cOglThread::StoreImage(const cImage &image)
 	}
 
 	if (image.Width() > m_maxTextureSize || image.Height() > m_maxTextureSize) {
-		LOGERROR("openglosd: %s: cannot store image of %dpx x %dpx (maximum size is %dpx x %dpx) - falling back to cOsdProvider::StoreImageData()",
+		LOGERROR("openglosd: %s: cannot store image of %dpx x %dpx (maximum size is %dpx x %dpx)",
 			__FUNCTION__, image.Width(), image.Height(), m_maxTextureSize, m_maxTextureSize);
 		return 0;
 	}
@@ -2256,6 +2257,14 @@ void cOglPixmap::DrawScaledImage(const cPoint &point, int imageHandle, double fa
 {
 	if (!m_pOglThread->Active())
 		return;
+
+	// VDR keeps the images with a positive handle (see cDeviceOsdProvider::StoreImageData())
+	if (imageHandle > 0) {
+		LOCK_PIXMAPS;
+		if (const cImage *image = cDeviceOsdProvider::GetImageData(imageHandle))
+			DrawScaledImage(point, *image, factorX, factorY, antiAlias);
+		return;
+	}
 
 	if (imageHandle < 0 && m_pOglThread->GetImageRef(imageHandle)) {
 		sOglImage *img = m_pOglThread->GetImageRef(imageHandle);
