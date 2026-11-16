@@ -34,7 +34,7 @@ concurrency:
 jobs:
   build:
     name: Build (${{ matrix.name }})
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner || 'ubuntu-24.04' }}
     strategy:
       fail-fast: false
       matrix:
@@ -48,6 +48,11 @@ jobs:
             cxx: g++
             gles: 0
             artifact: vdr-drmdevice-no-gles
+          # the plugin runs on ARM boards (e.g. different char signedness and type sizes)
+          - name: GCC, OpenGL/ES, ARM64
+            cxx: g++
+            gles: 1
+            runner: ubuntu-24.04-arm
           # the latest releases of the older VDR versions
           - name: GCC, OpenGL/ES, VDR 2.6
             cxx: g++
