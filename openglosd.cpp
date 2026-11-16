@@ -1990,8 +1990,10 @@ void cOglThread::Action(void)
 		if (cmd->NeedsLockingAgainstStateChange())
 			lock.lock();
 
-		if (!Running())
+		if (!Running()) {
+			delete cmd;
 			continue;
+		}
 
 		cmd->Execute();
 		} // end of locked context
@@ -2279,6 +2281,10 @@ void cOglPixmap::DrawScaledImage(const cPoint &point, int imageHandle, double fa
 
 void cOglPixmap::DrawPixel(const cPoint &point, tColor color)
 {
+	if (!m_pOglThread->Active())
+		return;
+
+	LOCK_PIXMAPS;
 	cRect r(point.X(), point.Y(), 1, 1);
 	m_pOglThread->DoCmd(new cOglCmdDrawRectangle(m_pFramebuffer, r.X(), r.Y(), r.Width(), r.Height(), color));
 #ifdef GRIDRECT
