@@ -1,0 +1,77 @@
+name: Create release
+
+# Creates the tag v<version> and a GitHub release, as soon as a new version
+# number (VERSION in plugindrmdevice.cpp) arrives on main. The release notes
+# are the section of this version in HISTORY.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'plugindrmdevice.cpp'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout plugin repository
+        uses: actions/checkout@v7
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(sed -n 's/^static const char \*const VERSION *= *"\([^"]*\)".*/\1/p' plugindrmdevice.cpp)
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::No valid version found in plugindrmdevice.cpp: '$version'"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$(git ls-remote --tags origin "refs/tags/v$version")" ]; then
+            echo "Tag v$version already exists, nothing to do"
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract release notes from HISTORY
+        if: steps.version.outputs.released == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v version="$VERSION" '
+            /^[0-9]+-[0-9]+-[0-9]+: Version / { found = ($NF == version); next }
+            found
+          ' HISTORY | sed -e '/./,$!d' > release-notes.md
+
+          if [ ! -s release-notes.md ]; then
+            echo "::error::HISTORY has no entry for version $VERSION"
+            exit 1
+          fi
+
+          cat release-notes.md
+
+      - name: Create tag and release
+        if: steps.version.outputs.released == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "Version $VERSION" \
+            --notes-file release-notes.md
