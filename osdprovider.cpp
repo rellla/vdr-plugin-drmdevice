@@ -81,9 +81,9 @@ cOsd *cDeviceOsdProvider::CreateOsd(int left, int top, uint level)
 		return m_pOsd = new cOglOsd(left, top, level, m_pOglThread, m_pDevice);
 	}
 
-	LOGDEBUG("osdprovider: %s: %d, %d, %d, OpenGL failed, using software rendering", __FUNCTION__, left, top, 999);
+	LOGDEBUG("osdprovider: %s: %d, %d, %d, OpenGL failed, using software rendering", __FUNCTION__, left, top, level);
 	m_pDevice->SetDisableOglOsd();
-	return m_pOsd = new cSoftOsd(left, top, 999, m_pDevice);
+	return m_pOsd = new cSoftOsd(left, top, level, m_pDevice);
 #else
 	if (m_pDevice->IsDetached()) {
 		LOGDEBUG("osdprovider: %s: %d, %d, %d, device detached, using dummy osd", __FUNCTION__, left, top, level);
