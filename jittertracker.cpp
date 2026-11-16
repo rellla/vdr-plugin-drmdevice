@@ -51,10 +51,10 @@ void cJitterTracker::PacketReceived(void)
 		m_shortTermMaxJitterMs = jitterMs;
 
 	// if (jitterMs > 35 && strcmp(m_identifier, "video") == 0)
-	//     LOGDEBUG2(L_SOUND, "jittertracker: %s: %s: high jitter detected: packet no.: %d: %dms (last diff: %dms, time diff: %dms)", __FUNCTION__, m_identifier, m_packetCounter, jitterMs, m_lastDiffMs, diffMs);
+	//     LOGDEBUG2(L_SOUND, "jittertracker: %s: %s: high jitter detected: packet no.: %d: %dms (last diff: %dms, time diff: %dms)", __FUNCTION__, m_identifier, m_packetCounter, jitterMs, (int)m_lastDiffMs, (int)diffMs);
 
 	if (m_packetCounter % 1000 == 0) {
-		// LOGDEBUG2(L_SOUND, "jittertracker: %s: %s: max jitter: last 1000 packets: %dms, overall: %dms,", __FUNCTION__, m_identifier, m_shortTermMaxJitterMs, m_longTermMaxJitterMs);
+		// LOGDEBUG2(L_SOUND, "jittertracker: %s: %s: max jitter: last 1000 packets: %dms, overall: %dms,", __FUNCTION__, m_identifier, m_shortTermMaxJitterMs.load(), m_longTermMaxJitterMs.load());
 		m_shortTermMaxJitterMs = 0;
 	}
 

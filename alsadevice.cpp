@@ -701,7 +701,7 @@ bool cAlsaDevice::CheckWrittenFrames(int framesWritten, int framesToWrite)
 		return false;
 	}
 
-//	LOGDEBUG2(L_SOUND, "audio: %s: %d frames (%dms) written", __FUNCTION__, framesWritten, m_alsa.FramesToMs(framesWritten));
+//	LOGDEBUG2(L_SOUND, "audio: %s: %d frames (%dms) written", __FUNCTION__, framesWritten, FramesToMs(framesWritten));
 	return true;
 }
 

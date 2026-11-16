@@ -312,7 +312,7 @@ void cOutputDevice::SetVideoFormat(bool videoFormat16_9)
  */
 void cOutputDevice::GetVideoSize(int &width, int &height, double &aspectRatio)
 {
-//	LOGDEBUG("device: %s: %d x %d @ %f", __FUNCTION__, *width, *height, *aspectRatio);
+//	LOGDEBUG("device: %s: %d x %d @ %f", __FUNCTION__, width, height, aspectRatio);
 
 	if (IsDetached()) { // return default values according to vdr docs
 		width = 0;
@@ -965,7 +965,7 @@ void cOutputDevice::StillPicture(const uchar *data, int size)
  */
 bool cOutputDevice::Poll([[maybe_unused]] cPoller & poller, int timeoutMs)
 {
-//	LOGDEBUG("device: %s: timeout %d", __FUNCTION__, timeout_ms);
+//	LOGDEBUG("device: %s: timeout %d", __FUNCTION__, timeoutMs);
 	if (IsDetached())
 		return true;
 

@@ -724,7 +724,7 @@ bool cVideoRender::FrameDropNecessary(int64_t audioPtsMs, int64_t videoPtsMs)
 
 	// log AV diff for the first 10 frames and every 10 seconds
 //	if (m_startCounter < 10 || m_startCounter % 500 == 0)
-//		LOGDEBUG2(L_AV_SYNC, "drop %d, dup %d, total %d audio %s video %s Delay %dms kernel buffer delay %dms diff %dms",
+//		LOGDEBUG2(L_AV_SYNC, "drop %d, dup %d, total %d audio %s video %s Delay %dms kernel buffer delay %" PRId64 "ms diff %dms",
 //		m_framesDropped, m_framesDuped, m_startCounter,
 //		Timestamp2StringMs(audioPtsMs), Timestamp2StringMs(videoPtsMs),
 //		m_pDevice->GetVideoAudioDelayMs(), m_pAudio->GetHardwareOutputDelayMs(), audioBehindVideoByMs);
