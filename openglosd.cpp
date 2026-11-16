@@ -2565,18 +2565,22 @@ cOglOsd::cOglOsd(int left, int top, uint level, std::shared_ptr<cOglThread> oglT
 
 cOglOsd::~cOglOsd()
 {
-	if (!m_pOglThread->Active() || !Active() || !m_pBufferFramebuffer)
+	if (!m_pOglThread->Active() || !m_pBufferFramebuffer)
 		return;
 
 	LOGDEBUG2(L_OSD, "openglosd: %s: Delete Osd %p", __FUNCTION__, this);
 
-	// clear both framebuffers
-	m_pOglThread->DoCmd(new cOglCmdFill(m_pBufferFramebuffer, clrTransparent));
-	m_pOglThread->DoCmd(new cOglCmdBufferFill(OutputFramebuffer, clrTransparent));
+	// only the active osd is shown and must be removed from the output
+	if (Active()) {
+		// clear both framebuffers
+		m_pOglThread->DoCmd(new cOglCmdFill(m_pBufferFramebuffer, clrTransparent));
+		m_pOglThread->DoCmd(new cOglCmdBufferFill(OutputFramebuffer, clrTransparent));
 
-	SetActive(false); // OsdClose() is done in cOglCmdCopyBufferToOutputFb()
-	m_pOglThread->DoCmd(new cOglCmdCopyBufferToOutputFb(m_pBufferFramebuffer, OutputFramebuffer,
-	                                                    Left() + m_areaOrigin.X(), Top() + m_areaOrigin.Y(), 0, m_pDevice));
+		SetActive(false); // OsdClose() is done in cOglCmdCopyBufferToOutputFb()
+		m_pOglThread->DoCmd(new cOglCmdCopyBufferToOutputFb(m_pBufferFramebuffer, OutputFramebuffer,
+		                                                    Left() + m_areaOrigin.X(), Top() + m_areaOrigin.Y(), 0, m_pDevice));
+	}
+
 	m_pOglThread->DoCmd(new cOglCmdDeleteFb(m_pBufferFramebuffer));
 }
 
