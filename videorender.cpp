@@ -1763,6 +1763,15 @@ cDrmBuffer *cBufferStrategyReuseHardware::GetBuffer(cDrmBufferPool *pool, AVDRMF
 	return pool->FindUninitilized();
 }
 
+/**
+ * Get a drm buffer for a software decoded frame
+ *
+ * A buffer, which was shown before, is reused to avoid a new allocation.
+ *
+ * @param pool     pool of the drm buffers
+ *
+ * @return the buffer (nullptr, if the pool has no free buffer)
+ */
 cDrmBuffer *cBufferStrategyReuseSoftware::GetBuffer(cDrmBufferPool *pool, AVDRMFrameDescriptor *)
 {
 	cDrmBuffer *buf = pool->FindNoPresentationPending();

@@ -421,6 +421,14 @@ constexpr double HDR_REFERENCE_WHITE = 203.0;   ///< nits of the HDR reference w
 constexpr double HLG_PEAK = 1000.0;             ///< nits of the HLG reference display
 constexpr float TONEMAP_KNEE = 0.75f;           ///< below, the brightness is kept, above it is compressed towards SDR white
 
+/**
+ * Get the conversion, which a frame needs to be shown as SDR
+ *
+ * @param trc          transfer characteristics of the frame
+ * @param primaries    color primaries of the frame
+ *
+ * @return the conversion (TONEMAP_NONE for a BT.709 SDR frame)
+ */
 eToneMap GetToneMap(AVColorTransferCharacteristic trc, AVColorPrimaries primaries)
 {
 	if (trc == AVCOL_TRC_SMPTE2084)
@@ -463,6 +471,9 @@ struct sHdrTables {
 	}
 };
 
+/**
+ * Get the lookup tables of the conversions, they are created at the first call
+ */
 const sHdrTables &HdrTables(void)
 {
 	static const sHdrTables tables;     // thread safe initialization

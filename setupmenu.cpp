@@ -668,6 +668,12 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cShowChannelSwitchDurationMessage = m_pConfig->ConfigShowChannelSwitchDurationMessage;
 }
 
+/**
+ * Build the texts of the display mode item
+ *
+ * The order of the first entries must match the CONFIG_DISPLAY_MODE_* values,
+ * the modes of the connector follow from CONFIG_DISPLAY_MODE_MANUAL on.
+ */
 void cDeviceSetupMenu::BuildDisplayModeList(void)
 {
 	m_displayMode.clear();
@@ -713,6 +719,9 @@ void cDeviceSetupMenu::BuildDisplayModeList(void)
 		m_displayModePtrs.push_back(s.c_str());
 }
 
+/**
+ * Build the texts of the channel switch mode item
+ */
 void cDeviceSetupMenu::BuildChannelSwitchModeList(void)
 {
 	m_channelSwitchMode.clear();
