@@ -266,3 +266,39 @@ https://github.com/rellla/vdr-plugin-softhddevice-drm-gles
 - The audio equalizer is shown in the audio section of the setup menu.
 - The service interfaces moved to the subdirectory services/.
 - Updated the README and the developer documentation.
+
+2026-11-16: Version 2.4.0
+
+- HDR automatic (setup "Enable HDR", VideoEnableHDR = 2, the new default): the
+  HDR output metadata is only sent, if the TV reports HDR in its EDID. A video
+  with a transfer function (PQ or HLG), which the TV doesn't report, is output
+  as SDR.
+- Fixed HDR: changes of the HDR metadata are detected, SDR is restored, if HDR
+  is switched off, and the statistics show the HDR state, which is really set.
+- AC-3 encoding (setup AudioAc3Encode): decoded audio with more than 2 channels
+  (e.g. AAC, E-AC-3 or DTS, which isn't passed through) is encoded to AC-3 5.1
+  and passed through, if AC-3 is passed through. This is for receivers, which
+  only decode AC-3 (e.g. via S/PDIF or the ARC of a TV). FFmpeg needs the AC-3
+  encoder.
+- Passthrough delay (setup AudioPassthroughDelay): -1000 to 1000 ms, which are
+  added to the audio delay, while the audio is passed through.
+- Decoder watchdog (setup DecoderWatchdog, on by default): a hardware decoder,
+  which stalls without an error (no frame for 2s during the playback, while
+  packets are waiting), is restarted.
+- Fixed OSD areas, which don't start at the top left corner of the OSD (they
+  were cut off, moved or not shown at all, e.g. with text2skin or the dvd
+  subpictures), with the OpenGL/ES and the software OSD.
+- Fixed a hanging VDR, if the OSD areas are set, while the OpenGL thread is
+  stopped (e.g. the device was detached with an open OSD).
+- Fixed missing images in the skin, if an image can't be stored as texture
+  (OpenGL/ES OSD disabled, detached, cache full or image too big): VDR keeps
+  these images.
+- The buffer of an OSD, which isn't active, is deleted.
+- Fixed the clipping of bitmaps with a negative position in the software OSD
+  and some small flaws of the OSD.
+- The subtitle OSD is rendered like the other OSDs.
+- Fixed the resync of the video: a resync position far away from the video
+  position wasn't ignored.
+- The README says, that the plugin starts detached without a display mode.
+- Split device.cpp: the pip control and the state transitions are in their own
+  files.
