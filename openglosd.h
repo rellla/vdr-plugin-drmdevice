@@ -845,7 +845,19 @@ public:
 	virtual void DestroyPixmap(cPixmap *);
 	virtual void Flush(void);
 	virtual const cSize &MaxPixmapSize(void) const { return m_maxPixmapSize; };
-	virtual void DrawScaledBitmap(int, int, const cBitmap &, double, double, bool AntiAlias = false);
+	virtual void SaveRegion(int, int, int, int);
+	virtual void DrawImage(const cPoint &, const cImage &);
+	virtual void DrawImage(const cPoint &, int);
+#if APIVERSNUM >= 20606
+	virtual void DrawScaledImage(const cPoint &, const cImage &, double, double, bool AntiAlias = false);
+	virtual void DrawScaledImage(const cPoint &, int, double, double, bool AntiAlias = false);
+#endif
+	virtual void DrawPixel(int, int, tColor);
+	virtual void DrawBitmap(int, int, const cBitmap &, tColor ColorFg = 0, tColor ColorBg = 0, bool ReplacePalette = false, bool Overlay = false);
+	virtual void DrawText(int, int, const char *, tColor, tColor, const cFont *, int Width = 0, int Height = 0, int Alignment = taDefault);
+	virtual void DrawRectangle(int, int, int, int, tColor);
+	virtual void DrawEllipse(int, int, int, int, tColor, int Quadrants = 0);
+	virtual void DrawSlope(int, int, int, int, tColor, int);
 
 	static cOglOutputFb *OutputFramebuffer;        ///< main OSD output framebuffer - this keeps our finished "OSD" (one per OSD)
 private:
@@ -853,10 +865,10 @@ private:
 	                                               ///< before this one is blit onto the OSD output framebuffer
 	std::shared_ptr<cOglThread> m_pOglThread;      ///< pointer to thread, which executes the commands
 	cVector<cOglPixmap *> m_pOglPixmaps;           ///< array of pixmaps
-	bool m_isSubtitleOsd;                          ///< true, if this is a subtitle osd
 	cSize m_maxPixmapSize;                         ///< maximum allowed size of a pixmap (depends on the maximum OpenGL texture size)
 	cRect m_pDirtyViewport;                        ///< the dirty viewport
 	cPoint m_areaOrigin;                           ///< top left corner of the area inside the osd
+	cPoint m_drawOrigin;                           ///< the draw functions get coordinates relative to this point of the area
 	cOutputDevice *m_pDevice;                      ///< pointer to cOutputDevice
 };
 
