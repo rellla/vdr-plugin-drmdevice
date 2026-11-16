@@ -22,7 +22,6 @@ extern "C" {
 
 #include "drmhdr.h"
 #include "logger.h"
-#include "videorender.h"
 
 /**
  * Electro-optical transfer function of the HDR output metadata (CTA-861-G)
@@ -113,9 +112,6 @@ void cHdrMetadata::Reset(void)
  */
 int cHdrMetadata::Build(struct hdr_output_metadata *data, int colorPrimaries, int colorTrc, AVFrameSideData *sd1, AVFrameSideData *sd2)
 {
-	if (!m_pRender->CanHandleHdr())
-		return -1;
-
 	// clean up FFmpeg stuff
 	if (colorTrc == AVCOL_TRC_BT2020_10)
 		colorTrc = AVCOL_TRC_ARIB_STD_B67;
