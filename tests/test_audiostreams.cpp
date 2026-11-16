@@ -439,7 +439,25 @@ TEST_CASE("Passthrough format", "[spdif]") {
 
     SECTION("An unknown rate is 48kHz") {
         REQUIRE(GetPassthroughFormat(AV_CODEC_ID_AC3, 0, 0, false).sampleRate == 48000);
+        REQUIRE(GetPassthroughFormat(AV_CODEC_ID_AC3, -1, 0, false).sampleRate == 48000);
         REQUIRE(GetPassthroughFormat(AV_CODEC_ID_EAC3, 0, 0, false).sampleRate == 192000);
+        REQUIRE(GetPassthroughFormat(AV_CODEC_ID_TRUEHD, 0, 0, false).sampleRate == 192000);
+    }
+
+    SECTION("Other codecs use the rate of the stream, too") {
+        for (AVCodecID codec : {AV_CODEC_ID_MP2, AV_CODEC_ID_AAC, AV_CODEC_ID_NONE}) {
+            sPassthroughFormat format = GetPassthroughFormat(codec, 32000, 0, true);
+            REQUIRE(format.sampleRate == 32000);
+            REQUIRE(format.channels == 2);
+            REQUIRE(format.dtshdRate == 0);
+        }
+    }
+
+    SECTION("The profile and the DTS-HD passthrough only matter for DTS") {
+        sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_AC3, 48000, DTS_PROFILE(DTS_HD_MA), true);
+        REQUIRE(format.sampleRate == 48000);
+        REQUIRE(format.channels == 2);
+        REQUIRE(format.dtshdRate == 0);
     }
 
     SECTION("E-AC-3 uses four times the rate") {
@@ -466,6 +484,28 @@ TEST_CASE("Passthrough format - DTS-HD", "[spdif]") {
         REQUIRE_FALSE(IsDtsHdProfile(DTS_PROFILE(DTS_ES)));
         REQUIRE_FALSE(IsDtsHdProfile(DTS_PROFILE(DTS_EXPRESS)));  // no core
         REQUIRE_FALSE(IsDtsHdProfile(DTS_PROFILE(UNKNOWN)));
+#if defined(AV_PROFILE_DTS_HD_MA_X) || defined(FF_PROFILE_DTS_HD_MA_X)
+        REQUIRE(IsDtsHdProfile(DTS_PROFILE(DTS_HD_MA_X)));
+        REQUIRE(IsDtsHdProfile(DTS_PROFILE(DTS_HD_MA_X_IMAX)));
+#endif
+    }
+
+    SECTION("High Resolution Audio is sent with 2 channels and 192kHz") {
+        for (int rate : {48000, 96000}) {
+            sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_DTS, rate, DTS_PROFILE(DTS_HD_HRA), true);
+            REQUIRE(format.sampleRate == 192000);
+            REQUIRE(format.channels == 2);
+            REQUIRE(format.dtshdRate == 192000);
+        }
+    }
+
+    SECTION("Without the DTS-HD passthrough the core is passed through") {
+        for (int profile : {DTS_PROFILE(DTS_HD_MA), DTS_PROFILE(DTS_HD_HRA)}) {
+            sPassthroughFormat format = GetPassthroughFormat(AV_CODEC_ID_DTS, 96000, profile, false);
+            REQUIRE(format.sampleRate == 96000);
+            REQUIRE(format.channels == 2);
+            REQUIRE(format.dtshdRate == 0);
+        }
     }
 
     SECTION("Master Audio is a high bitrate bitstream") {
@@ -482,6 +522,11 @@ TEST_CASE("Passthrough format - DTS-HD", "[spdif]") {
         REQUIRE(format.sampleRate == 44100);
         REQUIRE(format.dtshdRate == 0);
 
+        format = GetPassthroughFormat(AV_CODEC_ID_DTS, 88200, DTS_PROFILE(DTS_HD_HRA), true);
+        REQUIRE(format.sampleRate == 88200);
+        REQUIRE(format.channels == 2);
+        REQUIRE(format.dtshdRate == 0);
+
         format = GetPassthroughFormat(AV_CODEC_ID_DTS, 0, DTS_PROFILE(UNKNOWN), true);
         REQUIRE(format.sampleRate == 48000);
         REQUIRE(format.channels == 2);
@@ -495,6 +540,9 @@ TEST_CASE("IEC 60958 sample rate code", "[spdif]") {
     REQUIRE(GetIEC958SampleRateCode(44100, 2, true) == IEC958_AES3_CON_FS_44100);
     REQUIRE(GetIEC958SampleRateCode(192000, 2, true) == IEC958_AES3_CON_FS_192000);
     REQUIRE(GetIEC958SampleRateCode(176400, 2, true) == IEC958_AES3_CON_FS_176400);
+    REQUIRE(GetIEC958SampleRateCode(32000, 2, false) == IEC958_AES3_CON_FS_32000);
+    REQUIRE(GetIEC958SampleRateCode(88200, 2, false) == IEC958_AES3_CON_FS_88200);
+    REQUIRE(GetIEC958SampleRateCode(96000, 2, false) == IEC958_AES3_CON_FS_96000);
     REQUIRE(GetIEC958SampleRateCode(22050, 2, false) == IEC958_AES3_CON_FS_NOTID);
 
     SECTION("A high bitrate bitstream is sent with 768kHz") {
