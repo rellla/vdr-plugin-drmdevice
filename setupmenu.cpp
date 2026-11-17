@@ -50,7 +50,7 @@ static inline cOsdItem *SeparatorName(const char *label)
 }
 
 /**
- * Get the name of a section of the setup menu
+ * Get the translated name of a section of the setup menu
  *
  * @param section   section (see cDeviceSetupMenu::Section)
  */
@@ -268,6 +268,8 @@ void cDeviceSetupMenu::AddStatistics(void)
 
 /**
  * Build setup menu
+ *
+ * @param current  index of the item to select (KEEP_CURRENT: keep the selected one)
  */
 void cDeviceSetupMenu::Create(int current)
 {
@@ -458,6 +460,8 @@ void cDeviceSetupMenu::Create(int current)
  * return to the overview. Back in the overview closes the setup menu.
  *
  * @param key          pressed key
+ *
+ * @return state of the menu after the key
  */
 eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
 {
@@ -527,6 +531,8 @@ eOSState cDeviceSetupMenu::ProcessKey(eKeys key)
  *
  * The test picture is shown by a player (like a replay), VDR switches to the
  * live view again, when it is closed (Back, OK or Stop).
+ *
+ * @return osEnd to close the menu
  */
 eOSState cDeviceSetupMenu::ShowTestPicture(void)
 {
@@ -536,6 +542,8 @@ eOSState cDeviceSetupMenu::ShowTestPicture(void)
 
 /**
  * Init the setup menu and build the overview
+ *
+ * @param device  output device
  */
 cDeviceSetupMenu::cDeviceSetupMenu(cOutputDevice *device)
 	: m_pDevice(device),
@@ -660,6 +668,12 @@ void cDeviceSetupMenu::LoadValues(void)
 	m_cShowChannelSwitchDurationMessage = m_pConfig->ConfigShowChannelSwitchDurationMessage;
 }
 
+/**
+ * Build the texts of the display mode item
+ *
+ * The order of the first entries must match the CONFIG_DISPLAY_MODE_* values,
+ * the modes of the connector follow from CONFIG_DISPLAY_MODE_MANUAL on.
+ */
 void cDeviceSetupMenu::BuildDisplayModeList(void)
 {
 	m_displayMode.clear();
@@ -705,6 +719,9 @@ void cDeviceSetupMenu::BuildDisplayModeList(void)
 		m_displayModePtrs.push_back(s.c_str());
 }
 
+/**
+ * Build the texts of the channel switch mode item
+ */
 void cDeviceSetupMenu::BuildChannelSwitchModeList(void)
 {
 	m_channelSwitchMode.clear();

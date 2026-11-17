@@ -75,6 +75,8 @@ cPlaylistEntry::cPlaylistEntry(const std::string &path)
 
 /**
  * Compose a full-path-string for the OSD entry
+ *
+ * @return string "folder - subfolder - file"
  */
 std::string cPlaylistEntry::OsdItemString(void)
 {
@@ -1034,6 +1036,7 @@ int64_t cDrmDevicePlayer::GetPositionMs(void)
  * @param forward     true: seek to the I-frame at or after the position,
  *                    false: seek to the I-frame at or before the position
  * @retval true       on success
+ * @retval false      the position couldn't be reached
  */
 bool cDrmDevicePlayer::Seek(int64_t positionMs, bool forward)
 {
@@ -1250,6 +1253,7 @@ bool cDrmDevicePlayer::Feed(void)
  * frames are displayed.
  *
  * @retval true     the buffers of the device are empty
+ * @retval false    the device still has data to play
  */
 bool cDrmDevicePlayer::DeviceBuffersEmpty(void)
 {
@@ -1269,6 +1273,7 @@ bool cDrmDevicePlayer::DeviceBuffersEmpty(void)
  * Must be called with the thread lock.
  *
  * @retval true     the file ended
+ * @retval false    the playback goes on
  */
 bool cDrmDevicePlayer::CheckBeginEnd(void)
 {
@@ -1571,6 +1576,7 @@ bool cDrmDevicePlayer::GetIndex(int &current, int &total, [[maybe_unused]] bool 
  * @param[out] current    current frame number
  * @param[out] total      total number of frames (0, if unknown)
  * @retval true           if a file is played
+ * @retval false          if no file is played
  */
 bool cDrmDevicePlayer::GetFrameNumber(int &current, int &total)
 {
@@ -1766,6 +1772,7 @@ void cDrmDeviceControl::ShowMode(void)
  *
  * @param initial     true, if the display is shown the first time
  * @retval true       the progress is shown
+ * @retval false      the progress isn't shown
  */
 bool cDrmDeviceControl::ShowProgress(bool initial)
 {
@@ -1929,6 +1936,8 @@ void cDrmDeviceControl::TimeSearch(void)
  * The keys work like in VDR's cReplayControl.
  *
  * @param key     pressed key
+ *
+ * @return osContinue, if the key was handled, osEnd, if the replay ends, osUnknown otherwise
  */
 eOSState cDrmDeviceControl::ProcessKey(eKeys key)
 {

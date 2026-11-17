@@ -85,6 +85,8 @@ cOutputDevice::~cOutputDevice(void)
 
 /**
  * Initialize the device
+ *
+ * @return always true
  */
 bool cOutputDevice::Initialize(void)
 {
@@ -115,6 +117,8 @@ bool cOutputDevice::Initialize(void)
  *
  * Gets the service interface of the zapcache plugin: VDR starts all plugins,
  * before it switches to the first live channel, so PlayTs() doesn't read it yet.
+ *
+ * @return always true
  */
 int cOutputDevice::Start(void)
 {
@@ -195,6 +199,8 @@ void cOutputDevice::MakePrimaryDevice(bool on)
 
 /**
  * Tells whether this device has an MPEG decoder
+ *
+ * @return true, if the device is attached
  */
 bool cOutputDevice::HasDecoder(void) const
 {
@@ -228,6 +234,8 @@ cSpuDecoder *cOutputDevice::GetSpuDecoder(void)
  * @param quality   JPEG quality
  * @param width     number of horizontal pixels in the frame
  * @param height    number of vertical pixels in the frame
+ *
+ * @return pointer to the image data, which the caller must free (nullptr on error)
  */
 uchar *cOutputDevice::GrabImage(int &size, bool jpeg, int quality, int width, int height)
 {
@@ -304,7 +312,7 @@ void cOutputDevice::SetVideoFormat(bool videoFormat16_9)
  */
 void cOutputDevice::GetVideoSize(int &width, int &height, double &aspectRatio)
 {
-//	LOGDEBUG("device: %s: %d x %d @ %f", __FUNCTION__, *width, *height, *aspectRatio);
+//	LOGDEBUG("device: %s: %d x %d @ %f", __FUNCTION__, width, height, aspectRatio);
 
 	if (IsDetached()) { // return default values according to vdr docs
 		width = 0;
@@ -371,6 +379,8 @@ bool cOutputDevice::CanReplay(void) const
  * Sets the device into the given play mode.
  *
  * @param play_mode       new play mode (Audio/Video/External...)
+ *
+ * @return true, if the play mode was set
  */
 bool cOutputDevice::SetPlayMode(ePlayMode play_mode)
 {
@@ -428,6 +438,8 @@ bool cOutputDevice::SetPlayMode(ePlayMode play_mode)
  * The caller must ensure, that PlayAudio() is not called in detached state.
  * (CanReplay() and HasDecoder() return false in this state and we are not
  * the primary device.)
+ *
+ * @return size, if the packet was taken (or dropped), 0, if it must be sent again
  */
 int cOutputDevice::PlayAudio(const uchar *data, int size, uchar id)
 {
@@ -676,6 +688,8 @@ int cOutputDevice::PlayBufferedTs(void *context, const uchar *packet, int size)
  * The caller must ensure, that PlayVideo() is not called in detached state.
  * (CanReplay() and HasDecoder() return false in this state and we are not
  * the primary device.)
+ *
+ * @return size, if the packet was taken (or dropped), 0, if it must be sent again
  */
 int cOutputDevice::PlayVideo(const uchar *data, int size)
 {
@@ -691,6 +705,8 @@ int cOutputDevice::PlayVideo(const uchar *data, int size)
 /**
  * Gets the current System Time Counter, which can be used to
  * synchronize audio, video and subtitles.
+ *
+ * @return current STC in 90kHz ticks (AV_NOPTS_VALUE, if unknown)
  */
 int64_t cOutputDevice::GetSTC(void)
 {
@@ -777,6 +793,9 @@ void cOutputDevice::ScaleVideo(const cRect & rect)
  * Fast Reverse       6    3    1
  * Slow Forward       8    4    2
  * Slow Reverse      63   48   24
+ *
+ * @param speed    speed as VDR passes it (number of repetitions of a frame)
+ * @param forward  true for forward, false for backward
  */
 void cOutputDevice::TrickSpeed(int speed, bool forward)
 {
@@ -946,7 +965,7 @@ void cOutputDevice::StillPicture(const uchar *data, int size)
  */
 bool cOutputDevice::Poll([[maybe_unused]] cPoller & poller, int timeoutMs)
 {
-//	LOGDEBUG("device: %s: timeout %d", __FUNCTION__, timeout_ms);
+//	LOGDEBUG("device: %s: timeout %d", __FUNCTION__, timeoutMs);
 	if (IsDetached())
 		return true;
 
@@ -1050,6 +1069,10 @@ bool cOutputDevice::DrainDevice(void)
  *
  * Save the timestamp when a channel switch is initiated (channelNum == 0)
  * for later time measurement, and try a failed audio passthrough again.
+ *
+ * @param device      device, which switches the channel
+ * @param channelNum  channel number (0: the switch starts)
+ * @param liveView    true, if the channel is switched for the live view
  */
 void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool liveView)
 {
@@ -1076,6 +1099,11 @@ void cOutputDevice::ChannelSwitch(const cDevice *device, int channelNum, bool li
  *
  * Save the timestamp when a replay is started for later time measurement,
  * and try a failed audio passthrough again.
+ *
+ * @param control         control of the replay (unused)
+ * @param name            name of the replay (unused)
+ * @param filenameDevice  file name of the replay (unused)
+ * @param on              true, if the replay starts, false, if it ends
  */
 void cOutputDevice::Replaying([[maybe_unused]]const cControl *control,
                               [[maybe_unused]]const char *name,
@@ -1114,6 +1142,8 @@ void cOutputDevice::SetDisableDeint(void)
 /**
  * Force the decoder to fallback to software if the hardware decoder fails
  * after the configured amount of packets were sent and no frame was received
+ *
+ * @param enable  true to enable the fallback
  */
 void cOutputDevice::SetDecoderFallbackToSw(bool enable)
 {
@@ -1128,6 +1158,8 @@ void cOutputDevice::SetDecoderFallbackToSw(bool enable)
 
 /**
  * Set the HDR output mode (::HdrMode)
+ *
+ * @param mode  HDR mode (::HdrMode)
  */
 void cOutputDevice::SetHdrMode(int mode)
 {
@@ -1471,7 +1503,7 @@ bool cOutputDevice::CheckAudioPlaybackStartConditions()
 
 #ifdef USE_GLES
 /**
- * Get the maximum GPU image cache size
+ * Get the maximum GPU image cache size in MB
  */
 int cOutputDevice::MaxSizeGPUImageCache(void)
 {
@@ -1663,6 +1695,7 @@ void cOutputDevice::GetStats(int *duped, int *dropped, int *counter)
  * @param par           audio codec parameters
  * @param timebase      timebase
  *
+ * @retval true         the codec was opened
  * @retval false        the codec can't be decoded
  */
 bool cOutputDevice::SetAudioCodec(enum AVCodecID codecId, AVCodecParameters * par, AVRational timebase)
@@ -1871,6 +1904,8 @@ static void PrintStreamData(const uchar *payload)
  * @param size            the length of the PES packet including header
  * @param trackJitter     whether to track jitter for this packet
  * @param mainStream      this is a packet of the main stream
+ *
+ * @return size, if the packet was taken (or dropped), 0, if it must be sent again
  */
 int cOutputDevice::PlayVideoInternal(cVideoStream *stream, cReassemblyBufferVideo *buffer, const uchar *data, int size, bool trackJitter, bool mainStream)
 {

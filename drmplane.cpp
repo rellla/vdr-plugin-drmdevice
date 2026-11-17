@@ -105,6 +105,8 @@ void cDrmPlane::SetParams(uint64_t crtcId, uint64_t fbId,
  * @param ModeReq      pointer to the atomic mode request
  * @param propName     name of the property to set
  * @param value        property value
+ *
+ * @return 0 on success, a negative error code otherwise (-EINVAL, if the plane doesn't have the property)
  */
 int cDrmPlane::SetPropertyRequest(drmModeAtomicReqPtr ModeReq, const char *propName, uint64_t value)
 {
@@ -202,6 +204,8 @@ int cDrmPlane::HasZpos(int fdDrm)
 
 /**
  * Dump the cached plane parameter modesetting values
+ *
+ * @param id  name of the plane for the log
  */
 void cDrmPlane::DumpParameters(const char *id)
 {

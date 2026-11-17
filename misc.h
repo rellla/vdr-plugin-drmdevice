@@ -39,6 +39,10 @@ extern "C" {
  ***************************************************************************************/
 /**
  * Check for OpenGL errors and log them
+ *
+ * @param stmt   the checked statement
+ * @param fname  source file of the statement
+ * @param line   source line of the statement
  */
 static inline void glCheckError(const char *stmt, const char *fname, int line) {
 	GLint err = glGetError();
@@ -48,6 +52,10 @@ static inline void glCheckError(const char *stmt, const char *fname, int line) {
 
 /**
  * Check for EGL errors and log them
+ *
+ * @param stmt   the checked statement
+ * @param fname  source file of the statement
+ * @param line   source line of the statement
  */
 static inline void eglCheckError(const char *stmt, const char *fname, int line) {
 	EGLint err = eglGetError();
@@ -100,6 +108,8 @@ static inline bool isInterlacedFrame(AVFrame *frame)
  *
  * The string stays valid for the next two calls of the same thread, so up to
  * three strings can be used in one log message. Each thread has its own buffers.
+ *
+ * @param errnum  FFmpeg error code
  */
 static inline const char* av_err2string(int errnum)
 {
@@ -187,6 +197,9 @@ static inline const char *Timestamp2StringMs(int64_t ts) { return Timestamp2Stri
 
 /**
  * Return _count_ amount of bytes from _data_
+ *
+ * @param data   bytes to read (big endian)
+ * @param count  number of bytes (max. 4)
  */
 static inline uint32_t ReadBytes(const uint8_t *data, int count)
 {

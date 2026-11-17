@@ -59,6 +59,9 @@
  *
  * Translates color from ARGB value to glm::vec4
  *
+ * @param colARGB  ARGB color
+ * @param col      receives the color as RGBA vector (0.0 - 1.0)
+ *
  * @ingroup osd
  */
 static void ConvertColor(const GLint &colARGB, glm::vec4 &col) {
@@ -90,6 +93,13 @@ void cOglShader::Use(void)
 	GL_CHECK(glUseProgram(m_id));
 }
 
+/**
+ * Load and compile the shader program of a type
+ *
+ * @param type     type of the shader
+ *
+ * @return true on success
+ */
 bool cOglShader::Load(eShaderType type)
 {
 	const char *vertexCode = NULL;
@@ -161,6 +171,14 @@ void cOglShader::SetMatrix4(const GLchar *name, const glm::mat4 &matrix)
 	GL_CHECK(glUniformMatrix4fv(glGetUniformLocation(m_id, name), 1, GL_FALSE, glm::value_ptr(matrix)));
 }
 
+/**
+ * Compile the vertex and the fragment shader and link them to a program
+ *
+ * @param vertexCode       source of the vertex shader
+ * @param fragmentCode     source of the fragment shader
+ *
+ * @return true on success
+ */
 bool cOglShader::Compile(const char *vertexCode, const char *fragmentCode)
 {
 	GLuint sVertex, sFragment;
@@ -195,6 +213,14 @@ bool cOglShader::Compile(const char *vertexCode, const char *fragmentCode)
 	return true;
 }
 
+/**
+ * Log the error, if a shader wasn't compiled or a program wasn't linked
+ *
+ * @param object       shader or program
+ * @param program      true, if object is a program, false, if it is a shader
+ *
+ * @return true, if there was no error
+ */
 bool cOglShader::CheckCompileErrors(GLuint object, bool program) {
 	GLint success;
 	GLchar infoLog[1024];
@@ -220,6 +246,12 @@ bool cOglShader::CheckCompileErrors(GLuint object, bool program) {
 /****************************************************************************************
  * cOglGlyph
  ***************************************************************************************/
+/**
+ * Create a glyph from a rendered FreeType bitmap glyph
+ *
+ * @param charCode  character code
+ * @param ftGlyph   rendered bitmap glyph
+ */
 cOglGlyph::cOglGlyph(FT_ULong charCode, FT_BitmapGlyph ftGlyph)
 	: m_charCode(charCode),
 	  m_bearingLeft(ftGlyph->left),
@@ -237,6 +269,13 @@ cOglGlyph::~cOglGlyph(void)
 		GL_CHECK(glDeleteTextures(1, &m_texture));
 }
 
+/**
+ * Get the cached kerning of this glyph to a previous symbol
+ *
+ * @param prevSym      character code of the previous symbol
+ *
+ * @return kerning in pixels, KERNING_UNKNOWN, if it isn't cached yet
+ */
 int cOglGlyph::GetKerningCache(FT_ULong prevSym)
 {
 	for (int i = m_pKerningCache.Size() - 1; i >= 0; i--) {
@@ -256,6 +295,12 @@ void cOglGlyph::BindTexture(void)
 	GL_CHECK(glBindTexture(GL_TEXTURE_2D, m_texture));
 }
 
+/**
+ * Upload the bitmap of the glyph as a texture
+ *
+ * The bitmap of FreeType must still be valid, so this must be called before
+ * the FreeType glyph is released.
+ */
 void cOglGlyph::LoadTexture(void)
 {
 	// Disable byte-alignment restriction
@@ -287,6 +332,12 @@ void cOglGlyph::LoadTexture(void)
 /****************************************************************************************
  * cOglFontAtlas
  ***************************************************************************************/
+/**
+ * Create a texture atlas of the ASCII glyphs of a font
+ *
+ * @param face    FreeType font face
+ * @param height  font height in pixels
+ */
 cOglFontAtlas::cOglFontAtlas(FT_Face face, int height)
 {
 	int maxAtlasWidth;
@@ -459,6 +510,13 @@ cOglFontAtlas::~cOglFontAtlas(void) {
 	}
 }
 
+/**
+ * Get a glyph of the atlas
+ *
+ * @param sym      character code
+ *
+ * @return the glyph, nullptr, if the atlas doesn't contain the character
+ */
 cOglAtlasGlyph* cOglFontAtlas::GetGlyph(int sym) const {
 	if (sym < MIN_CHARCODE || sym > MAX_CHARCODE)
 		return nullptr;
@@ -477,6 +535,14 @@ FT_Library cOglFont::s_ftLib = 0;
 cList<cOglFont> *cOglFont::s_pFonts = 0;
 bool cOglFont::s_initiated = false;
 
+/**
+ * Open a font file and create the atlas of its ASCII glyphs
+ *
+ * If the file can't be opened, the font has no atlas and Get() drops it.
+ *
+ * @param fontName     file name of the font
+ * @param charHeight   font height in pixels
+ */
 cOglFont::cOglFont(const char *fontName, int charHeight)
 	: m_name(fontName),
 	  m_size(charHeight)
@@ -518,6 +584,16 @@ cOglFont::~cOglFont(void)
 		FT_Done_Face(m_face);
 }
 
+/**
+ * Get a font from the font cache, the font is loaded, if it isn't cached yet
+ *
+ * Must be called by the OpenGL thread.
+ *
+ * @param name         file name of the font
+ * @param charHeight   font height in pixels
+ *
+ * @return the font, which stays owned by the cache (nullptr, if it can't be loaded)
+ */
 cOglFont *cOglFont::Get(const char *name, int charHeight)
 {
 	if (!s_pFonts)
@@ -563,6 +639,15 @@ void cOglFont::Cleanup(void)
 	s_ftLib = 0;
 }
 
+/**
+ * Get a glyph of the font, which is rendered and cached at the first use
+ *
+ * This is used for the characters, which aren't part of the atlas.
+ *
+ * @param charCode     character code
+ *
+ * @return the glyph, which stays owned by the font (NULL on error)
+ */
 cOglGlyph* cOglFont::Glyph(FT_ULong charCode) const
 {
 	// Non-breaking space:
@@ -623,6 +708,12 @@ cOglGlyph* cOglFont::Glyph(FT_ULong charCode) const
 	return glyph;
 }
 
+/**
+ * Get the kerning between two symbols in pixels
+ *
+ * @param glyph        the glyph
+ * @param prevSym      character code of the symbol in front of the glyph (0: none)
+ */
 int cOglFont::Kerning(cOglGlyph *glyph, FT_ULong prevSym) const
 {
 	int kerning = 0;
@@ -644,6 +735,14 @@ int cOglFont::Kerning(cOglGlyph *glyph, FT_ULong prevSym) const
 /****************************************************************************************
  * cOglFb
  ***************************************************************************************/
+/**
+ * Create a framebuffer object (it is initialized by Init() in the OpenGL thread)
+ *
+ * @param width           width of the framebuffer
+ * @param height          height of the framebuffer
+ * @param viewPortWidth   width of the viewport
+ * @param viewPortHeight  height of the viewport
+ */
 cOglFb::cOglFb(GLint width, GLint height, GLint viewPortWidth, GLint viewPortHeight)
 	: m_width(width),
 	  m_height(height),
@@ -662,6 +761,13 @@ cOglFb::~cOglFb(void)
 		GL_CHECK(glDeleteFramebuffers(1, &m_framebuffer));
 }
 
+/**
+ * Create the framebuffer object and its texture
+ *
+ * Must be called by the OpenGL thread.
+ *
+ * @return true on success
+ */
 bool cOglFb::Init(void)
 {
 	GL_CHECK(glGenTextures(1, &m_texture));
@@ -687,6 +793,11 @@ bool cOglFb::Init(void)
 	return true;
 }
 
+/**
+ * Bind the framebuffer as render target and set the viewport to its size
+ *
+ * The framebuffer is created, if this wasn't done yet.
+ */
 void cOglFb::Bind(void)
 {
 	if (!m_initiated)
@@ -701,6 +812,11 @@ void cOglFb::Unbind(void)
 	GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
 }
 
+/**
+ * Bind the texture of the framebuffer, to use it as a source
+ *
+ * @return false, if the framebuffer wasn't created yet
+ */
 bool cOglFb::BindTexture(void)
 {
 	if (!m_initiated)
@@ -712,6 +828,11 @@ bool cOglFb::BindTexture(void)
 /****************************************************************************************
  * cOglOutputFb
  ***************************************************************************************/
+/**
+ * Init the output framebuffer
+ *
+ * @return true on success
+ */
 bool cOglOutputFb::Init(void)
 {
 	GL_CHECK(glGenTextures(1, &m_texture));
@@ -748,6 +869,11 @@ void cOglOutputFb::Unbind(void)
  * cOglVb
  ***************************************************************************************/
 
+/**
+ * Init the vertex buffer of its type
+ *
+ * @return always true
+ */
 bool cOglVb::Init(void)
 {
 	switch (m_type) {
@@ -1210,6 +1336,13 @@ bool cOglCmdDrawEllipse::Execute(void)
 	return true;
 }
 
+/**
+ * Create the vertices of a full ellipse (triangle fan around the center)
+ *
+ * @param[out] numVertices     number of vertices
+ *
+ * @return the vertices (x, y), which the caller must delete
+ */
 GLfloat *cOglCmdDrawEllipse::CreateVerticesFull(int &numVertices)
 {
 	int size = 364;
@@ -1226,6 +1359,13 @@ GLfloat *cOglCmdDrawEllipse::CreateVerticesFull(int &numVertices)
 	return vertices;
 }
 
+/**
+ * Create the vertices of a quarter of an ellipse or of its inverted quarter
+ *
+ * @param[out] numVertices     number of vertices
+ *
+ * @return the vertices (x, y), which the caller must delete
+ */
 GLfloat *cOglCmdDrawEllipse::CreateVerticesQuadrant(int &numVertices)
 {
 	int size = 94;
@@ -1293,6 +1433,13 @@ GLfloat *cOglCmdDrawEllipse::CreateVerticesQuadrant(int &numVertices)
 	return vertices;
 }
 
+/**
+ * Create the vertices of a half of an ellipse
+ *
+ * @param[out] numVertices     number of vertices
+ *
+ * @return the vertices (x, y), which the caller must delete
+ */
 GLfloat *cOglCmdDrawEllipse::CreateVerticesHalf(int &numVertices)
 {
 	int size = 184;
@@ -1719,6 +1866,13 @@ bool cOglCmdDropImage::Execute(void) {
 /******************************************************************************
  * cOglThread
  *****************************************************************************/
+/**
+ * Create and start the OpenGL worker thread
+ *
+ * @param startWait     signaled, after the thread initialized OpenGL
+ * @param maxCacheSize  maximum size of the image cache in MB
+ * @param device        output device
+ */
 cOglThread::cOglThread(cCondWait *startWait, int maxCacheSize, cOutputDevice *device)
 	: cThread("oglThread"),
 	  m_startWait(startWait),
@@ -1780,17 +1934,33 @@ void cOglThread::CleanupCommands(void)
 	m_stalled = false;
 }
 
+/**
+ * Ask the thread to stop without waiting for it
+ *
+ * The thread skips a command, which waits for the lock against a state change.
+ */
 void cOglThread::RequestStop(void)
 {
 	Cancel(-1);
 }
 
+/**
+ * Stop the thread and wait up to 2s for its end
+ */
 void cOglThread::Stop(void)
 {
 	Cancel(2);
 	m_stalled = false;
 }
 
+/**
+ * Queue a command for the OpenGL thread
+ *
+ * The caller is blocked, while the queue is too long, until the thread has
+ * executed half of it.
+ *
+ * @param cmd      the command, the thread deletes it
+ */
 void cOglThread::DoCmd(cOglCmd* cmd)
 {
 	while (m_stalled)
@@ -1811,6 +1981,16 @@ void cOglThread::DoCmd(cOglCmd* cmd)
 		m_wait.Signal();
 }
 
+/**
+ * Store an image as a texture in the image cache
+ *
+ * The caller waits, until the OpenGL thread has created the texture.
+ *
+ * @param image    the image
+ *
+ * @return negative handle of the image, 0, if it can't be stored (cache full,
+ *         image too big, no free slot)
+ */
 int cOglThread::StoreImage(const cImage &image)
 {
 	if (!m_maxCacheSize) {
@@ -1867,6 +2047,11 @@ int cOglThread::StoreImage(const cImage &image)
 	return slot;
 }
 
+/**
+ * Reserve a free slot of the image cache
+ *
+ * @return handle of the slot (-1 for the first slot), 0, if all slots are used
+ */
 int cOglThread::GetFreeSlot(void)
 {
 	Lock();
@@ -1881,6 +2066,11 @@ int cOglThread::GetFreeSlot(void)
 	return slot;
 }
 
+/**
+ * Mark a slot of the image cache as free
+ *
+ * @param slot     handle of the slot
+ */
 void cOglThread::ClearSlot(int slot)
 {
 	int i = -slot - 1;
@@ -1894,6 +2084,13 @@ void cOglThread::ClearSlot(int slot)
 	}
 }
 
+/**
+ * Get the image of a slot of the image cache
+ *
+ * @param slot     handle of the slot
+ *
+ * @return the image (also for a free slot), 0 for an invalid handle
+ */
 sOglImage *cOglThread::GetImageRef(int slot)
 {
 	int i = -slot - 1;
@@ -1902,6 +2099,13 @@ sOglImage *cOglThread::GetImageRef(int slot)
 	return 0;
 }
 
+/**
+ * Delete the texture of a stored image and free its slot
+ *
+ * The caller waits, until the OpenGL thread has deleted the texture.
+ *
+ * @param imageHandle      handle of the image
+ */
 void cOglThread::DropImageData(int imageHandle)
 {
 	sOglImage *imageRef = GetImageRef(imageHandle);
@@ -1928,6 +2132,14 @@ void cOglThread::DropImageData(int imageHandle)
 	ClearSlot(imageHandle);
 }
 
+/**
+ * The OpenGL thread: init OpenGL, then execute the queued commands
+ *
+ * The commands, which draw to the output, are executed with the lock against
+ * a state change (see LockOutputFb()). At the end the remaining commands are
+ * cleaned up and all OpenGL objects are deleted, because this is only possible
+ * with the context of this thread.
+ */
 void cOglThread::Action(void)
 {
 	if (!InitOpenGL()) {
@@ -2126,6 +2338,14 @@ void cOglThread::Cleanup(void)
 /******************************************************************************
  * cOglPixmap
  *****************************************************************************/
+/**
+ * Create a pixmap, which is rendered into its own framebuffer
+ *
+ * @param oglThread  OpenGL worker thread
+ * @param layer      layer of the pixmap
+ * @param viewPort   view port of the pixmap
+ * @param drawPort   draw port of the pixmap (the view port, if empty)
+ */
 cOglPixmap::cOglPixmap(std::shared_ptr<cOglThread> oglThread, int layer, const cRect &viewPort, const cRect &drawPort)
 	: cPixmap(layer, viewPort, drawPort),
 	  m_pOglThread(oglThread)
@@ -2558,6 +2778,15 @@ void cOglPixmap::DrawGridRect(const cRect &rect, int offset, int size, tColor cl
  *****************************************************************************/
 cOglOutputFb *cOglOsd::OutputFramebuffer = NULL;
 
+/**
+ * Create an osd, the output framebuffer is created with the first osd
+ *
+ * @param left         x position of the osd on the screen
+ * @param top          y position of the osd on the screen
+ * @param level        level of the osd (OSD_LEVEL_SUBTITLES makes a subtitle osd)
+ * @param oglThread    OpenGL worker thread
+ * @param device       output device
+ */
 cOglOsd::cOglOsd(int left, int top, uint level, std::shared_ptr<cOglThread> oglThread, cOutputDevice *device)
 	: cOsd(left, top, level),
 	  m_pOglThread(oglThread),
@@ -2578,6 +2807,9 @@ cOglOsd::cOglOsd(int left, int top, uint level, std::shared_ptr<cOglThread> oglT
 	}
 }
 
+/**
+ * Remove the osd from the output (if it is the active one) and delete its buffer
+ */
 cOglOsd::~cOglOsd()
 {
 	if (!m_pOglThread->Active() || !m_pBufferFramebuffer)
@@ -2599,6 +2831,19 @@ cOglOsd::~cOglOsd()
 	m_pOglThread->DoCmd(new cOglCmdDeleteFb(m_pBufferFramebuffer));
 }
 
+/**
+ * Set the areas of the osd
+ *
+ * All areas are replaced by one true color area, which is rendered into a buffer
+ * framebuffer of its size. This may be called again for an osd: cOsd::SetAreas()
+ * deletes all pixmaps then.
+ *
+ * @param areas        the areas
+ * @param numAreas     number of areas
+ *
+ * @return oeOk on success, oeUnknown, if the OpenGL thread doesn't run, otherwise
+ *         the error of cOsd::SetAreas()
+ */
 eOsdError cOglOsd::SetAreas(const tArea *areas, int numAreas)
 {
 	// nobody would create the buffer, if the thread was stopped (e.g. the device was detached)
@@ -2648,6 +2893,16 @@ eOsdError cOglOsd::SetAreas(const tArea *areas, int numAreas)
 	return cOsd::SetAreas(&area, 1);
 }
 
+/**
+ * Create a pixmap of the osd
+ *
+ * @param layer        layer of the pixmap
+ * @param viewPort     view port of the pixmap
+ * @param drawPort     draw port of the pixmap
+ *
+ * @return the pixmap, NULL, if the OpenGL thread doesn't run or the osd has too
+ *         many pixmaps
+ */
 cPixmap *cOglOsd::CreatePixmap(int layer, const cRect &viewPort, const cRect &drawPort)
 {
 	if (!m_pOglThread->Active())
@@ -2669,6 +2924,13 @@ cPixmap *cOglOsd::CreatePixmap(int layer, const cRect &viewPort, const cRect &dr
 	return NULL;
 }
 
+/**
+ * Destroy a pixmap of the osd
+ *
+ * The background pixmap (the first one) is never destroyed.
+ *
+ * @param Pixmap       the pixmap
+ */
 void cOglOsd::DestroyPixmap(cPixmap *Pixmap)
 {
 	if (!m_pOglThread->Active())
@@ -2694,6 +2956,14 @@ void cOglOsd::DestroyPixmap(cPixmap *Pixmap)
 	}
 }
 
+/**
+ * Show the changes of the pixmaps
+ *
+ * The dirty area of the buffer framebuffer is cleared, all pixmaps, which touch
+ * it, are rendered into it in the order of their layers, and the buffer is
+ * copied to the output framebuffer. Nothing is done for an osd, which isn't
+ * active.
+ */
 void cOglOsd::Flush(void)
 {
 	if (!m_pOglThread->Active() || !Active())
@@ -2759,6 +3029,19 @@ void cOglOsd::Flush(void)
 	                                                    Left() + m_areaOrigin.X(), Top() + m_areaOrigin.Y(), 1, m_pDevice));
 }
 
+/**
+ * Draw a scaled bitmap to the background pixmap
+ *
+ * A subtitle osd gets the position in the coordinates of the osd and converts
+ * it to the coordinates of its area.
+ *
+ * @param x            x position of the bitmap
+ * @param y            y position of the bitmap
+ * @param Bitmap       the bitmap
+ * @param FactorX      horizontal scale factor
+ * @param FactorY      vertical scale factor
+ * @param AntiAlias    true to smooth the scaled bitmap
+ */
 void cOglOsd::DrawScaledBitmap(int x, int y, const cBitmap &Bitmap, double FactorX, double FactorY, bool AntiAlias)
 {
 	if (!m_pOglPixmaps[0])

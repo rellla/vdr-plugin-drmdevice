@@ -28,7 +28,11 @@ protected:
 	std::vector<std::unique_ptr<T>> buffer;    ///< the pooled objects
 
 public:
-	/** Create a pool with the given number of objects */
+	/**
+	 * Create a pool with the given number of objects
+	 *
+	 * @param size  number of objects
+	 */
 	cPool(size_t size) {
 		buffer.reserve(size);
 

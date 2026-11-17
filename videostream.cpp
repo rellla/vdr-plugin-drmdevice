@@ -47,6 +47,13 @@ static char s_restartDecoder;
 
 /**
  * Create a video stream
+ *
+ * @param render          video renderer
+ * @param hardwareQuirks  quirks of the hardware (QUIRK_*)
+ * @param drmBufferQueue  queue of the buffers to display
+ * @param config          device config
+ * @param isPipStream     true for the pip stream
+ * @param frameOutput     function, which takes the decoded frames
  */
 cVideoStream::cVideoStream(cVideoRender *render, int hardwareQuirks, cQueue<cDrmBuffer> *drmBufferQueue, cDeviceConfig *config, bool isPipStream, std::function<void(AVFrame *)> frameOutput)
 	: cThread(isPipStream ? "drmdev PIP dec" : "drmdev main dec"),
@@ -79,6 +86,8 @@ cVideoStream::~cVideoStream(void)
  *
  * This function completes processing of any remaining PES fragments in the fragmentation
  * buffer, then pushes a nullptr packet to the queue to signal a flush operation to the decoder.
+ *
+ * @return true, if the flush was queued, false, if the packet queue is full
  */
 bool cVideoStream::Drain(void)
 {

@@ -79,6 +79,8 @@ void cAmbientService::Offer(cDrmBuffer *buf, int screenWidth, int screenHeight)
  * Set, if the device is detached
  *
  * A waiting consumer returns at once.
+ *
+ * @param detached  true, if the device is detached
  */
 void cAmbientService::SetDetached(bool detached)
 {
@@ -161,6 +163,13 @@ bool cAmbientService::GetImage(AmbientImage_v1_0_t *req)
  * The image has the aspect ratio of the screen. The video is placed into it
  * as it is placed on the screen (scaled video, letterbox of a different
  * aspect ratio), the rest is black.
+ *
+ * @param snapshot      snapshot of the shown video frame
+ * @param screenWidth   width of the screen
+ * @param screenHeight  height of the screen
+ * @param req           request of the consumer, receives the image and its properties
+ *
+ * @return true, if the image was written
  */
 bool cAmbientService::CreateImage(cFrameSnapshot &snapshot, int screenWidth, int screenHeight, AmbientImage_v1_0_t *req)
 {

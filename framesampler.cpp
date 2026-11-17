@@ -54,19 +54,34 @@ enum eLayout {
 	LAYOUT_RGBX,        ///< ABGR8888/XBGR8888: bytes R, G, B, X (linear)
 };
 
-/** true, if the modifier describes a linear buffer */
+/**
+ * true, if the modifier describes a linear buffer
+ *
+ * @param modifier  format modifier
+ */
 bool IsLinear(uint64_t modifier)
 {
 	return modifier == DRM_FORMAT_MOD_LINEAR || modifier == DRM_FORMAT_MOD_INVALID;
 }
 
-/** true, if the modifier is Broadcom SAND128 (with or without the column height parameter) */
+/**
+ * true, if the modifier is Broadcom SAND128 (with or without the column height parameter)
+ *
+ * @param modifier  format modifier
+ */
 bool IsSand128(uint64_t modifier)
 {
 	return fourcc_mod_broadcom_mod(modifier) == DRM_FORMAT_MOD_BROADCOM_SAND128;
 }
 
-/** Get the memory layout of a format/modifier combination */
+/**
+ * Get the memory layout of a format/modifier combination
+ *
+ * @param pixFmt    drm pixel format
+ * @param modifier  format modifier
+ *
+ * @return the layout (LAYOUT_NONE, if the combination isn't supported)
+ */
 eLayout GetLayout(uint32_t pixFmt, uint64_t modifier)
 {
 	if (IsSand128(modifier)) {
@@ -95,7 +110,11 @@ eLayout GetLayout(uint32_t pixFmt, uint64_t modifier)
 	}
 }
 
-/** Number of planes, the layout needs */
+/**
+ * Number of planes, the layout needs
+ *
+ * @param layout  memory layout
+ */
 int NeededPlanes(eLayout layout)
 {
 	switch (layout) {
@@ -143,7 +162,14 @@ public:
 			m_colStride[i] = (size_t)(param ? param : f.pitch[i]) * 128;
 	}
 
-	/** Address of the last byte, which is read in a plane for the given dimension */
+	/**
+	 * Address of the last byte, which is read in a plane for the given dimension
+	 *
+	 * @param plane     index of the plane
+	 * @param lastByte  offset of the last byte, which is read
+	 *
+	 * @return true, if the byte is inside the mapping of the plane
+	 */
 	bool Fits(int plane, size_t lastByte) const
 	{
 		const uint8_t *p = m_f.plane[plane];
@@ -270,14 +296,26 @@ private:
 	eLayout m_layout;
 	size_t m_colStride[2] = {};         ///< SAND: bytes between two columns (Y, UV)
 
-	/** 10 bit sample i of a line packed without gaps (NV15) */
+	/**
+	 * 10 bit sample i of a line packed without gaps (NV15)
+	 *
+	 * @param line  start of the line
+	 * @param i     index of the sample in the line
+	 */
 	static int Packed10(const uint8_t *line, int i)
 	{
 		size_t bit = (size_t)i * 10;
 		return (Load16(line + bit / 8) >> (bit % 8)) & 0x3ff;
 	}
 
-	/** 10 bit sample i of a line in a SAND128 column layout with 3 samples per 32 bit word (P030) */
+	/**
+	 * 10 bit sample i of a line in a SAND128 column layout with 3 samples per 32 bit word (P030)
+	 *
+	 * @param plane      start of the plane
+	 * @param colStride  bytes between two columns
+	 * @param i          index of the sample in the line
+	 * @param y          line
+	 */
 	static int Sand30(const uint8_t *plane, size_t colStride, int i, int y)
 	{
 		int word = i / 3;
@@ -302,6 +340,10 @@ constexpr int FIX(double v) { return (int)(v * 65536.0 + (v < 0 ? -0.5 : 0.5)); 
  * Get the conversion matrix of a frame
  *
  * Without colorspace information, HD frames are BT.709 and SD frames BT.601.
+ *
+ * @param cs      color space of the frame
+ * @param range   color range of the frame
+ * @param height  height of the frame
  */
 sYuvMatrix GetMatrix(AVColorSpace cs, AVColorRange range, uint32_t height)
 {
@@ -346,7 +388,11 @@ inline int Clamp10(int v)
 	return v < 0 ? 0 : (v > 1023 ? 1023 : v);
 }
 
-/** 10 bit (0 - 1023) to 8 bit (0 - 255) */
+/**
+ * 10 bit (0 - 1023) to 8 bit (0 - 255)
+ *
+ * @param v  10 bit value
+ */
 inline int To8(int v)
 {
 	return (v * 255 + 511) / 1023;
@@ -375,6 +421,14 @@ constexpr double HDR_REFERENCE_WHITE = 203.0;   ///< nits of the HDR reference w
 constexpr double HLG_PEAK = 1000.0;             ///< nits of the HLG reference display
 constexpr float TONEMAP_KNEE = 0.75f;           ///< below, the brightness is kept, above it is compressed towards SDR white
 
+/**
+ * Get the conversion, which a frame needs to be shown as SDR
+ *
+ * @param trc          transfer characteristics of the frame
+ * @param primaries    color primaries of the frame
+ *
+ * @return the conversion (TONEMAP_NONE for a BT.709 SDR frame)
+ */
 eToneMap GetToneMap(AVColorTransferCharacteristic trc, AVColorPrimaries primaries)
 {
 	if (trc == AVCOL_TRC_SMPTE2084)
@@ -417,6 +471,9 @@ struct sHdrTables {
 	}
 };
 
+/**
+ * Get the lookup tables of the conversions, they are created at the first call
+ */
 const sHdrTables &HdrTables(void)
 {
 	static const sHdrTables tables;     // thread safe initialization
@@ -425,6 +482,10 @@ const sHdrTables &HdrTables(void)
 
 /**
  * Convert a non-linear BT.2020 R'G'B' sample (10 bit) to 8 bit BT.709 RGB
+ *
+ * @param mode   conversion of the transfer function
+ * @param rgb10  R'G'B' sample (10 bit)
+ * @param out    receives the RGB sample (8 bit)
  */
 void ToneMap(eToneMap mode, const int rgb10[3], int out[3])
 {
@@ -478,6 +539,9 @@ void ToneMap(eToneMap mode, const int rgb10[3], int out[3])
 
 /**
  * Check, if a frame of the given format and modifier can be sampled
+ *
+ * @param pixFmt    drm pixel format
+ * @param modifier  format modifier
  */
 bool cFrameSampler::IsSupported(uint32_t pixFmt, uint64_t modifier)
 {
@@ -486,6 +550,11 @@ bool cFrameSampler::IsSupported(uint32_t pixFmt, uint64_t modifier)
 
 /**
  * Get a printable name of the format (for logging)
+ *
+ * @param pixFmt    drm pixel format
+ * @param modifier  format modifier
+ *
+ * @return the name ("unsupported", if it can't be sampled)
  */
 const char *cFrameSampler::FormatName(uint32_t pixFmt, uint64_t modifier)
 {
@@ -506,6 +575,9 @@ const char *cFrameSampler::FormatName(uint32_t pixFmt, uint64_t modifier)
 
 /**
  * Get a printable name of the conversion of a frame (for the statistics)
+ *
+ * @param trc        transfer characteristics of the frame
+ * @param primaries  color primaries of the frame
  *
  * @return  nullptr, if the frame is SDR BT.709
  */

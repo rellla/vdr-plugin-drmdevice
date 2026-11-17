@@ -30,6 +30,8 @@
 
 /**
  * Create a new OSD provider
+ *
+ * @param device  output device
  */
 cDeviceOsdProvider::cDeviceOsdProvider(cOutputDevice *device)
 	: cOsdProvider(),
@@ -108,6 +110,8 @@ void cDeviceOsdProvider::OsdSizeChanged(void) {
 
 /**
  * Start the OpenGL thread
+ *
+ * @return true, if the thread runs
  */
 bool cDeviceOsdProvider::StartOpenGlThread(void) {
 	if (m_pDevice->OglOsdIsDisabled()) {
@@ -158,6 +162,8 @@ void cDeviceOsdProvider::StopOpenGlThread(void) {
 
 /**
  * Lock the OpenGL thread
+ *
+ * @return true, if the thread was locked
  */
 bool cDeviceOsdProvider::LockOpenGlThread(void) {
 	if (m_pOglThread) {
@@ -185,6 +191,10 @@ void cDeviceOsdProvider::UnlockOpenGlThread(void) {
  * The image is stored as a texture by the OpenGL thread (negative handle). If
  * this isn't possible (OpenGL osd disabled, device detached, cache full, image
  * too big), VDR keeps the image in the memory (positive handle).
+ *
+ * @param Image  image to store
+ *
+ * @return handle of the stored image (0 on error)
  */
 int cDeviceOsdProvider::StoreImageData(const cImage &Image)
 {
@@ -200,6 +210,10 @@ int cDeviceOsdProvider::StoreImageData(const cImage &Image)
 
 /**
  * Get stored image data
+ *
+ * @param ImageHandle  handle of the stored image
+ *
+ * @return the image (NULL, if it isn't stored)
  */
 const cImage *cDeviceOsdProvider::GetImageData(int ImageHandle) {
 	return cOsdProvider::GetImageData(ImageHandle);
@@ -207,6 +221,8 @@ const cImage *cDeviceOsdProvider::GetImageData(int ImageHandle) {
 
 /**
  * Drop stored image data
+ *
+ * @param imgHandle  handle of the stored image
  */
 void cDeviceOsdProvider::DropImageData(int imgHandle)
 {

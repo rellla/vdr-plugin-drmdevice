@@ -100,6 +100,8 @@ cTestPictureControl::~cTestPictureControl()
  * The other keys are left to VDR (e.g. the volume).
  *
  * @param key       the pressed key
+ *
+ * @return osEnd, if the test picture is closed, osUnknown otherwise
  */
 eOSState cTestPictureControl::ProcessKey(eKeys key)
 {

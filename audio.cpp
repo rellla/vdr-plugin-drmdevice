@@ -51,6 +51,8 @@ extern "C" {
 
 /**
  * Create a new audio context
+ *
+ * @param device  output device
  */
 cAudioStream::cAudioStream(cOutputDevice *device)
 	: cThread("drmdev audio"),
@@ -203,6 +205,8 @@ std::string cAudioStream::BuildChannelMapFilter(const AVChannelLayout &layout)
  *   - superequalizer
  *   - aformat
  *   - abuffersink
+ *
+ * @param audioCtx  codec context of the decoded stream
  *
  * @retval 0    everything ok
  * @retval 1    didn't support channels, downmix set -> scrap this frame, test next
@@ -684,11 +688,9 @@ AVFrame *cAudioStream::FilterGetFrame(void)
 int cAudioStream::CheckForFilterReady(AVCodecContext *ctx)
 {
 	if (m_filterReady && m_filterChanged) {
-//		LOGDEBUG2(L_SOUND, "audio: %s: m_filterReady %d sink_links_count %d channels %d nb_filters %d nb_outputs %d channels %d m_filterChanged %d",
-//			__FUNCTION__, m_filterReady,
-//			m_pFilterGraph->sink_links_count, m_pFilterGraph->sink_links[0]->channels,
+//		LOGDEBUG2(L_SOUND, "audio: %s: m_filterReady %d nb_filters %d nb_outputs %d m_filterChanged %d",
+//			__FUNCTION__, m_filterReady, m_pFilterGraph->nb_filters,
 //			m_pFilterGraph->filters[m_pFilterGraph->nb_filters - 1]->nb_outputs,
-//			m_pFilterGraph->nb_filters, m_pFilterGraph->filters[m_pFilterGraph->nb_filters - 1]->outputs[m_pFilterGraph->filters[m_pFilterGraph->nb_filters - 1]->nb_outputs - 1]->channels,
 //			m_filterChanged);
 		avfilter_graph_free(&m_pFilterGraph);
 		m_filterReady = 0;

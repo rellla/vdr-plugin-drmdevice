@@ -265,6 +265,8 @@ void cOutputDevice::ResumeVideoThreads(void)
 #ifdef USE_GLES
 /**
  * Pause the OpenGL worker thread.
+ *
+ * @return true, if the thread was paused (it must be resumed with ResumeOpenGlThread())
  */
 bool cOutputDevice::HaltOpenGlThread(void)
 {

@@ -663,6 +663,9 @@ int cAlsaDevice::WaitUntilReady(void)
 /**
  * Write data to the output device
  *
+ * @param data           interleaved samples to write
+ * @param framesToWrite  number of frames in data
+ *
  * @return number of written frames, or negative error code in case of an error
  */
 int cAlsaDevice::Write(const void *data, int framesToWrite)
@@ -698,7 +701,7 @@ bool cAlsaDevice::CheckWrittenFrames(int framesWritten, int framesToWrite)
 		return false;
 	}
 
-//	LOGDEBUG2(L_SOUND, "audio: %s: %d frames (%dms) written", __FUNCTION__, framesWritten, m_alsa.FramesToMs(framesWritten));
+//	LOGDEBUG2(L_SOUND, "audio: %s: %d frames (%dms) written", __FUNCTION__, framesWritten, FramesToMs(framesWritten));
 	return true;
 }
 
@@ -743,6 +746,8 @@ void cAlsaDevice::FlushBuffers(bool drop)
 
 /**
  * Return the current hardware audio delay in frames
+ *
+ * @return the delay (0, if it can't be read)
  */
 int cAlsaDevice::GetHwDelayFrames(void)
 {
@@ -756,6 +761,8 @@ int cAlsaDevice::GetHwDelayFrames(void)
 
 /**
  * Handle an alsa error
+ *
+ * @param error  error code of the ALSA call
  *
  * @return true, if an audio underrun happened, false otherwise
  */
@@ -831,6 +838,10 @@ void cAlsaDevice::SetVolume(int volume)
  * So "rename" Alsas RL (rear left) and RR (rear right) to
  * FFmpegs BL (back left) and BR (back right) to make the channelmap
  * filter parser happy.
+ *
+ * @param alsaName  ALSA channel name (nullptr for an unknown position)
+ *
+ * @return FFmpeg channel name (nullptr for an unknown position)
  *
  * @ingroup audio
  */

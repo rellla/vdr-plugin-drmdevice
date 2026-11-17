@@ -195,7 +195,7 @@ void cDrmBuffer::Setup(int drmDeviceFd, uint32_t width, uint32_t height, uint32_
 			if (object == 0)
 				m_dmaBufInode = FdInode(primedata->objects[object].fd);
 			//LOGDEBUG2(L_DRM, "drmbuffer: %s: PRIMEDATA create handle for PrimeFD (%d|%i): PrimeFD %i ToHandle %i size %zu modifier %" PRIx64 "",
-			//	__FUNCTION__, object, primedata->nb_objects, primedata->objects[object].fd, m_primehandle[object],
+			//	__FUNCTION__, object, primedata->nb_objects, primedata->objects[object].fd, m_objectPrimeHandle[object],
 			//	primedata->objects[object].size, primedata->objects[object].format_modifier);
 		}
 
@@ -410,6 +410,8 @@ int cDrmBufferPool::DestroyStaleImports(void)
 
 /**
  * Find a clean drm buffer from the buffer pool
+ *
+ * @return the buffer (nullptr, if there is none)
  */
 cDrmBuffer *cDrmBufferPool::FindUninitilized()
 {
@@ -423,6 +425,8 @@ cDrmBuffer *cDrmBufferPool::FindUninitilized()
 
 /**
  * Find a dirty drm buffer from the buffer pool which presentation has finished
+ *
+ * @return the buffer (nullptr, if there is none)
  */
 cDrmBuffer *cDrmBufferPool::FindNoPresentationPending()
 {
