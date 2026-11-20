@@ -41,18 +41,7 @@ jobs:
           fetch-depth: 0
 
       - name: Compute git version
-        shell: bash
-        run: |
-          set -e
-          if git describe --tags --exact-match HEAD >/dev/null 2>&1 \
-             && git diff --quiet \
-             && git diff --cached --quiet; then
-            GIT_DESCRIBE_VERSION=""
-          else
-            HASH=$(git describe --tags --always --dirty --exclude "*" 2>/dev/null || echo "unknown")
-            GIT_DESCRIBE_VERSION="-$HASH"
-          fi
-          echo "GIT_DESCRIBE_VERSION=$GIT_DESCRIBE_VERSION" >> "$GITHUB_ENV"
+        run: echo "GIT_DESCRIBE_VERSION=$(sh scripts/git-describe.sh)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: |
