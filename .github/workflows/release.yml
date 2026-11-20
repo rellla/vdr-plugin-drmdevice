@@ -20,7 +20,7 @@ on:
 
 permissions:
   contents: write
-  actions: read    # read the results of the other workflows
+  actions: write   # read the results of the other workflows and start the documentation
 
 env:
   SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -112,3 +112,14 @@ jobs:
             --target "$SHA" \
             --title "Version $VERSION" \
             --notes-file release-notes.md
+
+      - name: Generate the documentation with the version of the tag
+        if: steps.checks.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # the documentation of this commit was generated before the tag existed,
+          # it is generated again, if main is still at the tagged commit
+          if [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SHA" ]; then
+            gh workflow run doxygen.yml --ref main
+          fi
